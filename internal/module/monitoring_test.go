@@ -350,3 +350,22 @@ func TestDryRunFailsOnBlockedChange(t *testing.T) {
 		t.Fatalf("outcome = %+v; want failed", outcomes)
 	}
 }
+
+func TestDCGMRuntimeFromNvidiaModuleIsPendingNotBlocked(t *testing.T) {
+	fakeGPUHostWithoutRuntime(t)
+	rc := newDryRunRC(t)
+	rc.Config.Modules.Nvidia.Enabled = true
+	rc.Config.Modules.Monitoring = config.MonitoringConfig{NodeExporter: true, DCGMExporter: true}
+	if _, err := RunAll(context.Background(), []Module{NewNvidiaModule(), NewMonitoringModule()}, rc); err != nil {
+		t.Fatalf("the nvidia module registers the runtime in a real run, so a dry run must pass: %v", err)
+	}
+	check, err := NewMonitoringModule().Check(context.Background(), rc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range check.Changes {
+		if c.State == ChangeBlocked {
+			t.Fatalf("runtime provided by the nvidia module must not be blocked: %+v", c)
+		}
+	}
+}

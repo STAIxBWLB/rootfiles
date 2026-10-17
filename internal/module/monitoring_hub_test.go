@@ -991,4 +991,12 @@ func TestMonitoringHubReloadsPrometheusWhenOnlyRulesChange(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), server.URL+"/-/reload") || !strings.Contains(err.Error(), "500") {
 		t.Fatalf("failed reload should name the endpoint and status, got %v", err)
 	}
+	// The failed change stays pending, so the next apply retries the reload.
+	if got, _ := os.ReadFile(monitoringHubAlertRules); string(got) != "groups: []\n" {
+		t.Fatalf("a failed reload should restore the previous rules, got %q", got)
+	}
+	status = http.StatusOK
+	if _, err := applyMonitoringHub(context.Background(), rc); err != nil || len(reloads) != 3 {
+		t.Fatalf("retry after a failed reload: err=%v reloads=%v", err, reloads)
+	}
 }

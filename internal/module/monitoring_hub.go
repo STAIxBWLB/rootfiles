@@ -191,6 +191,7 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		return nil, err
 	}
 	written := map[string]bool{}
+	previous := map[string][]byte{} // content before this apply; absent when the file was new
 	for path, content := range files {
 		current, readErr := rc.Runner.ReadFile(path)
 		if readErr == nil && string(current) == string(content) {
@@ -199,8 +200,42 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		if err := rc.Runner.WriteFile(path, content, 0644); err != nil {
 			return nil, fmt.Errorf("writing monitoring hub configuration %s: %w", path, err)
 		}
+		if readErr == nil {
+			previous[path] = current
+		}
 		written[path] = true
 		changed = true
+	}
+	// reload asks service to reread its files. On failure it restores them,
+	// so the next apply sees the change again and retries instead of passing
+	// while the service still runs the old configuration.
+	reload := func(service string, paths ...string) error {
+		needed := false
+		for _, p := range paths {
+			needed = needed || written[p]
+		}
+		if !needed {
+			return nil
+		}
+		err := reloadMonitoringHubService(ctx, h, service)
+		if err == nil {
+			return nil
+		}
+		for _, p := range paths {
+			if !written[p] {
+				continue
+			}
+			var restoreErr error
+			if old, ok := previous[p]; ok {
+				restoreErr = rc.Runner.WriteFile(p, old, 0644)
+			} else {
+				restoreErr = rc.Runner.Remove(p)
+			}
+			if restoreErr != nil {
+				err = fmt.Errorf("%w; restoring %s: %v", err, p, restoreErr)
+			}
+		}
+		return err
 	}
 	unit := monitoringHubSystemdUnit(monitoringHubCompose)
 	currentUnit, unitErr := rc.Runner.ReadFile(monitoringHubUnitPath)
@@ -226,15 +261,11 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		}
 		// compose up leaves running containers alone when only their
 		// bind-mounted files changed, so they must reread them.
-		if written[monitoringHubPromConfig] || written[monitoringHubAlertRules] {
-			if err := reloadMonitoringHubService(ctx, h, "prometheus"); err != nil {
-				return nil, err
-			}
+		if err := reload("prometheus", monitoringHubPromConfig, monitoringHubAlertRules); err != nil {
+			return nil, err
 		}
-		if written[monitoringHubAlertConfig] {
-			if err := reloadMonitoringHubService(ctx, h, "alertmanager"); err != nil {
-				return nil, err
-			}
+		if err := reload("alertmanager", monitoringHubAlertConfig); err != nil {
+			return nil, err
 		}
 	}
 	if !active {
