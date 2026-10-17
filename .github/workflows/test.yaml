@@ -45,6 +45,17 @@ jobs:
           TEST_IGNORE: '^docs/releases/'
         run: bash scripts/ci-decision.sh
 
+  # Light and independent of the decision, so a notes-only PR is still checked.
+  release-notes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Release notes checker self-test
+        run: bash scripts/check-release-notes.sh --self-test
+      - name: Release notes format (AGENTS.md)
+        run: bash scripts/check-release-notes.sh
+
   lint:
     needs: decision
     if: needs.decision.outputs.run_full == 'true'

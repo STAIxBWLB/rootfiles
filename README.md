@@ -561,13 +561,14 @@ Every push and pull request runs:
 | Job | Purpose |
 |-----|---------|
 | `decision` | Skips the jobs below when only non-test files changed, or when a main push carries a tree its PR already validated (`scripts/ci-decision.sh`) |
+| `release-notes` | Always runs: `scripts/check-release-notes.sh` checks every `docs/releases/*.md` against the AGENTS.md format |
 | `lint` | `gofmt`, `go vet`, `go mod tidy` drift |
 | `vuln` | `govulncheck ./...` (stdlib + deps) |
 | `unit` | `go test ./... -race -count=1` + per-function coverage summary, coverage artifact |
 | `integration` | 3 OS images × 4 profiles (11 combinations) |
 | `module` | 2 OS × 9 modules + GPU on DGX mock (isolated module execution) |
 | `scenario` | 14 E2E flows: dry-run-all-profiles, user backup/restore, user rehome, user list names, user lifecycle, user quota, declarative accounts, tunnel setup/teardown, OS reinstall recovery, system backup, GPU allocation, status, SSH lockout guard, state/rollback/lock |
-| `release` | GoReleaser on every `v*` tag push, after the tagged commit's main-push Test run succeeded (Test does not run for tags); publishes `docs/releases/<tag>.md` as the release body and fails without it (format: `AGENTS.md`, Release notes) |
+| `release` | GoReleaser on every `v*` tag push, after the tagged commit's main-push Test run succeeded (Test does not run for tags); publishes `docs/releases/<tag>.md` as the release body and fails when it is missing or fails `scripts/check-release-notes.sh` (format: `AGENTS.md`, Release notes) |
 
 ## License
 
