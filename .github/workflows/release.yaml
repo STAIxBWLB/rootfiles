@@ -33,9 +33,14 @@ jobs:
         with:
           go-version: "stable"
 
+      - name: Require release notes
+        env:
+          NOTES: docs/releases/${{ github.ref_name }}.md
+        run: test -s "$NOTES" || { echo "::error::$NOTES is missing or empty; add it in the release PR (AGENTS.md, Release notes)"; exit 1; }
+
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean
+          args: release --clean --release-notes docs/releases/${{ github.ref_name }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

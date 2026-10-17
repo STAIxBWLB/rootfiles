@@ -58,3 +58,18 @@ type Module interface {
 - A successful native apply records the effective configuration digest. Read-only reports must not claim applied provenance for legacy, failed, changed or unrelated targets.
 - Check uses cached, read-only package queries. Metadata refresh and package transactions belong to Apply, through the runner; unavailable required advisory sources must not be reported as working protection.
 - Rocky support is per module, as documented in docs/rocky-support.md. Reject unsupported requested capabilities before host configuration changes; do not infer support for another RPM distribution from Rocky support.
+
+## Release notes
+
+- Every published tag `vX.Y.Z` needs `docs/releases/vX.Y.Z.md` in the tagged commit. Add it in the release PR; the Release workflow publishes it as the GitHub release body and fails before goreleaser when it is missing or empty.
+- Readers are operators who run `rootfiles` on servers (and the fleet controller). Write what changes for them, not how the code changed. Cover every PR since the previous published release.
+- Format:
+  - First line: one sentence on what this release changes for the user. No heading before it.
+  - Then only the sections that have content, in this order: `### New`, `### Improved`, `### Fixed`, `### Action needed`.
+  - One bullet per change in plain language, naming the command, flag or file the user touches (`rootfiles apply`, `rootfiles fleet check`). Describe fixes by the symptom the user saw. End the bullet with the PR number, e.g. `(#123)`.
+  - `### Action needed`: steps required after upgrading (config edits, renamed commands, manual migrations). Updating replaces only the binary, so a change to generated system files also needs the `apply` step here. Omit it when there are none.
+  - Leave out tests, CI, refactors, docs, agent instructions and release plumbing. A release with nothing else is the single line `Maintenance release: no user-facing changes.` plus the changelog line.
+  - No commit SHAs, conventional-commit prefixes or internal package paths.
+  - Last line: `**Full changelog**: https://github.com/STAIxBWLB/rootfiles/compare/<previous release>...vX.Y.Z` (`.../commits/vX.Y.Z` for the first release).
+- Upgrade command to mention when users must act: `sudo rootfiles update` or `rootfiles fleet update --version vX.Y.Z`.
+
