@@ -326,6 +326,7 @@ func looksPrivilege(s string) bool {
 	s = strings.ToLower(s)
 	return strings.Contains(s, "a password is required") || strings.Contains(s, "password is required") || strings.Contains(s, "not allowed to execute") || strings.Contains(s, "not in the sudoers") || strings.Contains(s, "sudo: a terminal is required")
 }
+
 // shortReason picks the line that explains a remote failure: the last
 // cobra "Error:" line, else the last stderr line, else the head of the output.
 func shortReason(stdout, stderr string) string {
