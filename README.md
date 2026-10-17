@@ -201,7 +201,17 @@ rootfiles check -o prometheus    # rootfiles_module_satisfied{module="…"} …
 rootfiles doctor
 ```
 
-Run `check` and `doctor` on a schedule (reports go to `/var/lib/rootfiles/{check,doctor}.json`, and to the node exporter textfile directory when the `monitoring` module is enabled):
+Disk usage fails at 90% and warns at 80% by default. Large data disks can set their own limits; with `min_free`, a mount fails only when it is over `fail_percent` and also has less than `min_free` free (sizes in K/M/G/T, optional `iB`). The doctor metrics and the hub's doctor alert follow the same grading.
+
+```yaml
+doctor:
+  disk:
+    warn_percent: 80
+    fail_percent: 90
+    min_free: 100GiB
+```
+
+Run `check` and `doctor` on a schedule (reports go to `/var/lib/rootfiles/{check,doctor}.json`, and to the node exporter textfile directory when the `monitoring` module is enabled). When no report exists yet, `schedule enable` also starts the report service once, so a new host does not raise the stale-report alert until the first timer run:
 
 ```bash
 sudo rootfiles schedule enable --on-calendar daily

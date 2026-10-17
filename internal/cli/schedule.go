@@ -1,13 +1,16 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
@@ -101,6 +104,7 @@ func newScheduleCmd() *cobra.Command {
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s timer enabled (%s); reports in %s/{check,doctor}.json\n",
 				ui.MarkOK, onCal, state.Dir())
+			startFirstReport(cmd.Context(), rc.Runner, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			return nil
 		},
 	}
@@ -128,4 +132,18 @@ func newScheduleCmd() *cobra.Command {
 
 	cmd.AddCommand(enable, disable)
 	return cmd
+}
+
+// startFirstReport runs the report service once when no report exists yet,
+// so a new host does not look stale until the first timer run. A failure
+// only warns: the timer is already enabled.
+func startFirstReport(ctx context.Context, runner *exec.Runner, out, errOut io.Writer) {
+	if runner.FileExists(filepath.Join(state.Dir(), "check.json")) {
+		return
+	}
+	if _, err := runner.Run(ctx, "systemctl", "start", "--no-block", scheduleName+".service"); err != nil {
+		fmt.Fprintf(errOut, "%s could not start the first report: %v\n", ui.MarkWarn, err)
+		return
+	}
+	fmt.Fprintf(out, "%s first report started (no report existed yet)\n", ui.MarkOK)
 }
