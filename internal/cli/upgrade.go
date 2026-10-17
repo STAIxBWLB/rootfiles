@@ -7,10 +7,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -136,6 +138,15 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			}
 
 			fmt.Printf("Updated to %s\n", targetVersion)
+			// Updating replaces only the binary; a release that changes
+			// generated files still needs apply. Check exits 2 when it plans changes.
+			checkCtx, cancelCheck := context.WithTimeout(cmd.Context(), 2*time.Minute)
+			defer cancelCheck()
+			check := osexec.CommandContext(checkCtx, currentBinary, "check")
+			var exitErr *osexec.ExitError
+			if err := check.Run(); errors.As(err, &exitErr) && exitErr.ExitCode() == exitDrift {
+				fmt.Println("Apply pending: this release plans changes on this host. Review with `sudo rootfiles check`, then run `sudo rootfiles apply`.")
+			}
 			return nil
 		},
 	}

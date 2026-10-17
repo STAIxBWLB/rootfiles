@@ -589,6 +589,10 @@ Read-only reports and rollout preflight checks use a 45-second SSH deadline. Mut
 
 Read-only commands use bounded parallel SSH and never prompt for a sudo password. Rollouts require an explicit host, group, or `--all` selection plus `--yes`; they run serially and stop after the first failure. Try one host as a canary before widening a rollout. A timeout or cancellation can leave the current host partially changed or its remote process still running, while later hosts remain skipped. Inspect that host with `fleet status`, `fleet check`, and the rootfiles lock state before retrying.
 
+`--skip-unreachable` lets `fleet apply`, `update`, `bootstrap` and `schedule` continue past a host whose SSH connection fails (state `skipped-unreachable`); any other failure, including a timeout, still stops the run. The run then exits 2 and prints a ready-to-run command for the skipped hosts. A failed host's reason is the remote `Error:` line (else the last stderr line); the full output stays in the run log.
+
+`fleet update` runs a read-only `check` with the new binary on each updated host. A host whose check plans changes is reported `apply-pending` with the affected modules, the rollout continues, and the run exits 2; nothing is applied automatically. Single-host `rootfiles update` prints the same hint.
+
 ## Host exporters
 
 ```yaml

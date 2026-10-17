@@ -15,6 +15,7 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 )
 
@@ -169,13 +170,63 @@ func addFleetMutationTimeoutFlag(c *cobra.Command) {
 	c.Flags().Duration("timeout", fleet.DefaultMutationTimeout, "Maximum time to wait for each mutating SSH command (positive, up to 24h)")
 }
 
-func finishFleetMutation(c *cobra.Command, op string, results []fleet.Result, dry bool) error {
+func addFleetSkipUnreachableFlag(c *cobra.Command) {
+	c.Flags().Bool("skip-unreachable", false, "Continue past hosts whose SSH connection fails (any other failure still stops the run)")
+}
+
+func fleetMutationRunner(c *cobra.Command, timeout time.Duration) fleet.SSHRunner {
+	skip, _ := c.Flags().GetBool("skip-unreachable")
+	return fleet.SSHRunner{MutationTimeout: timeout, SkipUnreachable: skip}
+}
+
+// fleetRerunCommand rebuilds the invocation for the given hosts, keeping
+// every flag the operator set except the host selection.
+func fleetRerunCommand(c *cobra.Command, args, hosts []string) string {
+	parts := append([]string{c.CommandPath()}, args...)
+	c.Flags().Visit(func(f *pflag.Flag) {
+		switch f.Name {
+		case "host", "group", "all", "skip-unreachable":
+			return
+		}
+		if f.Value.Type() == "bool" {
+			if f.Value.String() == "true" {
+				parts = append(parts, "--"+f.Name)
+			}
+			return
+		}
+		parts = append(parts, "--"+f.Name, shellQuoteCLI(f.Value.String()))
+	})
+	for _, h := range hosts {
+		parts = append(parts, "--host", h)
+	}
+	return strings.Join(parts, " ")
+}
+
+func finishFleetMutation(c *cobra.Command, op string, args []string, results []fleet.Result, dry bool) error {
 	format, _ := c.Flags().GetString("output")
 	if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
 		return err
 	}
+	if skip, _ := c.Flags().GetBool("skip-unreachable"); skip {
+		op += " --skip-unreachable"
+	}
 	if err := fleet.AppendRunLog("", op, results); err != nil {
 		return fmt.Errorf("writing fleet run log: %w", err)
+	}
+	var skipped, pending []string
+	for _, r := range results {
+		switch r.State {
+		case "skipped-unreachable":
+			skipped = append(skipped, r.Host)
+		case "apply-pending":
+			pending = append(pending, r.Host)
+		}
+	}
+	if len(skipped) > 0 {
+		fmt.Fprintf(c.ErrOrStderr(), "%d unreachable host(s) skipped; rerun them with:\n  %s\n", len(skipped), fleetRerunCommand(c, args, skipped))
+	}
+	if len(pending) > 0 {
+		fmt.Fprintf(c.ErrOrStderr(), "%d host(s) updated but still need apply; review with 'rootfiles fleet check', then run 'rootfiles fleet apply' for: %s\n", len(pending), strings.Join(pending, ", "))
 	}
 	if !allOK(results) {
 		return &ExitError{Code: 2}
@@ -193,11 +244,12 @@ func newFleetApplyCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		rs := fleet.Apply(c.Context(), fleet.SSHRunner{MutationTimeout: timeout}, hs, dry)
-		return finishFleetMutation(c, "apply", rs, dry)
+		rs := fleet.Apply(c.Context(), fleetMutationRunner(c, timeout), hs, dry)
+		return finishFleetMutation(c, "apply", nil, rs, dry)
 	}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
+	addFleetSkipUnreachableFlag(c)
 	c.Flags().StringP("output", "o", "text", "Output format: text or json")
 	return c
 }
@@ -212,14 +264,15 @@ func newFleetUpdateCmd() *cobra.Command {
 			return err
 		}
 		v, _ := c.Flags().GetString("version")
-		rs, err := fleet.Update(c.Context(), fleet.SSHRunner{MutationTimeout: timeout}, hs, v, dry)
+		rs, err := fleet.Update(c.Context(), fleetMutationRunner(c, timeout), hs, v, dry)
 		if err != nil {
 			return err
 		}
-		return finishFleetMutation(c, "update", rs, dry)
+		return finishFleetMutation(c, "update", nil, rs, dry)
 	}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
+	addFleetSkipUnreachableFlag(c)
 	c.Flags().String("version", "", "Pinned release version (vX.Y.Z)")
 	c.Flags().StringP("output", "o", "text", "Output format: text or json")
 	return c
@@ -235,14 +288,15 @@ func newFleetBootstrapCmd() *cobra.Command {
 			return err
 		}
 		v, _ := c.Flags().GetString("version")
-		rs, err := fleet.Bootstrap(c.Context(), fleet.SSHRunner{MutationTimeout: timeout}, hs, v, dry)
+		rs, err := fleet.Bootstrap(c.Context(), fleetMutationRunner(c, timeout), hs, v, dry)
 		if err != nil {
 			return err
 		}
-		return finishFleetMutation(c, "bootstrap", rs, dry)
+		return finishFleetMutation(c, "bootstrap", nil, rs, dry)
 	}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
+	addFleetSkipUnreachableFlag(c)
 	c.Flags().String("version", "", "Pinned release version (vX.Y.Z)")
 	c.Flags().StringP("output", "o", "text", "Output format: text or json")
 	return c
@@ -257,14 +311,15 @@ func newFleetScheduleCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		rs, err := fleet.Schedule(c.Context(), fleet.SSHRunner{MutationTimeout: timeout}, hs, args[0], dry)
+		rs, err := fleet.Schedule(c.Context(), fleetMutationRunner(c, timeout), hs, args[0], dry)
 		if err != nil {
 			return err
 		}
-		return finishFleetMutation(c, "schedule "+args[0], rs, dry)
+		return finishFleetMutation(c, "schedule "+args[0], args, rs, dry)
 	}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
+	addFleetSkipUnreachableFlag(c)
 	c.Flags().StringP("output", "o", "text", "Output format: text or json")
 	return c
 }
