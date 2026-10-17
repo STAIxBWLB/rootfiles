@@ -607,7 +607,7 @@ modules:
     perimeter_firewall: false
 ```
 
-DCGM exporter requires an already working NVIDIA GPU, driver, Docker daemon, and NVIDIA container runtime. If UFW is active, `allow_from` only applies when its incoming default is deny/reject and there are no broader allow rules for either exporter port. rootfiles reports conflicts and leaves existing firewall rules unchanged. It does not enable UFW.
+DCGM exporter requires an already working NVIDIA GPU, driver, Docker daemon, and NVIDIA container runtime. A missing prerequisite shows as `blocked` in `rootfiles check` and fails `apply --dry-run`; `apply` still sets up node exporter and the rest of the module, then fails with the DCGM error and the fix (for a missing runtime: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl reload docker`). If UFW is active, `allow_from` only applies when its incoming default is deny/reject and there are no broader allow rules for either exporter port. rootfiles reports conflicts and leaves existing firewall rules unchanged. It does not enable UFW.
 
 The default DCGM image is pinned to `nvcr.io/nvidia/k8s/dcgm-exporter:3.3.8-3.6.0-ubuntu22.04` for the fleet's older R535 driver baseline. Blackwell and newer driver combinations have not been qualified with that old DCGM release. Select a pinned `dcgm_exporter_image` only after checking NVIDIA's supported GPU, driver, and paired DCGM/exporter versions and validating the endpoint on that host. NVIDIA documents that driver 580.126.16 requires DCGM 4.3.x or newer, so the default image must not be assumed compatible with R580 hosts. The suggested 4.6.1-4.8.4 distroless override needs real GPU validation before rollout.
 
@@ -617,7 +617,7 @@ The managed collector file selects only temperature, utilization, framebuffer us
 
 The generated acceptance scenario (`tests/scenarios/monitoring-hub.sh`) requires Docker with both Compose and Buildx plugins, plus SSH, curl and Python 3. Verify `docker compose version` and `docker buildx version` before running the scenario; it uses Buildx to check the default NVIDIA image's registry manifest.
 
-The opt-in monitoring hub runs Prometheus, Alertmanager and Grafana on one Docker host. It reads scrape targets from Prometheus file discovery; `rootfiles fleet targets --push <hub>` replaces that target file atomically, and Prometheus reloads it from the mounted discovery directory without restarting the containers.
+The opt-in monitoring hub runs Prometheus, Alertmanager and Grafana on one Docker host. It reads scrape targets from Prometheus file discovery; `rootfiles fleet targets --push <hub>` replaces that target file atomically, and Prometheus reloads it from the mounted discovery directory without restarting the containers. When `apply` rewrites the Prometheus configuration or alert rules on a running hub, it calls Prometheus's `/-/reload` endpoint (and Alertmanager's when its configuration changed), so new rules take effect in the same run; a failed reload fails the apply.
 
 The discovery directory must contain only the configured targets file. Check and Apply refuse other entries before mounting the directory, including credentials, symlinks, subdirectories and temporary staging files. A check that overlaps an atomic target push can be retried after the rename completes.
 

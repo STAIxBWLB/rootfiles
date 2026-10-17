@@ -2,6 +2,9 @@ package module
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -548,8 +551,12 @@ func TestMonitoringHubRequiresConfiguredGrafanaPasswordFileBeforeMutation(t *tes
 	}
 }
 
-func TestMonitoringHubLifecycleRecoveryAndStartupFailureWithFakeCommands(t *testing.T) {
-	tmp := t.TempDir()
+// fakeMonitoringHub points the hub at a temp tree and stubs docker and
+// systemctl. Files in tmp steer the fakes: unit-active, grafana-stopped and
+// startup-fails; calls.log records every command.
+func fakeMonitoringHub(t *testing.T) (tmp, stateFile, stoppedFile, failFile, calls string) {
+	t.Helper()
+	tmp = t.TempDir()
 	oldPaths := []string{monitoringHubConfigDir, monitoringHubCompose, monitoringHubUnitPath, monitoringHubPassword, monitoringHubAlertRules, monitoringHubPromConfig, monitoringHubAlertConfig, monitoringHubDatasource}
 	monitoringHubConfigDir = filepath.Join(tmp, "etc", "monitoring")
 	monitoringHubCompose = filepath.Join(monitoringHubConfigDir, "compose.yaml")
@@ -594,13 +601,18 @@ func TestMonitoringHubLifecycleRecoveryAndStartupFailureWithFakeCommands(t *test
 		t.Fatal(err)
 	}
 
-	stateFile := filepath.Join(tmp, "unit-active")
-	stoppedFile := filepath.Join(tmp, "grafana-stopped")
-	failFile := filepath.Join(tmp, "startup-fails")
-	calls := filepath.Join(tmp, "calls.log")
+	stateFile = filepath.Join(tmp, "unit-active")
+	stoppedFile = filepath.Join(tmp, "grafana-stopped")
+	failFile = filepath.Join(tmp, "startup-fails")
+	calls = filepath.Join(tmp, "calls.log")
 	dockerScript := "#!/bin/sh\nprintf 'docker %s\\n' \"$*\" >> '" + calls + "'\ncase \"$4\" in\nps) if test -f '" + failFile + "'; then printf '[]\\n'; elif test -f '" + stoppedFile + "'; then printf '[{\"Service\":\"prometheus\",\"State\":\"running\"},{\"Service\":\"alertmanager\",\"State\":\"running\"}]\\n'; elif test -f '" + stateFile + "'; then printf '[{\"Service\":\"prometheus\",\"State\":\"running\"},{\"Service\":\"alertmanager\",\"State\":\"running\"},{\"Service\":\"grafana\",\"State\":\"running\"}]\\n'; else printf '[]\\n'; fi ;;\nup) rm -f '" + stoppedFile + "' ;;\nesac\nexit 0\n"
 	fakeMonitoringCommand(t, "docker", dockerScript)
 	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\nprintf 'systemctl %s\\n' \"$*\" >> '"+calls+"'\ncase \"$1\" in\nis-active) if test -f '"+stateFile+"'; then exit 0; else exit 3; fi ;;\nenable) docker compose -f '"+monitoringHubCompose+"' up -d || exit $?; touch '"+stateFile+"' ;;\nesac\nexit 0\n")
+	return tmp, stateFile, stoppedFile, failFile, calls
+}
+
+func TestMonitoringHubLifecycleRecoveryAndStartupFailureWithFakeCommands(t *testing.T) {
+	tmp, _, stoppedFile, failFile, calls := fakeMonitoringHub(t)
 
 	rc := newRealRC(t)
 	rc.Config.Modules.Monitoring.Hub = config.MonitoringHubConfig{
@@ -927,5 +939,64 @@ func TestMonitoringHubRejectsBroadDiscoveryMounts(t *testing.T) {
 	h.AlertReceiverFile = "/tmp/discovery/receiver.yaml"
 	if err := validateMonitoringDiscoveryDir(h, ""); err == nil {
 		t.Fatal("discovery bind mount must not contain receiver secrets")
+	}
+}
+
+func TestMonitoringHubReloadsPrometheusWhenOnlyRulesChange(t *testing.T) {
+	tmp, _, _, _, calls := fakeMonitoringHub(t)
+	var reloads []string
+	status := http.StatusOK
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reloads = append(reloads, r.Method+" "+r.URL.Path)
+		w.WriteHeader(status)
+		fmt.Fprint(w, "failed to reload config")
+	}))
+	defer server.Close()
+	port, _ := strconv.Atoi(server.URL[strings.LastIndex(server.URL, ":")+1:])
+
+	rc := newRealRC(t)
+	rc.Config.Modules.Monitoring.Hub = config.MonitoringHubConfig{
+		Enabled: true, DataDir: filepath.Join(tmp, "data"), TargetsFile: filepath.Join(tmp, "discovery", "targets.json"),
+		ListenAddress: "127.0.0.1", PrometheusPort: port,
+	}
+	if _, err := applyMonitoringHub(context.Background(), rc); err != nil {
+		t.Fatalf("first apply: %v", err)
+	}
+	if len(reloads) != 0 {
+		t.Fatalf("a freshly started hub needs no reload, got %v", reloads)
+	}
+	if _, err := applyMonitoringHub(context.Background(), rc); err != nil || len(reloads) != 0 {
+		t.Fatalf("unchanged apply must not reload: err=%v reloads=%v", err, reloads)
+	}
+
+	// A release that changes only the rules leaves compose.yaml alone.
+	if err := os.WriteFile(monitoringHubAlertRules, []byte("groups: []\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := applyMonitoringHub(context.Background(), rc); err != nil {
+		t.Fatalf("rules-only apply: %v", err)
+	}
+	if len(reloads) != 1 || reloads[0] != "POST /-/reload" {
+		t.Fatalf("rules-only change should reload Prometheus once, got %v", reloads)
+	}
+	if log, _ := os.ReadFile(calls); strings.Contains(string(log), "restart") {
+		t.Fatalf("reload must not restart containers: %s", log)
+	}
+
+	status = http.StatusInternalServerError
+	if err := os.WriteFile(monitoringHubAlertRules, []byte("groups: []\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := applyMonitoringHub(context.Background(), rc)
+	if err == nil || !strings.Contains(err.Error(), server.URL+"/-/reload") || !strings.Contains(err.Error(), "500") {
+		t.Fatalf("failed reload should name the endpoint and status, got %v", err)
+	}
+	// The failed change stays pending, so the next apply retries the reload.
+	if got, _ := os.ReadFile(monitoringHubAlertRules); string(got) != "groups: []\n" {
+		t.Fatalf("a failed reload should restore the previous rules, got %q", got)
+	}
+	status = http.StatusOK
+	if _, err := applyMonitoringHub(context.Background(), rc); err != nil || len(reloads) != 3 {
+		t.Fatalf("retry after a failed reload: err=%v reloads=%v", err, reloads)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
@@ -63,7 +64,13 @@ type CheckResult struct {
 type Change struct {
 	Description string `json:"description"`
 	Command     string `json:"command,omitempty"` // shell command for dry-run display
+	// State is ChangeBlocked when apply cannot make the change itself and
+	// the operator must act first; empty for an ordinary pending change.
+	State string `json:"state,omitempty"`
 }
+
+// ChangeBlocked marks a change that apply cannot make.
+const ChangeBlocked = "blocked"
 
 // ApplyResult holds the result of a module's Apply operation.
 type ApplyResult struct {
@@ -175,12 +182,24 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		}
 
 		// Show pending changes
+		var blocked []string
 		for _, c := range check.Changes {
+			if c.State == ChangeBlocked {
+				fmt.Printf("  ✗ %s: blocked: %s\n", m.Name(), c.Description)
+				blocked = append(blocked, c.Description)
+				continue
+			}
 			fmt.Printf("  → %s: %s\n", m.Name(), c.Description)
 		}
 
 		if rc.DryRun {
 			out.Status = "pending"
+			// A dry run must not pass when apply is bound to fail.
+			if len(blocked) > 0 {
+				rc.run[m.Name()] = true
+				out.Status, out.Error = "failed", "blocked: "+strings.Join(blocked, "; ")
+				errors = append(errors, fmt.Sprintf("%s: %s", m.Name(), out.Error))
+			}
 			outcomes = append(outcomes, out)
 			continue
 		}

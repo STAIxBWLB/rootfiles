@@ -52,15 +52,17 @@ func (m *MonitoringModule) Apply(ctx context.Context, rc *RunContext) (*ApplyRes
 	if _, err := checkMonitoringHub(ctx, rc); err != nil {
 		return nil, err
 	}
-	exporters, err := applyMonitoringExporters(ctx, rc)
-	if err != nil {
-		return nil, err
+	// exporters carries a result next to a blocked-DCGM error; the hub is
+	// still applied before that error fails the module.
+	exporters, exportErr := applyMonitoringExporters(ctx, rc)
+	if exporters == nil {
+		return nil, exportErr
 	}
 	hub, err := applyMonitoringHub(ctx, rc)
 	if err != nil {
 		return nil, err
 	}
-	return mergeApplyResults(exporters, hub), nil
+	return mergeApplyResults(exporters, hub), exportErr
 }
 
 func mergeApplyResults(a, b *ApplyResult) *ApplyResult {

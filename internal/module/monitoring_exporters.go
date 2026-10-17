@@ -29,16 +29,19 @@ var (
 func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, error) {
 	cfg := rc.Config.Modules.Monitoring
 	var changes []Change
+	// Apply cannot fix a missing prerequisite, so it is reported as blocked
+	// and the DCGM steps that depend on it are not planned.
+	// A prerequisite an earlier module of this run provides (Docker, the
+	// NVIDIA runtime) is pending, not blocked; apply checks it again live.
+	dcgmBlocked := false
 	if cfg.DCGMExporter {
-		if !rc.Runner.CommandExists("docker") {
-			changes = append(changes, Change{Description: "Docker is unavailable for DCGM exporter"})
-		} else if res, err := rc.Runner.Query(ctx, "docker", "info", "--format", "{{json .Runtimes}}"); err != nil || !strings.Contains(res.Stdout, "nvidia") {
-			changes = append(changes, Change{Description: "NVIDIA container runtime is unavailable for DCGM exporter"})
-		}
-		if !rc.Runner.CommandExists("nvidia-smi") {
-			changes = append(changes, Change{Description: "NVIDIA GPU is unavailable for DCGM exporter"})
-		} else if res, err := rc.Runner.Query(ctx, "nvidia-smi", "-L"); err != nil || !strings.Contains(res.Stdout, "GPU ") {
-			changes = append(changes, Change{Description: "No NVIDIA GPU is visible to DCGM exporter"})
+		for _, d := range dcgmDependencies(ctx, rc) {
+			if d.provider != "" && rc.moduleSucceeding(d.provider) {
+				changes = append(changes, Change{Description: "DCGM exporter waits for the " + d.provider + " module: " + d.missing})
+				continue
+			}
+			changes = append(changes, Change{Description: "DCGM exporter prerequisite missing: " + d.missing, State: ChangeBlocked})
+			dcgmBlocked = true
 		}
 	}
 	if cfg.NodeExporter {
@@ -60,7 +63,7 @@ func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, er
 			}
 		}
 	}
-	if cfg.DCGMExporter {
+	if cfg.DCGMExporter && !dcgmBlocked {
 		if got, err := rc.Runner.ReadFile(dcgmCollectorsPath); err != nil || string(got) != dcgmExporterCollectorsCSV {
 			changes = append(changes, Change{Description: "Install DCGM exporter collectors including ECC telemetry", Command: "write " + dcgmCollectorsPath})
 		}
@@ -90,9 +93,16 @@ func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, er
 func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 	cfg := rc.Config.Modules.Monitoring
 	out := &ApplyResult{}
+	// A missing DCGM prerequisite must not hold back node exporter: the rest
+	// is applied first and the module then fails with the DCGM error.
+	var dcgmErr error
 	if cfg.DCGMExporter {
-		if missing, _ := dcgmDependencies(ctx, rc); len(missing) > 0 {
-			return nil, fmt.Errorf("DCGM exporter prerequisites are missing: %s", strings.Join(missing, "; "))
+		if deps := dcgmDependencies(ctx, rc); len(deps) > 0 {
+			missing := make([]string, len(deps))
+			for i, d := range deps {
+				missing[i] = d.missing
+			}
+			dcgmErr = fmt.Errorf("DCGM exporter prerequisites are missing: %s", strings.Join(missing, "; "))
 		}
 	}
 	if cfg.NodeExporter {
@@ -136,7 +146,7 @@ func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult
 			out.Warnings = append(out.Warnings, "node exporter is not active after enable")
 		}
 	}
-	if cfg.DCGMExporter {
+	if cfg.DCGMExporter && dcgmErr == nil {
 		collectorsChanged := false
 		if got, err := rc.Runner.ReadFile(dcgmCollectorsPath); err != nil || string(got) != dcgmExporterCollectorsCSV {
 			if err := rc.Runner.MkdirAll(filepath.Dir(dcgmCollectorsPath), 0755); err != nil {
@@ -191,22 +201,32 @@ func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult
 			}
 		}
 	}
-	return out, nil
+	return out, dcgmErr
 }
 
-func dcgmDependencies(ctx context.Context, rc *RunContext) ([]string, error) {
-	var missing []string
+// dcgmRuntimeFix registers the runtime; a reload keeps running containers.
+const dcgmRuntimeFix = "sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl reload docker"
+
+type dcgmDependency struct {
+	missing  string
+	provider string // module that installs it, "" when none does
+}
+
+// dcgmDependencies lists the missing DCGM exporter prerequisites in the
+// wording check, dry-run and apply share.
+func dcgmDependencies(ctx context.Context, rc *RunContext) []dcgmDependency {
+	var deps []dcgmDependency
 	if !rc.Runner.CommandExists("docker") {
-		missing = append(missing, "docker command is missing")
+		deps = append(deps, dcgmDependency{"docker command is missing", "docker"})
 	} else if res, err := rc.Runner.Query(ctx, "docker", "info", "--format", "{{json .Runtimes}}"); err != nil || !strings.Contains(res.Stdout, "nvidia") {
-		missing = append(missing, "Docker NVIDIA runtime is unavailable")
+		deps = append(deps, dcgmDependency{"Docker NVIDIA runtime is unavailable (fix: " + dcgmRuntimeFix + ")", "nvidia"})
 	}
 	if !rc.Runner.CommandExists("nvidia-smi") {
-		missing = append(missing, "nvidia-smi is missing")
+		deps = append(deps, dcgmDependency{"nvidia-smi is missing", ""})
 	} else if res, err := rc.Runner.Query(ctx, "nvidia-smi", "-L"); err != nil || !strings.Contains(res.Stdout, "GPU ") {
-		missing = append(missing, "no NVIDIA GPU is visible")
+		deps = append(deps, dcgmDependency{"no NVIDIA GPU is visible", ""})
 	}
-	return missing, nil
+	return deps
 }
 
 func desiredNodeExporterDefaults(rc *RunContext, cfg config.MonitoringConfig) (string, error) {

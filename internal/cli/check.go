@@ -190,6 +190,10 @@ func renderCheckText(out io.Writer, profileName, configPath string, modules []mo
 			continue
 		}
 		for _, c := range r.Changes {
+			if c.State == module.ChangeBlocked {
+				fmt.Fprintf(out, "        %s blocked: %s\n", ui.FailMark(), c.Description)
+				continue
+			}
 			fmt.Fprintf(out, "        %s %s\n", ui.PendingMark(), c.Description)
 			if verbose && c.Command != "" {
 				fmt.Fprintf(out, "          %s\n", ui.StyleHint.Render("$ "+c.Command))

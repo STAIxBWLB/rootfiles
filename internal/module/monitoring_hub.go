@@ -7,11 +7,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -186,6 +190,8 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 	if err != nil {
 		return nil, err
 	}
+	written := map[string]bool{}
+	previous := map[string][]byte{} // content before this apply; absent when the file was new
 	for path, content := range files {
 		current, readErr := rc.Runner.ReadFile(path)
 		if readErr == nil && string(current) == string(content) {
@@ -194,7 +200,42 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		if err := rc.Runner.WriteFile(path, content, 0644); err != nil {
 			return nil, fmt.Errorf("writing monitoring hub configuration %s: %w", path, err)
 		}
+		if readErr == nil {
+			previous[path] = current
+		}
+		written[path] = true
 		changed = true
+	}
+	// reload asks service to reread its files. On failure it restores them,
+	// so the next apply sees the change again and retries instead of passing
+	// while the service still runs the old configuration.
+	reload := func(service string, paths ...string) error {
+		needed := false
+		for _, p := range paths {
+			needed = needed || written[p]
+		}
+		if !needed {
+			return nil
+		}
+		err := reloadMonitoringHubService(ctx, h, service)
+		if err == nil {
+			return nil
+		}
+		for _, p := range paths {
+			if !written[p] {
+				continue
+			}
+			var restoreErr error
+			if old, ok := previous[p]; ok {
+				restoreErr = rc.Runner.WriteFile(p, old, 0644)
+			} else {
+				restoreErr = rc.Runner.Remove(p)
+			}
+			if restoreErr != nil {
+				err = fmt.Errorf("%w; restoring %s: %v", err, p, restoreErr)
+			}
+		}
+		return err
 	}
 	unit := monitoringHubSystemdUnit(monitoringHubCompose)
 	currentUnit, unitErr := rc.Runner.ReadFile(monitoringHubUnitPath)
@@ -217,6 +258,14 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 	if changed && active {
 		if _, err := rc.Runner.Run(ctx, "docker", "compose", "-f", monitoringHubCompose, "up", "-d"); err != nil {
 			return nil, fmt.Errorf("starting monitoring hub containers: %w", err)
+		}
+		// compose up leaves running containers alone when only their
+		// bind-mounted files changed, so they must reread them.
+		if err := reload("prometheus", monitoringHubPromConfig, monitoringHubAlertRules); err != nil {
+			return nil, err
+		}
+		if err := reload("alertmanager", monitoringHubAlertConfig); err != nil {
+			return nil, err
 		}
 	}
 	if !active {
@@ -400,6 +449,50 @@ func monitoringHubOwnsListener(ctx context.Context, rc *RunContext, service stri
 		}
 	}
 	return false
+}
+
+// monitoringHubReloadWait bounds how long a reload retries while compose
+// may still be recreating the container.
+var monitoringHubReloadWait = 30 * time.Second
+
+// reloadMonitoringHubService asks a running Prometheus or Alertmanager to
+// reread its configuration through its /-/reload endpoint on the published
+// port. Both answer 200 only when the new configuration loaded.
+func reloadMonitoringHubService(ctx context.Context, h config.MonitoringHubConfig, service string) error {
+	_, port, _ := monitoringHubServicePort(service, h)
+	host := h.ListenAddress
+	if ip := net.ParseIP(host); ip != nil && ip.IsUnspecified() {
+		host = "127.0.0.1"
+		if ip.To4() == nil {
+			host = "::1"
+		}
+	}
+	url := "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/-/reload"
+	client := &http.Client{Timeout: 10 * time.Second}
+	deadline := time.Now().Add(monitoringHubReloadWait)
+	for {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+		if err != nil {
+			return fmt.Errorf("reloading %s: %w", service, err)
+		}
+		resp, err := client.Do(req)
+		if err == nil {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				return nil
+			}
+			return fmt.Errorf("reloading %s: POST %s returned %s: %s", service, url, resp.Status, strings.TrimSpace(string(body)))
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("reloading %s: POST %s: %w", service, url, err)
+		}
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("reloading %s: %w", service, ctx.Err())
+		case <-time.After(time.Second):
+		}
+	}
 }
 
 func monitoringHubServicePort(service string, h config.MonitoringHubConfig) (string, int, int) {

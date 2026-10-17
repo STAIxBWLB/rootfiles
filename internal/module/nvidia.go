@@ -86,6 +86,7 @@ func (m *NvidiaModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 	var messages, warnings []string
 	changed := false
 
+	installed := false
 	if !rc.APT.IsInstalled("nvidia-container-toolkit") {
 		if err := rc.APT.AddKeyring(ctx, "nvidia-container-toolkit",
 			"https://nvidia.github.io/libnvidia-container/gpgkey"); err != nil {
@@ -110,6 +111,7 @@ func (m *NvidiaModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 		}
 		messages = append(messages, "NVIDIA Container Toolkit installed")
 		changed = true
+		installed = true
 	}
 
 	// Runtime registration is independent of installation: a preinstalled
@@ -122,8 +124,14 @@ func (m *NvidiaModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 		if _, err := rc.Runner.Run(ctx, "nvidia-ctk", "runtime", "configure", "--runtime=docker"); err != nil {
 			return nil, fmt.Errorf("configuring docker nvidia runtime: %w", err)
 		}
-		if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "docker"); err != nil {
-			warnings = append(warnings, fmt.Sprintf("restarting docker: %s", firstLine(err.Error())))
+		// dockerd rereads registered runtimes on reload, so registering one
+		// on a host that already had the toolkit keeps containers running.
+		action := "reload"
+		if installed {
+			action = "restart"
+		}
+		if _, err := rc.Runner.Run(ctx, "systemctl", action, "docker"); err != nil {
+			warnings = append(warnings, fmt.Sprintf("%sing docker: %s", action, firstLine(err.Error())))
 		}
 		messages = append(messages, "Docker nvidia runtime configured")
 		changed = true
