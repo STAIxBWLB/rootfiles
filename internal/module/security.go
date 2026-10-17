@@ -20,9 +20,24 @@ func (m *SecurityModule) Name() string   { return "security" }
 // Paths are overridable in tests.
 var (
 	autoUpgradesPath     = "/etc/apt/apt.conf.d/20auto-upgrades"
-	unattendedPolicyPath = "/etc/apt/apt.conf.d/52rootfiles-unattended-upgrades"
+	// APT reads apt.conf.d in name order and merges list values, so the
+	// policy sorts after vendor and installer files and clears their origins.
+	unattendedPolicyPath = "/etc/apt/apt.conf.d/zzzzzz-rootfiles-unattended-upgrades"
 	fail2banJailPath     = "/etc/fail2ban/jail.d/rootfiles-sshd.conf"
+	// legacyUnattendedPaths are the earlier managed file and the hand-placed
+	// fleet fix it replaces; apply backs them up and removes them.
+	legacyUnattendedPaths = []string{
+		"/etc/apt/apt.conf.d/52rootfiles-unattended-upgrades",
+		"/etc/apt/apt.conf.d/zzzzz-rootfiles-security-origins.conf",
+	}
 )
+
+// securityOrigins are the only origins the managed policy allows.
+var securityOrigins = []string{
+	"${distro_id}:${distro_codename}-security",
+	"${distro_id}ESMApps:${distro_codename}-apps-security",
+	"${distro_id}ESM:${distro_codename}-infra-security",
+}
 
 const autoUpgradesContent = `// Managed by rootfiles-v2
 APT::Periodic::Update-Package-Lists "1";
@@ -34,6 +49,8 @@ APT::Periodic::AutocleanInterval "7";
 // reboot and matching kernel modules, so it is never upgraded unattended.
 // Reboots are never automatic; `rootfiles doctor` reports reboot-required.
 const unattendedPolicyContent = `// Managed by rootfiles-v2
+#clear Unattended-Upgrade::Allowed-Origins;
+#clear Unattended-Upgrade::Origins-Pattern;
 Unattended-Upgrade::Allowed-Origins {
         "${distro_id}:${distro_codename}-security";
         "${distro_id}ESMApps:${distro_codename}-apps-security";
@@ -127,8 +144,12 @@ func (m *SecurityModule) Check(ctx context.Context, rc *RunContext) (*CheckResul
 	if missing := missingPackages(rc, m.packages(rc)); len(missing) > 0 {
 		changes = append(changes, Change{Description: fmt.Sprintf("Install %v", missing), Command: "apt-get install " + strings.Join(missing, " ")})
 	}
-	if cfg.UnattendedUpgrades && (!fileEquals(rc, autoUpgradesPath, autoUpgradesContent) || !fileEquals(rc, unattendedPolicyPath, unattendedPolicyContent)) {
-		changes = append(changes, Change{Description: "Enable security-only unattended upgrades (no reboot, NVIDIA stack excluded)", Command: "write " + unattendedPolicyPath})
+	if cfg.UnattendedUpgrades {
+		if !fileEquals(rc, autoUpgradesPath, autoUpgradesContent) || !fileEquals(rc, unattendedPolicyPath, unattendedPolicyContent) || len(existingLegacyUnattended(rc)) > 0 {
+			changes = append(changes, Change{Description: "Enable security-only unattended upgrades (no reboot, NVIDIA stack excluded)", Command: "write " + unattendedPolicyPath})
+		} else if extra := nonSecurityOrigins(ctx, rc); len(extra) > 0 {
+			changes = append(changes, Change{Description: "Effective unattended-upgrades policy is not security-only: " + strings.Join(extra, "; ")})
+		}
 	}
 	if cfg.Fail2ban && !fileEquals(rc, fail2banJailPath, fail2banJail(sshPorts(ctx, rc))) {
 		changes = append(changes, Change{Description: "Configure fail2ban sshd jail", Command: "write " + fail2banJailPath})
@@ -174,9 +195,23 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 			}
 			wrote = true
 		}
+		for _, path := range existingLegacyUnattended(rc) {
+			if err := rc.Runner.Remove(path); err != nil {
+				return nil, fmt.Errorf("removing %s: %w", path, err)
+			}
+			messages = append(messages, "replaced "+path+" (backed up)")
+			wrote = true
+		}
 		if wrote {
 			messages = append(messages, "unattended security upgrades enabled (no auto-reboot, NVIDIA stack excluded)")
 			changed = true
+		}
+		// A file sorting after the managed one can still widen the policy;
+		// apply cannot fix that, so it fails instead of reporting success.
+		if !rc.DryRun {
+			if extra := nonSecurityOrigins(ctx, rc); len(extra) > 0 {
+				return nil, fmt.Errorf("effective unattended-upgrades policy is not security-only after writing %s: %s", unattendedPolicyPath, strings.Join(extra, "; "))
+			}
 		}
 	}
 
@@ -214,4 +249,43 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 	}
 
 	return &ApplyResult{Changed: changed, Messages: messages, Warnings: warnings}, nil
+}
+
+func existingLegacyUnattended(rc *RunContext) []string {
+	var found []string
+	for _, path := range legacyUnattendedPaths {
+		if rc.Runner.FileExists(path) {
+			found = append(found, path)
+		}
+	}
+	return found
+}
+
+// nonSecurityOrigins reads the merged APT configuration and returns every
+// allowed origin or origin pattern beyond the managed security origins.
+func nonSecurityOrigins(ctx context.Context, rc *RunContext) []string {
+	res, err := rc.Runner.Query(ctx, "apt-config", "dump")
+	if err != nil {
+		return []string{"cannot read the effective policy (apt-config dump): " + firstLine(err.Error())}
+	}
+	allowed := map[string]bool{}
+	for _, o := range securityOrigins {
+		allowed[o] = true
+	}
+	var extra []string
+	for _, line := range strings.Split(res.Stdout, "\n") {
+		for _, key := range []string{"Unattended-Upgrade::Allowed-Origins:: ", "Unattended-Upgrade::Origins-Pattern:: "} {
+			value, ok := strings.CutPrefix(line, key)
+			if !ok {
+				continue
+			}
+			value = strings.Trim(strings.TrimSuffix(strings.TrimSpace(value), ";"), `"`)
+			if key == "Unattended-Upgrade::Origins-Pattern:: " {
+				extra = append(extra, "origin pattern "+value)
+			} else if !allowed[value] {
+				extra = append(extra, "origin "+value)
+			}
+		}
+	}
+	return extra
 }

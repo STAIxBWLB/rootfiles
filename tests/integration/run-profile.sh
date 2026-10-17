@@ -57,7 +57,7 @@ case "$PROFILE" in
         # System / security baseline
         assert_file_contains "/etc/systemd/journald.conf.d/90-rootfiles.conf" "SystemMaxUse=2G"
         assert_package_installed "unattended-upgrades"
-        assert_file_contains "/etc/apt/apt.conf.d/52rootfiles-unattended-upgrades" '"nvidia-";'
+        assert_file_contains "/etc/apt/apt.conf.d/zzzzzz-rootfiles-unattended-upgrades" '"nvidia-";'
         assert_file_contains "/etc/apt/apt.conf.d/20auto-upgrades" 'Unattended-Upgrade "1"'
         assert_file_contains "/etc/fail2ban/jail.d/rootfiles-sshd.conf" "enabled  = true"
         ;;
