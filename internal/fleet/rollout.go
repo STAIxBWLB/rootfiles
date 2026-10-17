@@ -122,8 +122,64 @@ func Update(ctx context.Context, runner SSHRunner, hosts []NamedHost, version st
 			return Result{Host: h.Name, Command: "update", State: "ok", Reason: "dry-run: would update to " + version}
 		}
 		cmd := remoteBinary + " update --version " + version
-		return runner.runMutation(ctx, h, "update", privileged(h.Sudo, cmd), nil)
+		r := runner.runMutation(ctx, h, "update", privileged(h.Sudo, cmd), nil)
+		if r.State != "ok" {
+			return r
+		}
+		return postUpdateCheck(ctx, runner, h, r, version)
 	}), nil
+}
+
+// postUpdateCheck runs the new binary's read-only check: an update replaces
+// only the binary, so a release that changes generated files leaves the
+// host apply-pending. It never applies.
+func postUpdateCheck(ctx context.Context, runner SSHRunner, h NamedHost, updated Result, version string) Result {
+	check := runner.ReadOnly(ctx, h, "check")
+	if check.State == "ok" {
+		return updated
+	}
+	// Keep both commands' evidence: the update output and the check's exit
+	// code and output.
+	updated.ExitCode = check.ExitCode
+	if updated.ExitCode == 0 {
+		updated.ExitCode = 1
+	}
+	updated.Output = joinReason(updated.Output, "post-update check: "+check.Output)
+	switch check.State {
+	case "drift":
+		updated.State = "apply-pending"
+		updated.Reason = "updated to " + version + "; apply pending"
+		if modules := unsatisfiedModules(check.Remote); len(modules) > 0 {
+			updated.Reason += ": " + strings.Join(modules, ", ")
+		} else {
+			updated.Reason += ": " + check.Reason
+		}
+		updated.Remote = check.Remote
+		return updated
+	default:
+		updated.State = "error"
+		updated.Reason = "updated to " + version + "; post-update check " + check.State + ": " + check.Reason
+		return updated
+	}
+}
+
+func unsatisfiedModules(remote json.RawMessage) []string {
+	var report struct {
+		Modules []struct {
+			Name      string `json:"name"`
+			Satisfied bool   `json:"satisfied"`
+		} `json:"modules"`
+	}
+	if json.Unmarshal(remote, &report) != nil {
+		return nil
+	}
+	var names []string
+	for _, m := range report.Modules {
+		if !m.Satisfied {
+			names = append(names, m.Name)
+		}
+	}
+	return names
 }
 
 func Schedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, action string, dry bool) ([]Result, error) {
@@ -186,8 +242,12 @@ func serial(ctx context.Context, runner SSHRunner, hosts []NamedHost, op string,
 			continue
 		}
 		r := fn(h)
+		if r.State == "unreachable" && r.Reason == reasonConnectFailed && runner.SkipUnreachable {
+			r.State = "skipped-unreachable"
+		}
 		out = append(out, r)
-		if r.State != "ok" {
+		// apply-pending is a finished update the operator still has to apply.
+		if r.State != "ok" && r.State != "apply-pending" && r.State != "skipped-unreachable" {
 			stopped = true
 		}
 	}

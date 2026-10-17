@@ -269,6 +269,7 @@ func TestStatusConfigErrorCannotTriggerMissingBinaryFallback(t *testing.T) {
 
 func TestMutatingCommandsAcceptPlaintextSSHSuccess(t *testing.T) {
 	bin := writeFakeSSH(t, `#!/bin/sh
+case "$7" in *"check -o json") printf '{"modules":[]}'; exit 0 ;; esac
 printf '%s\\n' "remote success"
 exit 0
 `)
@@ -286,6 +287,7 @@ exit 0
 func TestUpdateStopsAfterFakeSSHFailure(t *testing.T) {
 	callsFile := filepath.Join(t.TempDir(), "calls")
 	bin := writeFakeSSH(t, "#!/bin/sh\n"+
+		"case \"$7\" in *'check -o json') printf '{\"modules\":[]}'; exit 0 ;; esac\n"+
 		"printf '%s\\n' \"$6\" >> "+shellQuote(callsFile)+"\n"+
 		"[ \"$6\" != failing ] || { echo failed >&2; exit 23; }\n"+
 		"echo updated\n")
@@ -411,5 +413,93 @@ func TestMutationTimeoutBoundsAndSeparateDefaults(t *testing.T) {
 	r.MutationTimeout = MaxMutationTimeout + time.Second
 	if got := r.mutationTimeout(); got != DefaultMutationTimeout {
 		t.Errorf("invalid mutation override was not bounded: %s", got)
+	}
+}
+
+func TestShortReasonPrefersRemoteError(t *testing.T) {
+	// The h100-1 shape: a long module progress list, then cobra's error.
+	progress := strings.Repeat("  ✓ users: read-only check passed\n  → monitoring: Install Prometheus node exporter\n", 10)
+	stderr := "Error: 1 module(s) failed: [monitoring: DCGM exporter prerequisites are missing: Docker NVIDIA runtime is unavailable]\n"
+	if got := shortReason(progress, stderr); !strings.HasPrefix(got, "Error: 1 module(s) failed: [monitoring: DCGM") {
+		t.Fatalf("reason should be the remote error line, got %q", got)
+	}
+	if got := shortReason(progress, "warning: something\nsudo: unable to resolve host\n"); got != "sudo: unable to resolve host" {
+		t.Fatalf("reason without an Error: line should be the last stderr line, got %q", got)
+	}
+	if got := shortReason("only stdout\n", ""); got != "only stdout" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestSerialSkipUnreachableContinuesOnlyPastConnectionFailures(t *testing.T) {
+	hosts := []NamedHost{{Name: "one"}, {Name: "down"}, {Name: "three"}, {Name: "broken"}, {Name: "five"}}
+	results := map[string]Result{
+		"down":   {State: "unreachable", Reason: reasonConnectFailed, ExitCode: 255},
+		"broken": {State: "error", Reason: "Error: apply failed", ExitCode: 1},
+	}
+	run := func(skip bool) ([]Result, []string) {
+		var called []string
+		got := serial(context.Background(), SSHRunner{SkipUnreachable: skip}, hosts, "update", func(h NamedHost) Result {
+			called = append(called, h.Name)
+			r, ok := results[h.Name]
+			if !ok {
+				r = Result{State: "ok"}
+			}
+			r.Host = h.Name
+			return r
+		})
+		return got, called
+	}
+	got, called := run(true)
+	if strings.Join(called, ",") != "one,down,three,broken" || got[1].State != "skipped-unreachable" || got[3].State != "error" || got[4].State != "skipped" {
+		t.Fatalf("with the flag: called=%v results=%#v", called, got)
+	}
+	got, called = run(false)
+	if strings.Join(called, ",") != "one,down" || got[1].State != "unreachable" || got[2].State != "skipped" {
+		t.Fatalf("without the flag: called=%v results=%#v", called, got)
+	}
+	timedOut := serial(context.Background(), SSHRunner{SkipUnreachable: true}, hosts[:2], "update", func(h NamedHost) Result {
+		if h.Name == "one" {
+			return Result{Host: h.Name, State: "unreachable", Reason: "ssh timed out"}
+		}
+		return Result{Host: h.Name, State: "ok"}
+	})
+	if timedOut[0].State != "unreachable" || timedOut[1].State != "skipped" {
+		t.Fatalf("a timed-out mutation may have run and must stop the rollout: %#v", timedOut)
+	}
+}
+
+func TestUpdateReportsApplyPendingFromPostUpdateCheck(t *testing.T) {
+	bin := writeFakeSSH(t, `#!/bin/sh
+case "$6:$7" in
+  pending:*"check -o json") printf '{"modules":[{"name":"security","satisfied":true},{"name":"monitoring","satisfied":false}]}'; exit 2 ;;
+  *:*"check -o json") printf '{"modules":[{"name":"security","satisfied":true}]}'; exit 0 ;;
+  *:*" apply"*) echo "apply must never run" >&2; exit 9 ;;
+esac
+echo "Updated to v1.2.3"
+`)
+	hosts := []NamedHost{{Name: "pending", Host: Host{SSH: "pending"}, Sudo: "none"}, {Name: "clean", Host: Host{SSH: "clean"}, Sudo: "none"}}
+	results, err := Update(context.Background(), SSHRunner{Binary: bin}, hosts, "v1.2.3", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if results[0].State != "apply-pending" || results[0].ExitCode != 2 || !strings.Contains(results[0].Reason, "monitoring") || strings.Contains(results[0].Reason, "security") {
+		t.Fatalf("pending host: %#v", results[0])
+	}
+	if results[1].State != "ok" {
+		t.Fatalf("apply-pending must not stop the rollout, and a clean host stays ok: %#v", results[1])
+	}
+}
+
+func TestUpdateKeepsFailedPostUpdateCheckEvidence(t *testing.T) {
+	bin := writeFakeSSH(t, `#!/bin/sh
+case "$7" in *"check -o json") echo "Error: loading config: bad key" >&2; exit 1 ;; esac
+echo "Updated to v1.2.3"
+`)
+	hosts := []NamedHost{{Name: "one", Host: Host{SSH: "one"}, Sudo: "none"}}
+	results, _ := Update(context.Background(), SSHRunner{Binary: bin}, hosts, "v1.2.3", false)
+	r := results[0]
+	if r.State != "error" || r.ExitCode != 1 || !strings.Contains(r.Output, "Updated to v1.2.3") || !strings.Contains(r.Output, "bad key") || !strings.Contains(r.Reason, "bad key") {
+		t.Fatalf("failed check should carry its exit code and output: %#v", r)
 	}
 }

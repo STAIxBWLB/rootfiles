@@ -22,7 +22,13 @@ type SSHRunner struct {
 	Binary          string
 	Timeout         time.Duration // read-only override, capped at 45s
 	MutationTimeout time.Duration // mutating SSH deadline; defaults to 15m
+	// SkipUnreachable lets a serial rollout continue past a host whose SSH
+	// connection fails; any other failure still stops it.
+	SkipUnreachable bool
 }
+
+// reasonConnectFailed marks a host ssh could not connect to, so nothing ran.
+const reasonConnectFailed = "ssh connection failed"
 
 // RunRemote executes one already-constructed remote command. Callers must use
 // fixed command tokens and validate any values embedded in the shell string.
@@ -236,7 +242,7 @@ func (r SSHRunner) runWithTimeout(ctx context.Context, h NamedHost, op, remote s
 		}
 		if result.ExitCode == 255 {
 			result.State = "unreachable"
-			result.Reason = "ssh connection failed"
+			result.Reason = reasonConnectFailed
 			return result
 		}
 		if looksPrivilege(combined) {
@@ -248,7 +254,7 @@ func (r SSHRunner) runWithTimeout(ctx context.Context, h NamedHost, op, remote s
 			return decodeRemote(result, out.Bytes(), 2)
 		}
 		result.State = "error"
-		result.Reason = shortReason(combined)
+		result.Reason = shortReason(out.String(), stderr.String())
 		return result
 	}
 	return decodeRemote(result, out.Bytes(), result.ExitCode)
@@ -278,7 +284,7 @@ func decodeRemote(res Result, data []byte, exit int) Result {
 	default:
 		res.State = "error"
 		if res.Reason == "" {
-			res.Reason = shortReason(string(data))
+			res.Reason = shortReason(string(data), "")
 		}
 	}
 	return res
@@ -320,15 +326,34 @@ func looksPrivilege(s string) bool {
 	s = strings.ToLower(s)
 	return strings.Contains(s, "a password is required") || strings.Contains(s, "password is required") || strings.Contains(s, "not allowed to execute") || strings.Contains(s, "not in the sudoers") || strings.Contains(s, "sudo: a terminal is required")
 }
-func shortReason(s string) string {
-	s = strings.TrimSpace(s)
+
+// shortReason picks the line that explains a remote failure: the last
+// cobra "Error:" line, else the last stderr line, else the head of the output.
+func shortReason(stdout, stderr string) string {
+	s := lastLine(stdout+"\n"+stderr, func(l string) bool { return strings.HasPrefix(l, "Error:") })
+	if s == "" {
+		s = lastLine(stderr, func(l string) bool { return l != "" })
+	}
+	if s == "" {
+		s = strings.TrimSpace(stdout + "\n" + stderr)
+	}
 	if s == "" {
 		return "remote command failed"
 	}
-	if len(s) > 240 {
-		s = s[:240]
+	if r := []rune(s); len(r) > 240 {
+		s = string(r[:240])
 	}
 	return s
+}
+
+func lastLine(s string, match func(string) bool) string {
+	lines := strings.Split(s, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		if l := strings.TrimSpace(lines[i]); match(l) {
+			return l
+		}
+	}
+	return ""
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

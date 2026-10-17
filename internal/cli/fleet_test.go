@@ -151,3 +151,50 @@ func TestFleetTargetsPushValidatesPathAndGuardsParentsBeforeWrites(t *testing.T)
 		t.Fatalf("invalid discovery path opened SSH: %v", err)
 	}
 }
+
+func TestFleetUpdateSkipUnreachablePrintsRerunCommand(t *testing.T) {
+	dir := t.TempDir()
+	sshDir := filepath.Join(dir, "bin")
+	if err := os.Mkdir(sshDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	contacted := filepath.Join(dir, "contacted")
+	script := "#!/bin/sh\n" +
+		"[ \"$6\" != h2 ] || { echo 'ssh: connect to host h2 port 22: No route to host' >&2; exit 255; }\n" +
+		"case \"$7\" in *'check -o json') printf '{\"modules\":[]}'; exit 0 ;; esac\n" +
+		"echo \"$6\" >> " + shellQuoteCLI(contacted) + "\necho updated\n"
+	if err := os.WriteFile(filepath.Join(sshDir, "ssh"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", sshDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
+	inventory := filepath.Join(dir, "fleet.yaml")
+	if err := os.WriteFile(inventory, []byte("hosts:\n  h1:\n    ssh: h1\n  h2:\n    ssh: h2\n  h3:\n    ssh: h3\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr strings.Builder
+	cmd := NewRootCmd("test", "test")
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(&stderr)
+	cmd.SetArgs([]string{"fleet", "update", "--inventory", inventory, "--all", "--yes", "--version", "v1.2.3", "--skip-unreachable"})
+	err := cmd.Execute()
+	if exitErr, ok := err.(*ExitError); !ok || exitErr.Code != 2 {
+		t.Fatalf("a run with a skipped host must exit 2, got %v", err)
+	}
+	if got, _ := os.ReadFile(contacted); string(got) != "h1\nh3\n" {
+		t.Fatalf("hosts after the unreachable one should still update: %q", got)
+	}
+	out := stderr.String()
+	for _, want := range []string{"fleet update", "--inventory " + shellQuoteCLI(inventory), "--version 'v1.2.3'", "--yes", "--host h2"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("rerun command missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "--all") || strings.Contains(out, "--host h1") {
+		t.Fatalf("rerun command must select only skipped hosts:\n%s", out)
+	}
+	log, _ := os.ReadFile(filepath.Join(dir, "state", "rootfiles", "fleet.jsonl"))
+	if !strings.Contains(string(log), `"command":"update --skip-unreachable"`) || !strings.Contains(string(log), "skipped-unreachable") {
+		t.Fatalf("run log should record the flag and state: %s", log)
+	}
+}

@@ -365,6 +365,20 @@ else
     fail "fleet status did not prove final-host unreachable state (exit $UNREACHABLE_CODE): $(cat "$TMP/unreachable.json")"
 fi
 
+# With --skip-unreachable the now-stopped middle host is skipped and the
+# third host still runs; the run exits 2 and prints a rerun command.
+docker exec "$GOOD" sh -c ': > /run/rootfiles-fleet-calls'
+set +e
+run_rootfiles fleet apply --inventory "$TMP/rollout.yaml" --all --yes --dry-run --skip-unreachable >"$TMP/skip.txt" 2>&1
+SKIP_CODE=$?
+set -e
+GOOD_CALLS="$(docker exec "$GOOD" cat /run/rootfiles-fleet-calls)"
+if [[ "$SKIP_CODE" -eq 2 ]] && grep -q 'skipped-unreachable' "$TMP/skip.txt" && grep -q -- '--host failure' "$TMP/skip.txt" && [[ "$GOOD_CALLS" == $'status\napply\nstatus\napply' ]]; then
+    pass "--skip-unreachable continues past an unreachable host and prints its rerun command"
+else
+    fail "--skip-unreachable run (exit $SKIP_CODE, good calls: $GOOD_CALLS): $(cat "$TMP/skip.txt")"
+fi
+
 if [[ "$FAIL" -gt 0 ]]; then
     cat "$TMP/status.json" "$TMP/apply.json" >&2
     docker logs "$GOOD" >&2 || true
