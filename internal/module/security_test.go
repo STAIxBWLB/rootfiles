@@ -121,3 +121,27 @@ func TestUnattendedCheckJudgesEffectivePolicy(t *testing.T) {
 		t.Fatalf("Apply cannot fix a later file and must fail, got %v", err)
 	}
 }
+
+func TestUnattendedPolicyMustBeWorldReadable(t *testing.T) {
+	fakeUnattendedHost(t)
+	rc := securityRC(t)
+	m := NewSecurityModule()
+	if _, err := m.Apply(context.Background(), rc); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if err := os.Chmod(unattendedPolicyPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if check, err := m.Check(context.Background(), rc); err != nil || check.Satisfied {
+		t.Fatalf("a 0600 policy file should be drift, got %+v, %v", check, err)
+	}
+	if _, err := m.Apply(context.Background(), rc); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	if info, _ := os.Stat(unattendedPolicyPath); info.Mode().Perm() != 0644 {
+		t.Fatalf("mode = %v, want 0644", info.Mode().Perm())
+	}
+	if check, err := m.Check(context.Background(), rc); err != nil || !check.Satisfied {
+		t.Fatalf("Check after fix = %+v, %v", check, err)
+	}
+}
