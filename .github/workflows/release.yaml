@@ -1,17 +1,7 @@
 name: Release
 
-# Triggered directly on version-tag push rather than via workflow_run of the
-# Test workflow. Background: GitHub's workflow_run event populates
-# head_branch from the source branch of the commit, which for a tag push
-# (where the tagged commit already lives on main) resolves to "main" — so
-# the previous `startsWith(head_branch, 'v')` guard silently skipped every
-# release after v0.7.0. Direct tag trigger is unambiguous: the workflow
-# fires exactly when a v* tag is pushed, and goreleaser's own build + lint
-# acts as a last-line sanity check.
-#
-# The Test workflow still runs in parallel on the same tag push (test.yaml
-# has `tags: ["v*"]` in its push trigger) so CI visibility is retained;
-# failing tests will show up as a separate red check alongside the release.
+# Runs on the version-tag push and publishes only after the tagged commit's
+# main-push Test run succeeded (#56). Test itself does not run for tags.
 
 on:
   push:
@@ -19,12 +9,47 @@ on:
 
 permissions:
   contents: write
+  actions: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
+      - name: Validate tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: '[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::tag is not vX.Y.Z"; exit 1; }'
+
+      # Test does not run for tags: the tagged commit's main-push Test run (full,
+      # or skipped by its decision job because the same tree already passed) is
+      # the release gate. Wait for it if it is still running.
+      - name: Require a successful Test run for the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          deadline=$((SECONDS + 30 * 60)); first_seen=""
+          while :; do
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/test.yaml/runs?event=push&head_sha=$GITHUB_SHA&per_page=10" \
+              --jq '[.workflow_runs[] | select(.head_branch == "main")] | sort_by(.run_started_at) | last // empty | "\(.status) \(.conclusion) \(.html_url)"') || run=""
+            if [ -n "$run" ]; then
+              read -r status conclusion url <<<"$run"
+              if [ "$status" = completed ]; then
+                [ "$conclusion" = success ] && { echo "Test passed for $GITHUB_SHA: $url"; break; }
+                echo "::error::Test for $GITHUB_SHA concluded $conclusion: $url"; exit 1
+              fi
+              first_seen=${first_seen:-$SECONDS}
+            elif [ $SECONDS -gt 600 ] && [ -z "$first_seen" ]; then
+              echo "::error::no main-push Test run for $GITHUB_SHA; tag a commit that is on main"; exit 1
+            fi
+            [ $SECONDS -lt $deadline ] || { echo "::error::timed out waiting for Test on $GITHUB_SHA"; exit 1; }
+            sleep 30
+          done
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0

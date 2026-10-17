@@ -3,44 +3,48 @@ name: Test
 on:
   push:
     branches: [main]
-    tags: ["v*"]
-    paths:
-      - "cmd/**"
-      - "internal/**"
-      - "profiles/**"
-      - "templates/**"
-      - "scripts/**"
-      - "tests/**"
-      - "go.mod"
-      - "go.sum"
-      - "Makefile"
-      - ".github/workflows/**"
-      - ".goreleaser.yaml"
+  # No `paths` filter: the decision job skips the expensive jobs when only
+  # non-test files changed, so every commit still gets a Test result that the
+  # Release workflow can check. Tags are not tested again.
   pull_request:
     branches: [main]
-    paths:
-      - "cmd/**"
-      - "internal/**"
-      - "profiles/**"
-      - "templates/**"
-      - "scripts/**"
-      - "tests/**"
-      - "go.mod"
-      - "go.sum"
-      - "Makefile"
-      - ".github/workflows/**"
-      - ".goreleaser.yaml"
 
 concurrency:
   group: rootfiles-test-${{ github.ref }}
-  cancel-in-progress: true
+  # Main pushes are never cancelled: every main commit needs a Test result for Release.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   GOMAXPROCS: "2"
   GOFLAGS: "-p=1"
 
 jobs:
+  decision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      run_full: ${{ steps.decide.outputs.run_full }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_FILE: test.yaml
+          # The former trigger paths filter. docs/releases/ holds release notes only.
+          TEST_INPUTS: '^(cmd/|internal/|profiles/|templates/|scripts/|tests/|go\.mod$|go\.sum$|Makefile$|\.github/workflows/|\.goreleaser\.yaml$)'
+          TEST_IGNORE: '^docs/releases/'
+        run: bash scripts/ci-decision.sh
+
   lint:
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -48,6 +52,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "stable"
+      - name: CI decision path classification
+        run: bash scripts/ci-decision.sh --self-test
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)
@@ -75,6 +81,8 @@ jobs:
           fi
 
   vuln:
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -88,6 +96,8 @@ jobs:
         run: govulncheck ./...
 
   unit:
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -129,7 +139,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         include:
           # Ubuntu 22.04 × profiles
@@ -165,8 +175,13 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
+      - uses: docker/setup-buildx-action@v3
       - name: Build test image
-        run: docker build -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
+        run: |
+          docker buildx build --load \
+            --cache-from "type=gha,scope=img-${{ matrix.os }}" \
+            --cache-to "type=gha,mode=max,scope=img-${{ matrix.os }}" \
+            -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
       - name: Run integration test
         run: |
           docker run --rm --privileged \
@@ -185,7 +200,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         module: [locale, system, packages, ssh, users, security, cloudflared, storage, network, gpu]
         os: [ubuntu-22.04, ubuntu-24.04]
@@ -206,8 +221,13 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
+      - uses: docker/setup-buildx-action@v3
       - name: Build test image
-        run: docker build -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
+        run: |
+          docker buildx build --load \
+            --cache-from "type=gha,scope=img-${{ matrix.os }}" \
+            --cache-to "type=gha,mode=max,scope=img-${{ matrix.os }}" \
+            -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
       - name: Test single module
         run: |
           docker run --rm --privileged \
@@ -223,7 +243,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         scenario:
           - dry-run-all-profiles
@@ -248,8 +268,13 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
+      - uses: docker/setup-buildx-action@v3
       - name: Build test image
-        run: docker build -t rootfiles-test:dgx-22.04 -f tests/integration/Dockerfile.dgx-22.04 .
+        run: |
+          docker buildx build --load \
+            --cache-from "type=gha,scope=img-dgx-22.04" \
+            --cache-to "type=gha,mode=max,scope=img-dgx-22.04" \
+            -t rootfiles-test:dgx-22.04 -f tests/integration/Dockerfile.dgx-22.04 .
       - name: Load quota kernel modules
         if: matrix.scenario == 'user-quota'
         # Containers share the host kernel; without quota_v2 the scenario
@@ -288,7 +313,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 2
+      max-parallel: 4
       matrix:
         os: [rocky-8.9, rocky-8.10, rocky-9]
     steps:
@@ -297,10 +322,14 @@ jobs:
         with:
           name: rootfiles-binary
           path: .
+      - uses: docker/setup-buildx-action@v3
       - name: Build pinned Rocky fixture
         run: |
           chmod +x rootfiles
-          docker build -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
+          docker buildx build --load \
+            --cache-from "type=gha,scope=rocky-${{ matrix.os }}" \
+            --cache-to "type=gha,mode=max,scope=rocky-${{ matrix.os }}" \
+            -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
       - name: Verify native Rocky core profile, SSH and installer
         run: bash tests/run-rocky.sh rootfiles-test:${{ matrix.os }}
 
