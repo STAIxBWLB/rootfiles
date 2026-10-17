@@ -3,44 +3,51 @@ name: Test
 on:
   push:
     branches: [main]
-    tags: ["v*"]
-    paths:
-      - "cmd/**"
-      - "internal/**"
-      - "profiles/**"
-      - "templates/**"
-      - "scripts/**"
-      - "tests/**"
-      - "go.mod"
-      - "go.sum"
-      - "Makefile"
-      - ".github/workflows/**"
-      - ".goreleaser.yaml"
+  # No `paths` filter: the decision job skips the expensive jobs when only
+  # non-test files changed, so every commit still gets a Test result that the
+  # Release workflow can check. Tags are not tested again.
   pull_request:
     branches: [main]
-    paths:
-      - "cmd/**"
-      - "internal/**"
-      - "profiles/**"
-      - "templates/**"
-      - "scripts/**"
-      - "tests/**"
-      - "go.mod"
-      - "go.sum"
-      - "Makefile"
-      - ".github/workflows/**"
-      - ".goreleaser.yaml"
 
 concurrency:
-  group: rootfiles-test-${{ github.ref }}
-  cancel-in-progress: true
+  # One group per main commit: a newer push would otherwise replace a pending
+  # main run, and Release needs every main commit's Test result.
+  group: rootfiles-test-${{ github.event_name == 'push' && github.sha || github.ref }}
+  # Main pushes are never cancelled: every main commit needs a Test result for Release.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   GOMAXPROCS: "2"
   GOFLAGS: "-p=1"
 
 jobs:
+  decision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    outputs:
+      run_full: ${{ steps.decide.outputs.run_full }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_FILE: test.yaml
+          # The former trigger paths filter plus README.md (monitoring_hub_test reads it).
+          # docs/releases/ holds release notes only.
+          TEST_INPUTS: '^(cmd/|internal/|profiles/|templates/|scripts/|tests/|go\.mod$|go\.sum$|Makefile$|\.github/workflows/|\.goreleaser\.yaml$|README\.md$)'
+          TEST_IGNORE: '^docs/releases/'
+        run: bash scripts/ci-decision.sh
+
   lint:
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -48,6 +55,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "stable"
+      - name: CI decision path classification
+        run: bash scripts/ci-decision.sh --self-test
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)
@@ -75,6 +84,8 @@ jobs:
           fi
 
   vuln:
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -88,6 +99,8 @@ jobs:
         run: govulncheck ./...
 
   unit:
+    needs: decision
+    if: needs.decision.outputs.run_full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
