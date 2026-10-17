@@ -39,8 +39,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           WORKFLOW_FILE: test.yaml
-          # The former trigger paths filter. docs/releases/ holds release notes only.
-          TEST_INPUTS: '^(cmd/|internal/|profiles/|templates/|scripts/|tests/|go\.mod$|go\.sum$|Makefile$|\.github/workflows/|\.goreleaser\.yaml$)'
+          # The former trigger paths filter plus README.md (monitoring_hub_test reads it).
+          # docs/releases/ holds release notes only.
+          TEST_INPUTS: '^(cmd/|internal/|profiles/|templates/|scripts/|tests/|go\.mod$|go\.sum$|Makefile$|\.github/workflows/|\.goreleaser\.yaml$|README\.md$)'
           TEST_IGNORE: '^docs/releases/'
         run: bash scripts/ci-decision.sh
 
