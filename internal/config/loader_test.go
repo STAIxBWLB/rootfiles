@@ -828,7 +828,7 @@ func TestLoad_DoctorDiskThresholds(t *testing.T) {
 	if warn != 80 || fail != 95 || minFree != 100<<30 {
 		t.Fatalf("thresholds = %v %v %v", warn, fail, minFree)
 	}
-	for _, bad := range []string{"min_free: lots", "min_free: 100GB", "fail_percent: 120", "warn_percent: 95\n    fail_percent: 90", "warn_percent: -1"} {
+	for _, bad := range []string{"min_free: lots", "min_free: 100GB", "fail_percent: 120", "warn_percent: 95\n    fail_percent: 90", "warn_percent: -1", "fail_percent: .nan", "fail_percent: .inf"} {
 		p := writeFile(t, dir, "bad.yaml", "extends: minimal\ndoctor:\n  disk:\n    "+bad+"\n")
 		cfg, err := Load("", p, nil)
 		if err == nil {
