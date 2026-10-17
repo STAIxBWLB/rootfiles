@@ -3,7 +3,7 @@ package module
 import (
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 func TestRegistry_ResolveAll(t *testing.T) {

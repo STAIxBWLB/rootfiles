@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/fleet"
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 )
 
 func TestFleetReadPoolBoundsFakeSSHConcurrency(t *testing.T) {

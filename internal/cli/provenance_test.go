@@ -3,8 +3,8 @@ package cli
 import (
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
-	"github.com/entelecheia/rootfiles-v2/internal/state"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
 func TestAppliedFingerprintRequiresSuccessfulMatchingRecordedIntent(t *testing.T) {

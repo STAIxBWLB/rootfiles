@@ -390,7 +390,7 @@ DGX/GPU 서버의 NVMe/RAID 스토리지 설정:
 
 ```bash
 # 설치 (fresh 시스템)
-curl -fsSL https://github.com/entelecheia/rootfiles-v2/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/STAIxBWLB/rootfiles/releases/latest/download/install.sh | sudo bash
 
 # interactive 모드 (기본) — 프로필, 모듈, 사용자, 터널 등 순차 프롬프트
 sudo rootfiles apply
@@ -672,7 +672,7 @@ rootfiles-v2가 준비하는 것 → dotfiles-v2가 기대하는 것:
 ```bash
 # rootfiles-v2 완료 후 dotfiles-v2 부트스트랩 안내 출력
 echo "System ready. Run as user:"
-echo "  curl -fsSL https://raw.githubusercontent.com/entelecheia/dotfiles-v2/main/scripts/bootstrap.sh | bash"
+echo "  curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/dotfiles/main/scripts/bootstrap.sh | bash"
 ```
 
 ---

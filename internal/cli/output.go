@@ -15,8 +15,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
-	"github.com/entelecheia/rootfiles-v2/internal/state"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
 // ExitError carries a process exit code. An empty Msg exits silently

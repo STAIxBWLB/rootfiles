@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
-	"github.com/entelecheia/rootfiles-v2/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"gopkg.in/yaml.v3"
 )
 
@@ -162,7 +162,7 @@ v="$ROOTFILES_VERSION"
 case "$(uname -m)" in x86_64) arch=amd64;; aarch64|arm64) arch=arm64;; *) echo "unsupported architecture" >&2; exit 1;; esac
 ver=${v#v}
 name="rootfiles_${ver}_linux_${arch}.tar.gz"
-base="https://github.com/entelecheia/rootfiles-v2/releases/download/${v}"
+base="https://github.com/STAIxBWLB/rootfiles/releases/download/${v}"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 curl -fsSL "$base/$name" -o "$tmp/$name"

@@ -2,12 +2,12 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "rootfiles-v2 rootfiles CLI",
+    "title": "rootfiles CLI",
     "locale": "en",
     "quality_profile": "showcase",
     "output": "rootfiles-v2-rendered.html",
     "repository": {
-      "url": "https://github.com/entelecheia/rootfiles-v2",
+      "url": "https://github.com/STAIxBWLB/rootfiles",
       "provider": "github",
       "revision": "b7f940c3d06579a8039fc423952c4663b88f4e2c"
     }

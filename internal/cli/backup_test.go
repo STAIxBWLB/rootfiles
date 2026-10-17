@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 func TestNewBackupCmd_Basics(t *testing.T) {

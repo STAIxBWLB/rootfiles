@@ -1,12 +1,12 @@
 #!/bin/bash
-# rootfiles-v2 installer
+# rootfiles installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/entelecheia/rootfiles-v2/main/scripts/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash
 #   curl -fsSL ... | sudo bash -s -- --version v0.1.0
 #   curl -fsSL ... | sudo bash -s -- --channel dev
 set -euo pipefail
 
-REPO="entelecheia/rootfiles-v2"
+REPO="STAIxBWLB/rootfiles"
 INSTALL_DIR="/usr/local/bin"
 BINARY="rootfiles"
 VERSION=""
@@ -55,11 +55,11 @@ esac
 
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
 if [ "$OS" != "linux" ] && [ "$OS" != "darwin" ]; then
-    echo "Error: rootfiles-v2 only supports Linux and macOS operator binaries (got: $OS)"
+    echo "Error: rootfiles only supports Linux and macOS operator binaries (got: $OS)"
     exit 1
 fi
 
-echo "rootfiles-v2 installer"
+echo "rootfiles installer"
 echo "  OS:   $OS"
 echo "  Arch: $ARCH"
 
@@ -179,10 +179,10 @@ if [ "$CHANNEL" = "dev" ]; then
     trap "rm -rf $TMPDIR" EXIT
 
     echo "Cloning repository..."
-    git clone --depth 1 "https://github.com/${REPO}.git" "$TMPDIR/rootfiles-v2"
+    git clone --depth 1 "https://github.com/${REPO}.git" "$TMPDIR/rootfiles"
 
     echo "Building..."
-    cd "$TMPDIR/rootfiles-v2"
+    cd "$TMPDIR/rootfiles"
     COMMIT=$(git rev-parse --short HEAD)
     go build -ldflags "-s -w -X main.version=dev-${COMMIT} -X main.commit=${COMMIT}" \
         -o "$INSTALL_DIR/$BINARY" ./cmd/rootfiles/

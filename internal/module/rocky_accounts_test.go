@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 func TestAccountGroupsForSystemUsesNativeAdminGroup(t *testing.T) {

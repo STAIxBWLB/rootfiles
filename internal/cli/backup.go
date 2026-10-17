@@ -11,8 +11,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
-	"github.com/entelecheia/rootfiles-v2/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 )
 
 // What `backup` archives and where the config snapshot comes from; tests

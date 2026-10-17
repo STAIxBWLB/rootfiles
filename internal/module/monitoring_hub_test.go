@@ -11,7 +11,7 @@ import (
 	"testing"
 	"text/template"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

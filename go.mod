@@ -1,4 +1,4 @@
-module github.com/entelecheia/rootfiles-v2
+module github.com/STAIxBWLB/rootfiles
 
 go 1.23.0
 

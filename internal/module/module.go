@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
-	"github.com/entelecheia/rootfiles-v2/internal/exec"
-	"github.com/entelecheia/rootfiles-v2/internal/state"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
 // Module is the interface that all rootfiles modules must implement.

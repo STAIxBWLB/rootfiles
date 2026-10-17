@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 func TestNetworkModule_Name(t *testing.T) {

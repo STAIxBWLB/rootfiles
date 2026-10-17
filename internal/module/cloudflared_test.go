@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 // fakeBin puts stub commands (exit 0, append argv to a log) first on PATH

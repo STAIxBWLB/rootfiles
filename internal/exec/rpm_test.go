@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 func writeRPMFake(t *testing.T, dir, name, content string) {

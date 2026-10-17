@@ -13,8 +13,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
-	"github.com/entelecheia/rootfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 func testRunContext(t *testing.T, homeBase string, method string) *RunContext {

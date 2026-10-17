@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	repoOwner = "entelecheia"
-	repoName  = "rootfiles-v2"
+	repoOwner = "STAIxBWLB"
+	repoName  = "rootfiles"
 	githubAPI = "https://api.github.com"
 )
 

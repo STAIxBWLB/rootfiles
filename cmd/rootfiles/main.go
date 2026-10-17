@@ -8,7 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/entelecheia/rootfiles-v2/internal/cli"
+	"github.com/STAIxBWLB/rootfiles/internal/cli"
 )
 
 var (
