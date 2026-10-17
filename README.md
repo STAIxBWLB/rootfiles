@@ -9,20 +9,31 @@ Managed hosts must run Linux; macOS is not a supported host OS. The macOS build 
 
 ## What it does
 
-`rootfiles` handles everything that requires root on a fresh server — so users can immediately run [dotfiles](https://github.com/STAIxBWLB/dotfiles) for their personal environment.
+`rootfiles` is the root half of a two-tool server setup. It prepares a machine with everything that needs root and stops at the user account; [dotfiles](https://github.com/STAIxBWLB/dotfiles) (the `dot` binary) then sets up each user's own environment inside that account, on servers as well as on macOS and Linux workstations.
+
+- **One host, declaratively.** `rootfiles apply` converges a host to a profile or site config through 13 modules. `check` reports drift without changing anything, `doctor` checks live health (SSH access, disks, reboot, GPUs), and every file a run changes is backed up for `rollback`.
+- **A fleet over SSH.** `rootfiles fleet` runs `status`, `check` and `doctor` in parallel and `apply`, `update`, `bootstrap` and `schedule` serially from an operator's Mac or Linux machine. Config fingerprints show which configuration each host applied, and `fleet update` flags hosts that still need `apply`.
+- **Monitoring.** Node and DCGM GPU exporters on each host, an optional Prometheus, Alertmanager and Grafana hub, and scheduled `check`/`doctor` reports exported as metrics.
 
 ```
-rootfiles (root)                 →  dotfiles (user)
-━━━━━━━━━━━━━━━━━━━━━━           ━━━━━━━━━━━━━━━━━━━━
-System packages (APT/DNF)             User dotfiles (chezmoi)
-User accounts (/raid/home/)       Shell (zsh, starship, oh-my-zsh)
-SSH server hardening              Dev tools (fnm, uv, pipx)
-Docker + NVIDIA toolkit           Homebrew packages
-Cloudflare tunnel + VLAN          AI tools (Claude Code)
-Locale, timezone, firewall        Secrets (age)
-Storage mounts & symlinks
-Security baseline, quotas, health
+rootfiles (root, per server)              dotfiles / dot (user, server or workstation)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+System packages (APT / DNF)               User packages (Homebrew / Linuxbrew)
+User accounts, home base, quotas          zsh + Oh My Zsh, starship, git and SSH config
+SSH hardening with lockout guard          tmux, terminal, Nerd Fonts
+Security-only updates, fail2ban, NTP      AI CLIs and their settings (Claude Code, Codex, ...)
+Docker, NVIDIA runtime, GPU allocation    Conda defaults, one `container` command
+Cloudflare tunnel + VLAN, UFW             Workspace clone, sync and vault links
+Locale, timezone, storage, journald       Age-encrypted secrets, GPG commit signing
+Exporters, monitoring hub, SSH fleet      Backup and restore across machines
 ```
+
+On a new GPU server the two run in this order:
+
+1. An operator runs `sudo rootfiles apply --profile dgx` on the host, or `rootfiles fleet apply` from the controller. This creates the accounts, hardens SSH and installs Docker with the NVIDIA runtime.
+2. Each user installs `dot` (see the dotfiles README), then runs `dot init --yes`, which picks the `server` profile when it detects an NVIDIA GPU or CUDA, and `dot apply --yes`.
+
+Both tools share one design: a single Go binary, embedded YAML profiles with inheritance, and modules with a side-effect-free `Check` and an idempotent `Apply` behind a dry-run-aware runner.
 
 ## Install
 
