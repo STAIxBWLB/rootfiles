@@ -275,3 +275,78 @@ func fakeCommandOutput(t *testing.T, outputs map[string]string) string {
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
 	return dir
 }
+
+// fakeGPUHostWithoutRuntime stubs a GPU host whose Docker lacks the NVIDIA
+// runtime, with node exporter installed but stopped. It returns the call log.
+func fakeGPUHostWithoutRuntime(t *testing.T) string {
+	t.Helper()
+	oldUnit, oldCollectors, oldDefaults, oldTextfile := dcgmUnitPath, dcgmCollectorsPath, nodeExporterDefaults, nodeExporterTextfileDir
+	dir := t.TempDir()
+	dcgmUnitPath = filepath.Join(dir, "rootfiles-dcgm-exporter.service")
+	dcgmCollectorsPath = filepath.Join(dir, "default-counters.csv")
+	nodeExporterDefaults = filepath.Join(dir, "defaults")
+	nodeExporterTextfileDir = filepath.Join(dir, "textfile")
+	t.Cleanup(func() {
+		dcgmUnitPath, dcgmCollectorsPath, nodeExporterDefaults, nodeExporterTextfileDir = oldUnit, oldCollectors, oldDefaults, oldTextfile
+	})
+	calls := filepath.Join(dir, "calls.log")
+	fakeMonitoringCommand(t, "ss", "#!/bin/sh\nexit 0\n")
+	fakeMonitoringCommand(t, "ufw", "#!/bin/sh\necho 'Status: inactive'\n")
+	fakeMonitoringCommand(t, "docker", "#!/bin/sh\necho '{\"runc\":{}}'\n")
+	fakeMonitoringCommand(t, "nvidia-smi", "#!/bin/sh\necho 'GPU 0: Test GPU'\n")
+	fakeMonitoringCommand(t, "dpkg-query", "#!/bin/sh\nprintf 'prometheus-node-exporter install ok installed\\n'\n")
+	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\necho \"systemctl $*\" >> '"+calls+"'\nexit 3\n")
+	return calls
+}
+
+func TestDCGMMissingRuntimeIsBlockedAndDoesNotHoldBackNodeExporter(t *testing.T) {
+	calls := fakeGPUHostWithoutRuntime(t)
+	rc := newRealRC(t)
+	rc.Config.Modules.Monitoring = config.MonitoringConfig{NodeExporter: true, DCGMExporter: true}
+	m := NewMonitoringModule()
+
+	check, err := m.Check(context.Background(), rc)
+	if err != nil || check.Satisfied {
+		t.Fatalf("Check = %+v, %v; want unsatisfied", check, err)
+	}
+	blocked := 0
+	for _, c := range check.Changes {
+		if c.State == ChangeBlocked {
+			blocked++
+			if !strings.Contains(c.Description, dcgmRuntimeFix) {
+				t.Fatalf("blocked item should name the fix: %q", c.Description)
+			}
+		}
+		if strings.Contains(c.Description, "DCGM exporter systemd unit") || c.Description == "Start DCGM exporter" {
+			t.Fatalf("blocked DCGM must not plan steps apply will skip: %+v", check.Changes)
+		}
+	}
+	if blocked != 1 {
+		t.Fatalf("want one blocked item, got %+v", check.Changes)
+	}
+
+	_, err = m.Apply(context.Background(), rc)
+	if err == nil || !strings.Contains(err.Error(), "Docker NVIDIA runtime is unavailable") || !strings.Contains(err.Error(), dcgmRuntimeFix) {
+		t.Fatalf("Apply should fail with the DCGM error and fix, got %v", err)
+	}
+	log, _ := os.ReadFile(calls)
+	if !strings.Contains(string(log), "systemctl enable --now prometheus-node-exporter") {
+		t.Fatalf("node exporter should still be started: %s", log)
+	}
+	if _, err := os.Stat(dcgmUnitPath); !os.IsNotExist(err) {
+		t.Fatalf("DCGM unit written despite missing runtime: %v", err)
+	}
+}
+
+func TestDryRunFailsOnBlockedChange(t *testing.T) {
+	fakeGPUHostWithoutRuntime(t)
+	rc := newDryRunRC(t)
+	rc.Config.Modules.Monitoring = config.MonitoringConfig{NodeExporter: true, DCGMExporter: true}
+	outcomes, err := RunAll(context.Background(), []Module{NewMonitoringModule()}, rc)
+	if err == nil || !strings.Contains(err.Error(), "blocked") {
+		t.Fatalf("dry run with a blocked change should fail, got %v", err)
+	}
+	if len(outcomes) != 1 || outcomes[0].Status != "failed" {
+		t.Fatalf("outcome = %+v; want failed", outcomes)
+	}
+}
