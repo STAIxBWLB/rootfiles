@@ -3,6 +3,7 @@ package module
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -145,7 +146,7 @@ func (m *SecurityModule) Check(ctx context.Context, rc *RunContext) (*CheckResul
 		changes = append(changes, Change{Description: fmt.Sprintf("Install %v", missing), Command: "apt-get install " + strings.Join(missing, " ")})
 	}
 	if cfg.UnattendedUpgrades {
-		if !fileEquals(rc, autoUpgradesPath, autoUpgradesContent) || !fileEquals(rc, unattendedPolicyPath, unattendedPolicyContent) || len(existingLegacyUnattended(rc)) > 0 {
+		if !fileEquals(rc, autoUpgradesPath, autoUpgradesContent) || !fileEquals(rc, unattendedPolicyPath, unattendedPolicyContent) || len(existingLegacyUnattended(rc)) > 0 || len(unreadableAptConf()) > 0 {
 			changes = append(changes, Change{Description: "Enable security-only unattended upgrades (no reboot, NVIDIA stack excluded)", Command: "write " + unattendedPolicyPath})
 		} else if extra := nonSecurityOrigins(ctx, rc); len(extra) > 0 {
 			changes = append(changes, Change{Description: "Effective unattended-upgrades policy is not security-only: " + strings.Join(extra, "; ")})
@@ -192,6 +193,13 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 			}
 			if err := rc.Runner.WriteFile(path, []byte(content), 0644); err != nil {
 				return nil, fmt.Errorf("writing %s: %w", path, err)
+			}
+			wrote = true
+		}
+		// Non-root apt reads apt.conf.d too; v0.15.0 fleet applies left 0600.
+		for _, path := range unreadableAptConf() {
+			if _, err := rc.Runner.Run(ctx, "chmod", "0644", path); err != nil {
+				return nil, fmt.Errorf("making %s world-readable: %w", path, err)
 			}
 			wrote = true
 		}
@@ -288,4 +296,15 @@ func nonSecurityOrigins(ctx context.Context, rc *RunContext) []string {
 		}
 	}
 	return extra
+}
+
+// unreadableAptConf lists managed apt.conf.d files that others cannot read.
+func unreadableAptConf() []string {
+	var out []string
+	for _, path := range []string{autoUpgradesPath, unattendedPolicyPath} {
+		if info, err := os.Stat(path); err == nil && info.Mode().Perm()&0044 != 0044 {
+			out = append(out, path)
+		}
+	}
+	return out
 }

@@ -503,3 +503,12 @@ echo "Updated to v1.2.3"
 		t.Fatalf("failed check should carry its exit code and output: %#v", r)
 	}
 }
+
+func TestFleetApplyRunsWithDefaultUmask(t *testing.T) {
+	script := persistAndApplyScript("/etc/rootfiles/fleet/n1-abc.yaml", "abc")
+	store := strings.Index(script, "umask 077")
+	restore := strings.Index(script, "umask 022; exec "+remoteBinary+" apply")
+	if store < 0 || restore < store {
+		t.Fatalf("apply must run with umask 022 after the 077 config store:\n%s", script)
+	}
+}

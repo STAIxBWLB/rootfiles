@@ -70,7 +70,7 @@ func Apply(ctx context.Context, runner SSHRunner, hosts []NamedHost, dry bool) [
 		}
 		sum := sha256.Sum256(h.Host.EffectiveConfig)
 		contentHash := hex.EncodeToString(sum[:])
-		script := persistConfigScript(path, contentHash) + "; exec " + remoteBinary + " apply --yes --config " + shellQuote(path)
+		script := persistAndApplyScript(path, contentHash)
 		return runner.runMutation(ctx, h, "apply", privileged(h.Sudo, "/bin/sh -c "+shellQuote(script)), h.Host.EffectiveConfig)
 	})
 }
@@ -81,6 +81,13 @@ func effectiveConfigPath(h NamedHost) (string, error) {
 	}
 	sum := sha256.Sum256(h.Host.EffectiveConfig)
 	return "/etc/rootfiles/fleet/" + h.Name + "-" + hex.EncodeToString(sum[:]) + ".yaml", nil
+}
+
+// persistAndApplyScript stores the config, then applies it. The store step
+// runs under umask 077; apply gets the usual 022 back, or every file it
+// creates (such as apt.conf.d policy that non-root apt must read) is 0600.
+func persistAndApplyScript(path, contentHash string) string {
+	return persistConfigScript(path, contentHash) + "; umask 022; exec " + remoteBinary + " apply --yes --config " + shellQuote(path)
 }
 
 func persistConfigScript(path, contentHash string) string {
