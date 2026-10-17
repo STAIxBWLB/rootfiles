@@ -566,7 +566,7 @@ Every push and pull request runs:
 | `integration` | 3 OS images × 4 profiles (11 combinations) |
 | `module` | 2 OS × 9 modules + GPU on DGX mock (isolated module execution) |
 | `scenario` | 14 E2E flows: dry-run-all-profiles, user backup/restore, user rehome, user list names, user lifecycle, user quota, declarative accounts, tunnel setup/teardown, OS reinstall recovery, system backup, GPU allocation, status, SSH lockout guard, state/rollback/lock |
-| `release` | GoReleaser on every `v*` tag (triggered automatically when a version tag is pushed) |
+| `release` | GoReleaser on every `v*` tag (triggered automatically when a version tag is pushed); publishes `docs/releases/<tag>.md` as the release body and fails without it (format: `AGENTS.md`, Release notes) |
 
 ## License
 
