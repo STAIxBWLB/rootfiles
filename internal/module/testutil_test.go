@@ -6,8 +6,8 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
-	"github.com/entelecheia/rootfiles-v2/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 // TestMain lets the test user stand in for root as the owner of custom home

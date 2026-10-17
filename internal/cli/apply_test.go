@@ -3,7 +3,7 @@ package cli
 import (
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 func TestNewApplyCmd_Basics(t *testing.T) {

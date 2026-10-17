@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/entelecheia/rootfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // GPUAllocation represents a per-user GPU assignment.

@@ -1,7 +1,7 @@
-# rootfiles-v2
+# rootfiles
 
-[![Test](https://github.com/entelecheia/rootfiles-v2/actions/workflows/test.yaml/badge.svg)](https://github.com/entelecheia/rootfiles-v2/actions/workflows/test.yaml)
-[![Release](https://img.shields.io/github/v/release/entelecheia/rootfiles-v2)](https://github.com/entelecheia/rootfiles-v2/releases/latest)
+[![Test](https://github.com/STAIxBWLB/rootfiles/actions/workflows/test.yaml/badge.svg)](https://github.com/STAIxBWLB/rootfiles/actions/workflows/test.yaml)
+[![Release](https://img.shields.io/github/v/release/STAIxBWLB/rootfiles)](https://github.com/STAIxBWLB/rootfiles/releases/latest)
 
 Server bootstrapping for Ubuntu, NVIDIA DGX OS and Rocky Linux core profiles. Single binary, declarative host configuration, and an SSH fleet controller.
 
@@ -9,10 +9,10 @@ Managed hosts must run Linux; macOS is not a supported host OS. The macOS build 
 
 ## What it does
 
-`rootfiles-v2` handles everything that requires root on a fresh server — so users can immediately run [dotfiles-v2](https://github.com/entelecheia/dotfiles-v2) for their personal environment.
+`rootfiles` handles everything that requires root on a fresh server — so users can immediately run [dotfiles](https://github.com/STAIxBWLB/dotfiles) for their personal environment.
 
 ```
-rootfiles-v2 (root)              →  dotfiles-v2 (user)
+rootfiles (root)                 →  dotfiles (user)
 ━━━━━━━━━━━━━━━━━━━━━━           ━━━━━━━━━━━━━━━━━━━━
 System packages (APT/DNF)             User dotfiles (chezmoi)
 User accounts (/raid/home/)       Shell (zsh, starship, oh-my-zsh)
@@ -29,19 +29,19 @@ Security baseline, quotas, health
 Latest stable release (recommended):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/entelecheia/rootfiles-v2/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash
 ```
 
 Specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/entelecheia/rootfiles-v2/main/scripts/install.sh | sudo bash -s -- --version v0.1.0
+curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash -s -- --version v0.1.0
 ```
 
 Dev channel (build from source, requires Go):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/entelecheia/rootfiles-v2/main/scripts/install.sh | sudo bash -s -- --channel dev
+curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash -s -- --channel dev
 ```
 
 The installer downloads a prebuilt binary, verifies its SHA256 checksum, and places it at `/usr/local/bin/rootfiles`. A `root` symlink is also created in the same directory — every example below works with either name:

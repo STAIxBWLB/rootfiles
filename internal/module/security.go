@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 // SecurityModule applies the baseline beyond sshd: automatic security

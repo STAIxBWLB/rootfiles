@@ -33,7 +33,7 @@ changelog:
 
 release:
   github:
-    owner: entelecheia
-    name: rootfiles-v2
+    owner: STAIxBWLB
+    name: rootfiles
   extra_files:
     - glob: scripts/install.sh

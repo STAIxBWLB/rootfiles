@@ -23,7 +23,7 @@ func WriteSection(w io.Writer, title string) {
 
 // WriteKV writes a styled key/value row at the 2-space top-level indent.
 // An empty value renders as "(unset)" in the hint style, matching the
-// dotfiles-v2 convention so mixed CLI muscle-memory works across both tools.
+// dotfiles convention so mixed CLI muscle-memory works across both tools.
 func WriteKV(w io.Writer, key, value string) {
 	if value == "" {
 		value = StyleHint.Render("(unset)")

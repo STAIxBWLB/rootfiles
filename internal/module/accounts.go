@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 // Account helpers shared by user add/restore/passwd.

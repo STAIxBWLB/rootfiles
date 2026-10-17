@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 // PackageManager is the package operation contract shared by distro

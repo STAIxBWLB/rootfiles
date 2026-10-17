@@ -1,4 +1,4 @@
-# rootfiles-v2
+# rootfiles
 
 Go-based server bootstrapping for Ubuntu, NVIDIA DGX OS and the documented Rocky core matrix, with an unprivileged operator-side SSH fleet controller.
 

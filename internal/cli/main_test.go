@@ -5,7 +5,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 // TestMain pins the home base so config loading in these tests never runs

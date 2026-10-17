@@ -7,7 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/rootfiles-v2/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 )
 
 func newGPUCmd() *cobra.Command {

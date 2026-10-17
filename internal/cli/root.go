@@ -14,7 +14,7 @@ func NewRootCmd(version, commit string) *cobra.Command {
 	root := &cobra.Command{
 		Use:               "rootfiles",
 		Short:             "Server bootstrapping tool for Ubuntu and DGX OS",
-		Long:              "rootfiles-v2: Declarative server configuration management with modular profiles.",
+		Long:              "rootfiles: Declarative server configuration management with modular profiles.",
 		PersistentPreRunE: preflight,
 		SilenceUsage:      true,
 		SilenceErrors:     true, // main prints the error once

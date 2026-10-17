@@ -14,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
-	"github.com/entelecheia/rootfiles-v2/internal/ui"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 type CloudflaredModule struct{}

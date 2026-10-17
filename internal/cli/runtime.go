@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/entelecheia/rootfiles-v2/internal/exec"
-	"github.com/entelecheia/rootfiles-v2/internal/state"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
 // Shared runtime plumbing for mutating commands: root/lock preflight,

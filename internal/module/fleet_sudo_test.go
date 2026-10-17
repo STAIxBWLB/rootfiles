@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/entelecheia/rootfiles-v2/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 type fleetSudoTestFileInfo struct {
