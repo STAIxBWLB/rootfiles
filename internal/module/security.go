@@ -19,7 +19,7 @@ func (m *SecurityModule) Name() string   { return "security" }
 
 // Paths are overridable in tests.
 var (
-	autoUpgradesPath     = "/etc/apt/apt.conf.d/20auto-upgrades"
+	autoUpgradesPath = "/etc/apt/apt.conf.d/20auto-upgrades"
 	// APT reads apt.conf.d in name order and merges list values, so the
 	// policy sorts after vendor and installer files and clears their origins.
 	unattendedPolicyPath = "/etc/apt/apt.conf.d/zzzzzz-rootfiles-unattended-upgrades"
