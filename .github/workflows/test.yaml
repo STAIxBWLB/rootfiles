@@ -10,7 +10,9 @@ on:
     branches: [main]
 
 concurrency:
-  group: rootfiles-test-${{ github.ref }}
+  # One group per main commit: a newer push would otherwise replace a pending
+  # main run, and Release needs every main commit's Test result.
+  group: rootfiles-test-${{ github.event_name == 'push' && github.sha || github.ref }}
   # Main pushes are never cancelled: every main commit needs a Test result for Release.
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -175,7 +177,7 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build test image
         run: |
           docker buildx build --load \
@@ -221,7 +223,7 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build test image
         run: |
           docker buildx build --load \
@@ -268,7 +270,7 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build test image
         run: |
           docker buildx build --load \
@@ -322,7 +324,7 @@ jobs:
         with:
           name: rootfiles-binary
           path: .
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build pinned Rocky fixture
         run: |
           chmod +x rootfiles
