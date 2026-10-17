@@ -134,7 +134,7 @@ All modules are idempotent and support `--dry-run`.
 | `cloudflared` | Cloudflare Tunnel service (token in a root-only env file) + VLAN private network |
 | `storage` | RAID/NVMe directory setup, symlinks |
 | `network` | UFW firewall, port rules (SSH port always allowed) |
-| `monitoring` | Prometheus node exporter (opt-in) |
+| `monitoring` | Opt-in Prometheus node exporter and DCGM GPU exporter, plus an optional Prometheus/Alertmanager/Grafana hub that reloads on rule changes |
 
 Modules run in this order; `users` precedes `ssh` so declared operators exist before password auth is turned off.
 
@@ -578,6 +578,9 @@ Every push and pull request runs:
 | `integration` | 3 OS images × 4 profiles (11 combinations) |
 | `module` | 2 OS × 9 modules + GPU on DGX mock (isolated module execution) |
 | `scenario` | 14 E2E flows: dry-run-all-profiles, user backup/restore, user rehome, user list names, user lifecycle, user quota, declarative accounts, tunnel setup/teardown, OS reinstall recovery, system backup, GPU allocation, status, SSH lockout guard, state/rollback/lock |
+| `fleet-scenario` | Fleet controller against two SSH containers (`tests/scenarios/fleet.sh`): status, serial stop rule, `--skip-unreachable` |
+| `rocky` | Rocky 8.9 / 8.10 / 9 images: native core profile, SSH and installer (`tests/run-rocky.sh`) |
+| `monitoring-hub` | Generated monitoring hub acceptance (`tests/scenarios/monitoring-hub.sh`) |
 | `release` | GoReleaser on every `v*` tag push, after the tagged commit's main-push Test run succeeded (Test does not run for tags); publishes `docs/releases/<tag>.md` as the release body and fails when it is missing or fails `scripts/check-release-notes.sh` (format: `AGENTS.md`, Release notes) |
 
 ## License
