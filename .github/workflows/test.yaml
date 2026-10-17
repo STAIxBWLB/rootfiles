@@ -142,7 +142,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         include:
           # Ubuntu 22.04 × profiles
@@ -178,13 +178,8 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build test image
-        run: |
-          docker buildx build --load \
-            --cache-from "type=gha,scope=img-${{ matrix.os }}" \
-            --cache-to "type=gha,mode=max,scope=img-${{ matrix.os }}" \
-            -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
+        run: docker build -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
       - name: Run integration test
         run: |
           docker run --rm --privileged \
@@ -203,7 +198,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         module: [locale, system, packages, ssh, users, security, cloudflared, storage, network, gpu]
         os: [ubuntu-22.04, ubuntu-24.04]
@@ -224,13 +219,8 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build test image
-        run: |
-          docker buildx build --load \
-            --cache-from "type=gha,scope=img-${{ matrix.os }}" \
-            --cache-to "type=gha,mode=max,scope=img-${{ matrix.os }}" \
-            -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
+        run: docker build -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
       - name: Test single module
         run: |
           docker run --rm --privileged \
@@ -246,7 +236,7 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         scenario:
           - dry-run-all-profiles
@@ -271,13 +261,8 @@ jobs:
           path: .
       - name: Make binary executable
         run: chmod +x rootfiles
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build test image
-        run: |
-          docker buildx build --load \
-            --cache-from "type=gha,scope=img-dgx-22.04" \
-            --cache-to "type=gha,mode=max,scope=img-dgx-22.04" \
-            -t rootfiles-test:dgx-22.04 -f tests/integration/Dockerfile.dgx-22.04 .
+        run: docker build -t rootfiles-test:dgx-22.04 -f tests/integration/Dockerfile.dgx-22.04 .
       - name: Load quota kernel modules
         if: matrix.scenario == 'user-quota'
         # Containers share the host kernel; without quota_v2 the scenario
@@ -316,7 +301,7 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      max-parallel: 4
+      max-parallel: 2
       matrix:
         os: [rocky-8.9, rocky-8.10, rocky-9]
     steps:
@@ -325,14 +310,10 @@ jobs:
         with:
           name: rootfiles-binary
           path: .
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
       - name: Build pinned Rocky fixture
         run: |
           chmod +x rootfiles
-          docker buildx build --load \
-            --cache-from "type=gha,scope=rocky-${{ matrix.os }}" \
-            --cache-to "type=gha,mode=max,scope=rocky-${{ matrix.os }}" \
-            -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
+          docker build -t rootfiles-test:${{ matrix.os }} -f tests/integration/Dockerfile.${{ matrix.os }} .
       - name: Verify native Rocky core profile, SSH and installer
         run: bash tests/run-rocky.sh rootfiles-test:${{ matrix.os }}
 
