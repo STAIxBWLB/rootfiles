@@ -1,9 +1,15 @@
 package cli
 
 import (
+	"context"
+	"io"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 func TestMarkMutating(t *testing.T) {
@@ -90,5 +96,31 @@ func TestNativeMutationsRefuseNonLinuxBeforeLock(t *testing.T) {
 	fleetCmd, _, _ := root.Find([]string{"fleet", "update"})
 	if err := preflight(fleetCmd, nil); err != nil {
 		t.Fatalf("operator controller refused: %v", err)
+	}
+}
+
+func TestScheduleEnableStartsFirstReportOnlyWithoutOne(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("ROOTFILES_STATE_DIR", stateDir)
+	bin := t.TempDir()
+	calls := filepath.Join(bin, "calls")
+	if err := os.WriteFile(filepath.Join(bin, "systemctl"), []byte("#!/bin/sh\necho \"$*\" >> '"+calls+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	runner := exec.NewRunner(false, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	var out strings.Builder
+	startFirstReport(context.Background(), runner, &out, io.Discard)
+	if got, _ := os.ReadFile(calls); string(got) != "start --no-block rootfiles-check.service\n" || !strings.Contains(out.String(), "first report started") {
+		t.Fatalf("no report yet: calls=%q out=%q", got, out.String())
+	}
+
+	if err := os.WriteFile(filepath.Join(stateDir, "check.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	startFirstReport(context.Background(), runner, io.Discard, io.Discard)
+	if got, _ := os.ReadFile(calls); strings.Count(string(got), "start") != 1 {
+		t.Fatalf("an existing report must not trigger another run: %q", got)
 	}
 }

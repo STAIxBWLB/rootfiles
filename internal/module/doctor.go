@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"syscall"
+
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 // Doctor runs read-only health checks that matter for operating a server
@@ -228,12 +230,14 @@ func uniqueStrings(in []string) []string {
 	return out
 }
 
-// diskLevel grades usage: ≥90% fail, ≥80% warn.
-func diskLevel(usedPct float64) string {
+// diskLevel grades usage against doctor.disk (default ≥90% fail, ≥80%
+// warn). With min_free set, a mount fails only when it also has less free.
+func diskLevel(cfg config.DoctorDiskConfig, usedPct float64, freeBytes uint64) string {
+	warn, fail, minFree := cfg.Thresholds()
 	switch {
-	case usedPct >= 90:
+	case usedPct >= fail && (minFree == 0 || freeBytes < minFree):
 		return LevelFail
-	case usedPct >= 80:
+	case usedPct >= warn:
 		return LevelWarn
 	default:
 		return LevelOK
@@ -262,8 +266,9 @@ func doctorDisks(rc *RunContext) []Finding {
 			seenDev[uint64(fi.Dev)] = true
 		}
 		used := float64(st.Blocks-st.Bfree) / float64(st.Blocks-st.Bfree+st.Bavail) * 100
-		free := float64(st.Bavail) * float64(st.Bsize) / (1 << 30)
-		f := Finding{Check: "disk " + p, Level: diskLevel(used), Detail: fmt.Sprintf("%.0f%% used, %.0f GiB free", used, free)}
+		freeBytes := st.Bavail * uint64(st.Bsize)
+		free := float64(freeBytes) / (1 << 30)
+		f := Finding{Check: "disk " + p, Level: diskLevel(rc.Config.Doctor.Disk, used, freeBytes), Detail: fmt.Sprintf("%.0f%% used, %.0f GiB free", used, free)}
 		if f.Level != LevelOK {
 			f.Hint = "free space (docker system prune, old checkpoints, logs)"
 		}

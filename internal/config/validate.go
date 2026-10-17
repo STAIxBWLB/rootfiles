@@ -34,6 +34,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	disk := c.Doctor.Disk
+	if _, err := ParseSize(disk.MinFree); err != nil {
+		add("doctor.disk.min_free: %v", err)
+	}
+	if disk.WarnPercent < 0 || disk.FailPercent < 0 {
+		add("doctor.disk: percentages must be positive")
+	} else if warn, fail, _ := disk.Thresholds(); warn > fail || fail > 100 {
+		add("doctor.disk: want warn_percent (%g) <= fail_percent (%g) <= 100", warn, fail)
+	}
+
 	checkPort("ssh.port", c.SSH.Port)
 	if c.SSH.MaxAuthTries < 0 || c.SSH.MaxAuthTries > 100 {
 		add("ssh.max_auth_tries: %d out of range", c.SSH.MaxAuthTries)

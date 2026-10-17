@@ -1,5 +1,14 @@
 package config
 
+import (
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+)
+
+var validFreeSize = regexp.MustCompile(`^([1-9][0-9]{0,9})([KMGT])(?:iB)?$`)
+
 // Config is the root configuration struct, mapped from profile YAML files.
 type Config struct {
 	Extends       string        `yaml:"extends,omitempty"`
@@ -10,6 +19,8 @@ type Config struct {
 	PackagesExtra []string      `yaml:"packages_extra"`
 	Users         UsersConfig   `yaml:"users"`
 	SSH           SSHConfig     `yaml:"ssh"`
+	// Doctor is omitted when unset so existing config fingerprints stay the same.
+	Doctor DoctorConfig `yaml:"doctor,omitempty"`
 	// Populated at runtime, not from YAML
 	System *SystemInfo `yaml:"-"`
 }
@@ -255,4 +266,47 @@ func (c *Config) AllPackages() []string {
 		}
 	}
 	return result
+}
+
+// DoctorConfig tunes `rootfiles doctor` grading.
+type DoctorConfig struct {
+	Disk DoctorDiskConfig `yaml:"disk,omitempty"`
+}
+
+// DoctorDiskConfig grades filesystem use. A mount fails only when its use
+// reaches FailPercent and, when MinFree is set, less than MinFree is free.
+type DoctorDiskConfig struct {
+	WarnPercent float64 `yaml:"warn_percent,omitempty"` // default 80
+	FailPercent float64 `yaml:"fail_percent,omitempty"` // default 90
+	MinFree     string  `yaml:"min_free,omitempty"`     // e.g. 100GiB or 500G
+}
+
+// Thresholds returns the warn and fail percentages and the minimum free
+// bytes (0 when unset), with defaults filled in.
+func (d DoctorDiskConfig) Thresholds() (warn, fail float64, minFree uint64) {
+	warn, fail = d.WarnPercent, d.FailPercent
+	if warn == 0 {
+		warn = 80
+	}
+	if fail == 0 {
+		fail = 90
+	}
+	minFree, _ = ParseSize(d.MinFree)
+	return warn, fail, minFree
+}
+
+// ParseSize reads a binary size such as 100GiB, 100G or 512M; "" is 0.
+func ParseSize(s string) (uint64, error) {
+	if s == "" {
+		return 0, nil
+	}
+	m := validFreeSize.FindStringSubmatch(s)
+	if m == nil {
+		return 0, fmt.Errorf("%q (want e.g. 100GiB, 500G)", s)
+	}
+	n, err := strconv.ParseUint(m[1], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%q: %w", s, err)
+	}
+	return n << (10 * (strings.Index("KMGT", m[2]) + 1)), nil
 }

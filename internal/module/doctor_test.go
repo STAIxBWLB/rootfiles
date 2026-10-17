@@ -6,13 +6,26 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 func TestDiskLevel(t *testing.T) {
 	for pct, want := range map[float64]string{10: LevelOK, 79.9: LevelOK, 80: LevelWarn, 89: LevelWarn, 90: LevelFail, 100: LevelFail} {
-		if got := diskLevel(pct); got != want {
+		if got := diskLevel(config.DoctorDiskConfig{}, pct, 1<<40); got != want {
 			t.Errorf("diskLevel(%v) = %s, want %s", pct, got, want)
 		}
+	}
+	// h200: 91% used with 164 GiB free is not a failure under min_free 100GiB.
+	cfg := config.DoctorDiskConfig{MinFree: "100GiB"}
+	if got := diskLevel(cfg, 91, 164<<30); got != LevelWarn {
+		t.Errorf("91%% with 164 GiB free = %s, want warn", got)
+	}
+	if got := diskLevel(cfg, 91, 50<<30); got != LevelFail {
+		t.Errorf("91%% with 50 GiB free = %s, want fail", got)
+	}
+	if got := diskLevel(config.DoctorDiskConfig{WarnPercent: 95, FailPercent: 98}, 96, 0); got != LevelWarn {
+		t.Errorf("custom percentages: got %s, want warn", got)
 	}
 }
 

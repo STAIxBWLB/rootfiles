@@ -813,3 +813,37 @@ func TestLoadSite_RequiresExplicitHomeBase(t *testing.T) {
 		t.Errorf("site config without home_base: want users.home_base error, got %v", err)
 	}
 }
+
+func TestLoad_DoctorDiskThresholds(t *testing.T) {
+	dir := t.TempDir()
+	p := writeFile(t, dir, "site.yaml", "extends: minimal\ndoctor:\n  disk:\n    fail_percent: 95\n    min_free: 100GiB\n")
+	cfg, err := Load("", p, nil)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	warn, fail, minFree := cfg.Doctor.Disk.Thresholds()
+	if warn != 80 || fail != 95 || minFree != 100<<30 {
+		t.Fatalf("thresholds = %v %v %v", warn, fail, minFree)
+	}
+	for _, bad := range []string{"min_free: lots", "min_free: 100GB", "fail_percent: 120", "warn_percent: 95\n    fail_percent: 90", "warn_percent: -1"} {
+		p := writeFile(t, dir, "bad.yaml", "extends: minimal\ndoctor:\n  disk:\n    "+bad+"\n")
+		cfg, err := Load("", p, nil)
+		if err == nil {
+			err = cfg.Validate()
+		}
+		if err == nil || !strings.Contains(err.Error(), "doctor.disk") {
+			t.Errorf("%q should be rejected, got %v", bad, err)
+		}
+	}
+	// Unset thresholds must not change existing fingerprints.
+	plain, err := Load("minimal", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := plain.Effective(); strings.Contains(string(data), "doctor") {
+		t.Fatalf("an unset doctor block leaked into the effective config:\n%s", data)
+	}
+}
