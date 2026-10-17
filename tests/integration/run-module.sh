@@ -17,7 +17,14 @@ case "$MODULE" in
         ;;
     security)
         assert_package_installed "unattended-upgrades"
-        assert_file_contains "/etc/apt/apt.conf.d/52rootfiles-unattended-upgrades" 'Automatic-Reboot "false"'
+        assert_file_contains "/etc/apt/apt.conf.d/zzzzzz-rootfiles-unattended-upgrades" 'Automatic-Reboot "false"'
+        # The package's own 50unattended-upgrades adds general origins; the
+        # merged policy must still allow only the security pockets.
+        if apt-config dump | grep -E '^Unattended-Upgrade::(Allowed-Origins|Origins-Pattern):: ' | grep -vq -- '-security";$'; then
+            fail "effective unattended-upgrades policy is not security-only"
+        else
+            pass "effective unattended-upgrades policy is security-only"
+        fi
         assert_file_exists "/etc/fail2ban/jail.d/rootfiles-sshd.conf"
         ;;
     locale)

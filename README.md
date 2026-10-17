@@ -127,7 +127,7 @@ All modules are idempotent and support `--dry-run`.
 | `packages` | APT package installation (non-interactive, waits for the dpkg lock) |
 | `users` | Custom home base, declared `users.accounts` (keys, groups), backup/restore |
 | `ssh` | sshd hardening (root login, password + keyboard-interactive auth, port, MaxAuthTries) with lockout guard; per-user password exceptions (`ssh.password_auth_users`) |
-| `security` | Security-only unattended upgrades (no reboot, NVIDIA/CUDA excluded), fail2ban sshd jail, NTP |
+| `security` | Security-only unattended upgrades (no reboot, NVIDIA/CUDA excluded; `apt.conf.d/zzzzzz-rootfiles-unattended-upgrades` clears inherited origins, and check reads the merged policy from `apt-config dump`), fail2ban sshd jail, NTP |
 | `docker` | Docker CE + daemon.json merge + storage relocation |
 | `nvidia` | NVIDIA Container Toolkit, Docker runtime, nvidia-persistenced / fabric manager |
 | `gpu` | Per-user GPU allocation (env vars, cgroups) |
