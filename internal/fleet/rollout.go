@@ -135,9 +135,17 @@ func Update(ctx context.Context, runner SSHRunner, hosts []NamedHost, version st
 // host apply-pending. It never applies.
 func postUpdateCheck(ctx context.Context, runner SSHRunner, h NamedHost, updated Result, version string) Result {
 	check := runner.ReadOnly(ctx, h, "check")
-	switch check.State {
-	case "ok":
+	if check.State == "ok" {
 		return updated
+	}
+	// Keep both commands' evidence: the update output and the check's exit
+	// code and output.
+	updated.ExitCode = check.ExitCode
+	if updated.ExitCode == 0 {
+		updated.ExitCode = 1
+	}
+	updated.Output = joinReason(updated.Output, "post-update check: "+check.Output)
+	switch check.State {
 	case "drift":
 		updated.State = "apply-pending"
 		updated.Reason = "updated to " + version + "; apply pending"

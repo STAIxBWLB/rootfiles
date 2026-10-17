@@ -483,10 +483,23 @@ echo "Updated to v1.2.3"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if results[0].State != "apply-pending" || !strings.Contains(results[0].Reason, "monitoring") || strings.Contains(results[0].Reason, "security") {
+	if results[0].State != "apply-pending" || results[0].ExitCode != 2 || !strings.Contains(results[0].Reason, "monitoring") || strings.Contains(results[0].Reason, "security") {
 		t.Fatalf("pending host: %#v", results[0])
 	}
 	if results[1].State != "ok" {
 		t.Fatalf("apply-pending must not stop the rollout, and a clean host stays ok: %#v", results[1])
+	}
+}
+
+func TestUpdateKeepsFailedPostUpdateCheckEvidence(t *testing.T) {
+	bin := writeFakeSSH(t, `#!/bin/sh
+case "$7" in *"check -o json") echo "Error: loading config: bad key" >&2; exit 1 ;; esac
+echo "Updated to v1.2.3"
+`)
+	hosts := []NamedHost{{Name: "one", Host: Host{SSH: "one"}, Sudo: "none"}}
+	results, _ := Update(context.Background(), SSHRunner{Binary: bin}, hosts, "v1.2.3", false)
+	r := results[0]
+	if r.State != "error" || r.ExitCode != 1 || !strings.Contains(r.Output, "Updated to v1.2.3") || !strings.Contains(r.Output, "bad key") || !strings.Contains(r.Reason, "bad key") {
+		t.Fatalf("failed check should carry its exit code and output: %#v", r)
 	}
 }
