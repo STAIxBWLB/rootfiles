@@ -67,7 +67,7 @@ type Module interface {
   - First line: one sentence on what this release changes for the user. No heading before it.
   - Then only the sections that have content, in this order: `### New`, `### Improved`, `### Fixed`, `### Action needed`.
   - One bullet per change in plain language, naming the command, flag or file the user touches (`rootfiles apply`, `rootfiles fleet check`). Describe fixes by the symptom the user saw. End the bullet with the PR number, e.g. `(#123)`.
-  - `### Action needed`: steps required after upgrading (config edits, renamed commands, manual migrations). Omit it when there are none.
+  - `### Action needed`: steps required after upgrading (config edits, renamed commands, manual migrations). Updating replaces only the binary, so a change to generated system files also needs the `apply` step here. Omit it when there are none.
   - Leave out tests, CI, refactors, docs, agent instructions and release plumbing. A release with nothing else is the single line `Maintenance release: no user-facing changes.` plus the changelog line.
   - No commit SHAs, conventional-commit prefixes or internal package paths.
   - Last line: `**Full changelog**: https://github.com/STAIxBWLB/rootfiles/compare/<previous release>...vX.Y.Z` (`.../commits/vX.Y.Z` for the first release).
