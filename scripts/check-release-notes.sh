@@ -62,13 +62,14 @@ check_file() {
         open_section=$n
       fi
     fi
-    # Inside the sections, every line is a bullet (one per change).
+    # Inside the sections, every line is a bullet (one per change) at column 0:
+    # an indented one can render as a code block, not a list item.
     if [ "$last_section" -ge 0 ] && [ -n "$lead" ] && [[ "$lead" != "#"* ]] &&
-      [[ ! "$lead" =~ ^[-*+][[:space:]] ]] && [[ "$line" != '**Full changelog**:'* ]]; then
+      [[ ! "$line" =~ ^[-*+][[:space:]] ]] && [[ "$line" != '**Full changelog**:'* ]]; then
       err "$f" "$n" "section text must be bullets"
     fi
     if [[ "$line" =~ (^|[^0-9a-fA-F])[0-9a-fA-F]{40}([^0-9a-fA-F]|$) ]]; then err "$f" "$n" "commit SHA"; fi
-    if [[ -n "$open_section" && "$lead" =~ ^[-*+][[:space:]] ]]; then open_section=""; fi
+    if [[ -n "$open_section" && "$line" =~ ^[-*+][[:space:]] ]]; then open_section=""; fi
     if [ "$need_pr" = 1 ] && [[ "$lead" =~ ^[-*+][[:space:]] ]] && [[ ! "$line" =~ \(#[0-9]+(,\ #[0-9]+)*\)\.?$ ]]; then
       err "$f" "$n" "bullet must end with its PR number, e.g. (#123)"
     fi
@@ -134,6 +135,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect fail "plus bullet without PR" "$(printf 'X.\n\n### Fixed\n+ a\n\n%s' "$good_tail")"
   expect fail "conventional prefix without a space" "$(printf 'X.\n\n### Fixed\n- fix(cli):a (#1)\n\n%s' "$good_tail")"
   expect fail "indented conventional prefix" "$(printf 'X.\n\n### Fixed\n  - fix(sync): a (#1)\n\n%s' "$good_tail")"
+  expect fail "code-block bullet" "$(printf 'X.\n\n### Fixed\n    - a (#1)\n\n%s' "$good_tail")"
   expect fail "prose in a section" "$(printf 'X.\n\n### Fixed\n- a (#1)\nSome prose.\n\n%s' "$good_tail")"
   expect ok "bullet with two PRs" "$(printf 'X.\n\n### Fixed\n- a (#1, #2)\n\n%s' "$good_tail")"
   # The oldest note links /commits/<tag>, and version order is numeric.
