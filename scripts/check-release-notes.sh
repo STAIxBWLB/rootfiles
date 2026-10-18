@@ -72,7 +72,7 @@ check_file() {
     if [ "$need_pr" = 1 ] && [[ "$lead" =~ ^[-*+][[:space:]] ]] && [[ ! "$line" =~ \(#[0-9]+(,\ #[0-9]+)*\)\.?$ ]]; then
       err "$f" "$n" "bullet must end with its PR number, e.g. (#123)"
     fi
-    if [[ "$lead" =~ ^([-*+][[:space:]]+)?(feat|fix|chore|docs|ci|refactor|test|perf|build|style|revert)(\([^\)]*\))?!?:[[:space:]] ]]; then
+    if [[ "$lead" =~ ^([-*+][[:space:]]+)?(feat|fix|chore|docs|ci|refactor|test|perf|build|style|revert)(\([^\)]*\))?!?: ]]; then
       err "$f" "$n" "conventional-commit prefix"
     fi
   done <"$f"
@@ -132,6 +132,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect fail "bullet without PR" "$(printf 'X.\n\n### Fixed\n- `rootfiles apply` no longer crashes.\n\n%s' "$good_tail")"
   expect fail "star bullet without PR" "$(printf 'X.\n\n### Fixed\n* a\n\n%s' "$good_tail")"
   expect fail "plus bullet without PR" "$(printf 'X.\n\n### Fixed\n+ a\n\n%s' "$good_tail")"
+  expect fail "conventional prefix without a space" "$(printf 'X.\n\n### Fixed\n- fix(cli):a (#1)\n\n%s' "$good_tail")"
   expect fail "indented conventional prefix" "$(printf 'X.\n\n### Fixed\n  - fix(sync): a (#1)\n\n%s' "$good_tail")"
   expect fail "prose in a section" "$(printf 'X.\n\n### Fixed\n- a (#1)\nSome prose.\n\n%s' "$good_tail")"
   expect ok "bullet with two PRs" "$(printf 'X.\n\n### Fixed\n- a (#1, #2)\n\n%s' "$good_tail")"
