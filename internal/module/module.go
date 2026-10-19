@@ -97,6 +97,7 @@ var defaultOrder = []string{
 	"storage",
 	"network",
 	"monitoring",
+	"tenant", // after docker and nvidia: tenant containers need both
 }
 
 // Registry manages module registration and resolution.
@@ -120,6 +121,7 @@ func NewRegistry() *Registry {
 	r.Register(NewStorageModule())
 	r.Register(NewNetworkModule())
 	r.Register(NewMonitoringModule())
+	r.Register(NewTenantModule())
 	return r
 }
 

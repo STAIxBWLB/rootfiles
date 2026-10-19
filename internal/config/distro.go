@@ -64,7 +64,7 @@ func SupportedModules(system *SystemInfo) map[string]bool {
 		return map[string]bool{}
 	}
 	if d.ID != "rocky" {
-		all := []string{"locale", "system", "packages", "users", "ssh", "security", "docker", "nvidia", "gpu", "cloudflared", "storage", "network", "monitoring"}
+		all := []string{"locale", "system", "packages", "users", "ssh", "security", "docker", "nvidia", "gpu", "cloudflared", "storage", "network", "monitoring", "tenant"}
 		result := make(map[string]bool, len(all))
 		for _, name := range all {
 			result[name] = true

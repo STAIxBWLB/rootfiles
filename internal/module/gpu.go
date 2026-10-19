@@ -42,12 +42,13 @@ func (m *GPUModule) Check(_ context.Context, rc *RunContext) (*CheckResult, erro
 		return nil, err
 	}
 	db, err := loadGPUDB(rc)
-	if err != nil || len(db.Allocations) == 0 {
+	allocs := userAllocations(db)
+	if err != nil || len(allocs) == 0 {
 		return &CheckResult{Satisfied: true}, nil
 	}
 
 	var changes []Change
-	for _, alloc := range db.Allocations {
+	for _, alloc := range allocs {
 		method := effectiveMethod(rc, alloc.Method)
 
 		if method == "env" || method == "both" {
@@ -100,7 +101,8 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		return nil, err
 	}
 	db, err := loadGPUDB(rc)
-	if err != nil || len(db.Allocations) == 0 {
+	allocs := userAllocations(db)
+	if err != nil || len(allocs) == 0 {
 		// Remove wrapper if it exists but no allocations remain
 		wrapperData, _ := rc.Runner.ReadFile(dockerWrapperPath)
 		if len(wrapperData) > 0 {
@@ -113,7 +115,7 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	var messages, warnings []string
 	changed := false
 
-	for _, alloc := range db.Allocations {
+	for _, alloc := range allocs {
 		method := effectiveMethod(rc, alloc.Method)
 
 		if method == "env" || method == "both" {
@@ -227,6 +229,9 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 	if err := requireTrustedMetadata(rc); err != nil {
 		return err
 	}
+	if isTenantOwner(username) {
+		return fmt.Errorf("%s belongs to a tenant; change it with `rootfiles tenant gpu`", username)
+	}
 	var method string
 	var allocationsRemaining int
 	if err := withGPUDBLock(rc, func(db *GPUAllocationsDB) error {
@@ -244,7 +249,7 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 			return fmt.Errorf("no GPU allocation found for %s", username)
 		}
 		db.Allocations = remaining
-		allocationsRemaining = len(remaining)
+		allocationsRemaining = len(userAllocations(db))
 		return nil
 	}); err != nil {
 		return err
@@ -578,6 +583,67 @@ func removeDockerWrapper(ctx context.Context, rc *RunContext) {
 	if err := rc.Runner.Remove(dockerWrapperPath); err != nil && !os.IsNotExist(err) {
 		fmt.Printf("  %s removing %s: %v\n", ui.MarkWarn, dockerWrapperPath, err)
 	}
+}
+
+// tenantOwnerPrefix marks ledger entries of `rootfiles tenant` containers.
+// A colon never appears in an account name, so the owners cannot collide.
+const tenantOwnerPrefix = "tenant:"
+
+func isTenantOwner(owner string) bool { return strings.HasPrefix(owner, tenantOwnerPrefix) }
+
+// userAllocations are the ledger entries of host accounts.
+func userAllocations(db *GPUAllocationsDB) []GPUAllocation {
+	var out []GPUAllocation
+	for _, a := range db.Allocations {
+		if !isTenantOwner(a.Username) {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// ReserveTenantGPUs records tenant's GPUs in the shared ledger, rejecting
+// GPUs held by a user or another tenant. No GPUs drops the tenant's entry.
+func ReserveTenantGPUs(ctx context.Context, rc *RunContext, tenant string, gpus []int) error {
+	if err := requireTrustedMetadata(rc); err != nil {
+		return err
+	}
+	owner := tenantOwnerPrefix + tenant
+	if len(gpus) == 0 {
+		db, _ := loadGPUDB(rc)
+		held := false
+		for _, a := range db.Allocations {
+			held = held || a.Username == owner
+		}
+		if !held {
+			return nil
+		}
+	}
+	return withGPUDBLock(rc, func(db *GPUAllocationsDB) error {
+		if len(gpus) == 0 {
+			var keep []GPUAllocation
+			for _, a := range db.Allocations {
+				if a.Username != owner {
+					keep = append(keep, a)
+				}
+			}
+			db.Allocations = keep
+			return nil
+		}
+		if total, model := detectGPUInfo(ctx, rc); total > 0 {
+			db.TotalGPUs, db.GPUModel = total, model
+		}
+		if err := validateGPURequest(db, owner, gpus); err != nil {
+			return err
+		}
+		upsertAllocation(db, GPUAllocation{
+			Username:  owner,
+			GPUs:      gpus,
+			Method:    "tenant",
+			UpdatedAt: time.Now().UTC().Format(time.RFC3339),
+		})
+		return nil
+	})
 }
 
 // --- helpers ---

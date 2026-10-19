@@ -38,6 +38,35 @@ type ModulesConfig struct {
 	Storage     StorageConfig     `yaml:"storage"`
 	Network     NetworkConfig     `yaml:"network"`
 	Monitoring  MonitoringConfig  `yaml:"monitoring"`
+	// omitempty keeps the effective config, and so its fingerprint,
+	// unchanged on hosts that never set it.
+	Tenant TenantConfig `yaml:"tenant,omitempty"`
+}
+
+// TenantConfig prepares a host for `rootfiles tenant` containers.
+type TenantConfig struct {
+	Enabled bool `yaml:"enabled"`
+	// Root holds each tenant's volume image, mount point and system files.
+	Root string `yaml:"root,omitempty"`
+	// OpsGroup members may run `sudo rootfiles tenant ops` for the tenants
+	// that list them as operators.
+	OpsGroup string `yaml:"ops_group,omitempty"`
+}
+
+// DataRoot returns the tenant root, /raid/tenants when unset.
+func (t TenantConfig) DataRoot() string {
+	if t.Root == "" {
+		return "/raid/tenants"
+	}
+	return t.Root
+}
+
+// Group returns the operator group, rootfiles-tenant-ops when unset.
+func (t TenantConfig) Group() string {
+	if t.OpsGroup == "" {
+		return "rootfiles-tenant-ops"
+	}
+	return t.OpsGroup
 }
 
 // SystemConfig covers host-level basics.
@@ -244,6 +273,8 @@ func (c *Config) IsModuleEnabled(name string) bool {
 		return c.Modules.Storage.Enabled
 	case "network":
 		return c.Modules.Network.Enabled
+	case "tenant":
+		return c.Modules.Tenant.Enabled
 	default:
 		return false
 	}

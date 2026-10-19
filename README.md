@@ -11,8 +11,9 @@ Managed hosts must run Linux; macOS is not a supported host OS. The macOS build 
 
 `rootfiles` is the root half of a two-tool server setup. It prepares a machine with everything that needs root and stops at the user account; [dotfiles](https://github.com/STAIxBWLB/dotfiles) (the `dot` binary) then sets up each user's own environment inside that account, on servers as well as on macOS and Linux workstations.
 
-- **One host, declaratively.** `rootfiles apply` converges a host to a profile or site config through 13 modules. `check` reports drift without changing anything, `doctor` checks live health (SSH access, disks, reboot, GPUs), and every file a run changes is backed up for `rollback`.
+- **One host, declaratively.** `rootfiles apply` converges a host to a profile or site config through 14 modules. `check` reports drift without changing anything, `doctor` checks live health (SSH access, disks, reboot, GPUs), and every file a run changes is backed up for `rollback`.
 - **A fleet over SSH.** `rootfiles fleet` runs `status`, `check` and `doctor` in parallel and `apply`, `update`, `bootstrap` and `schedule` serially from an operator's Mac or Linux machine. Config fingerprints show which configuration each host applied, and `fleet update` flags hosts that still need `apply`.
+- **Tenant containers.** `rootfiles tenant` gives outside groups a long-lived SSH container each, with a size-capped volume, accounts and host keys that survive image changes, and GPUs from the shared allocation ledger ([guide](docs/tenant.md)).
 - **Monitoring.** Node and DCGM GPU exporters on each host, an optional Prometheus, Alertmanager and Grafana hub, and scheduled `check`/`doctor` reports exported as metrics.
 
 ```
@@ -146,6 +147,7 @@ All modules are idempotent and support `--dry-run`.
 | `storage` | RAID/NVMe directory setup, symlinks |
 | `network` | UFW firewall, port rules (SSH port always allowed) |
 | `monitoring` | Opt-in Prometheus node exporter and DCGM GPU exporter, plus an optional Prometheus/Alertmanager/Grafana hub that reloads on rule changes |
+| `tenant` | Opt-in host prep for `rootfiles tenant`: GPU device guard timer, daily tenant password sync, fstrim, operator sudoers rule, tenant volume mount units |
 
 Modules run in this order; `users` precedes `ssh` so declared operators exist before password auth is turned off.
 
@@ -488,6 +490,18 @@ MIG mode and instances (read-only; repartition with `nvidia-smi mig`):
 rootfiles gpu mig status
 ```
 
+### Tenant containers
+
+Long-lived SSH containers for outside groups, one per tenant, with a size-capped volume and GPUs from the allocation ledger. Full guide: [docs/tenant.md](docs/tenant.md).
+
+```bash
+sudo rootfiles apply --module tenant          # once per host (modules.tenant.enabled)
+sudo rootfiles tenant create est --image IMAGE --ssh-port 3889 --gpus 2,3 --size 2T --account est:1000 --sudo
+sudo rootfiles tenant image est IMAGE2         # recreate; data, passwords, host key and GPUs kept
+sudo rootfiles tenant volume resize est 3T     # grows online
+sudo rootfiles tenant status
+```
+
 ### Cloudflare tunnel + VLAN
 
 ```bash
@@ -562,10 +576,11 @@ Interactive blueprint: [docs/architecture/rootfiles-v2-rendered.html](docs/archi
 cmd/rootfiles/        Entry point
 internal/
   cli/                Cobra commands (apply, backup, check, config, doctor, gpu, rollback,
-                      schedule, status, tunnel, update, user) + root/lock preflight
+                      schedule, status, tenant, tunnel, update, user) + root/lock preflight
   config/             YAML profiles (tree-merged extends), validation, system detector
     profiles/         Embedded profile YAMLs (go:embed)
-  module/             13 modules implementing the Module interface, doctor checks
+  module/             14 modules implementing the Module interface, doctor checks
+  tenant/             Tenant specs, containers, volumes, passwords, import, audit
   exec/               Shell runner (dry-run aware, per-run file backups), APT wrapper
   state/              Applied-state record, history, global lock
   ui/                 Interactive prompts (Charm huh) + shared output styling
@@ -590,6 +605,7 @@ Every push and pull request runs:
 | `module` | 2 OS × 9 modules + GPU on DGX mock (isolated module execution) |
 | `scenario` | 14 E2E flows: dry-run-all-profiles, user backup/restore, user rehome, user list names, user lifecycle, user quota, declarative accounts, tunnel setup/teardown, OS reinstall recovery, system backup, GPU allocation, status, SSH lockout guard, state/rollback/lock |
 | `fleet-scenario` | Fleet controller against two SSH containers (`tests/scenarios/fleet.sh`): status, serial stop rule, `--skip-unreachable` |
+| `tenant-scenario` | Tenant lifecycle on the runner's Docker and systemd (`tests/scenarios/tenant-lifecycle.sh`): temporary password login, recreate, quota and growth, operator delegation, dry run, import |
 | `rocky` | Rocky 8.9 / 8.10 / 9 images: native core profile, SSH and installer (`tests/run-rocky.sh`) |
 | `monitoring-hub` | Generated monitoring hub acceptance (`tests/scenarios/monitoring-hub.sh`) |
 | `release` | GoReleaser on every `v*` tag push, after the tagged commit's main-push Test run succeeded (Test does not run for tags); publishes `docs/releases/<tag>.md` as the release body and fails when it is missing or fails `scripts/check-release-notes.sh` (format: `AGENTS.md`, Release notes) |
