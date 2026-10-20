@@ -38,7 +38,7 @@ sudo rootfiles tenant create est \
 
 This writes `<home_base>/.rootfiles/tenants/est.yaml`, creates the volume, starts `tenant-est`, checks sshd, the host key and the GPUs, and prints a temporary password per account. The password must be changed at first login. It is printed once and never written to a log or passed on a command line.
 
-The image needs only `openssh-server` (and `useradd`, `chpasswd`, which Debian, Ubuntu and RHEL images have). rootfiles starts the container with its own read-only entrypoint, `/etc/tenant-system/init.sh`, which on every start creates the accounts, seeds stored password hashes into accounts that have none, restores the host keys, starts sshd and runs `/data/.tenant/autostart.sh` as the first account when that file exists.
+The image needs only `openssh-server` (and `useradd`, `chpasswd`, which Debian, Ubuntu and RHEL images have). rootfiles starts the container with its own read-only entrypoint, `/etc/tenant-system/init.sh`, which on every start creates the accounts, applies the stored password hashes (on a new container to every account, later only to accounts without a usable password), restores the host keys, starts sshd and runs `/data/.tenant/autostart.sh` as the first account when that file exists.
 
 | Inside the container | Host | Limit |
 |---|---|---|

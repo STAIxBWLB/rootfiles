@@ -87,6 +87,9 @@ func ContainerName(t string) string { return "tenant-" + t }
 
 // CheckName validates a tenant name.
 func CheckName(name string) error {
+	if strings.HasSuffix(name, "-prev") {
+		return fmt.Errorf("tenant name %q: the -prev suffix names rollback containers", name)
+	}
 	if !validName.MatchString(name) {
 		return fmt.Errorf("invalid tenant name %q (lowercase letter, then lowercase letters, digits or '-', at most 31)", name)
 	}

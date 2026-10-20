@@ -31,6 +31,7 @@ func TestValidate(t *testing.T) {
 	}
 	cases := map[string]func(*Spec){
 		"name":        func(s *Spec) { s.Name = "Bad_Name" },
+		"prev suffix": func(s *Spec) { s.Name = "est-prev" },
 		"image":       func(s *Spec) { s.Image = "--privileged" },
 		"gpu dup":     func(s *Spec) { s.GPUs = []int{1, 1} },
 		"ssh port":    func(s *Spec) { s.SSHPort = 0 },
@@ -137,7 +138,7 @@ func TestRunArgs(t *testing.T) {
 		}
 	}
 	s.GPUs = nil
-	if args := strings.Join(m.RunArgs(s), " "); strings.Contains(args, "gpus") || strings.Contains(args, "runtime") {
+	if args := strings.Join(m.RunArgs(s), " "); strings.Contains(args, "--gpus") || strings.Contains(args, "--runtime") {
 		t.Errorf("GPU flags without GPUs: %s", args)
 	}
 }
@@ -250,7 +251,7 @@ exit 0
 
 func TestPasswdNeverLogsPassword(t *testing.T) {
 	argsLog, stdinLog := fakeDocker(t)
-	t.Setenv("FAKE_INSPECT", "true|x|always")
+	t.Setenv("FAKE_INSPECT", "true|x|always|")
 	var logs bytes.Buffer
 	runner := exec.NewRunner(false, slog.New(slog.NewTextHandler(&logs, nil)))
 	root := t.TempDir()
@@ -313,5 +314,33 @@ func TestDryRunApplyChangesNothing(t *testing.T) {
 		if !strings.HasPrefix(line, "inspect ") {
 			t.Errorf("dry run ran docker %s", line)
 		}
+	}
+}
+
+func TestFailedApplyRestoresGPULedger(t *testing.T) {
+	fakeDocker(t)
+	t.Setenv("FAKE_INSPECT", "") // no container is left after the failure
+	dir := t.TempDir()
+	for _, n := range []string{"install", "truncate", "mkfs.ext4", "systemctl", "ssh-keygen"} {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	var calls [][]int
+	m := &Manager{
+		Runner: exec.NewRunner(false, slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))),
+		Root:   t.TempDir(), SpecDir: t.TempDir(), UnitDir: t.TempDir(), Out: &bytes.Buffer{},
+		ReserveGPUs: func(_ context.Context, _ string, gpus []int) error {
+			calls = append(calls, gpus)
+			return nil
+		},
+	}
+	// The fake mount never happens, so Apply fails after reserving.
+	if err := m.Apply(context.Background(), validSpec()); err == nil {
+		t.Fatal("apply on an unmounted volume succeeded")
+	}
+	if len(calls) != 2 || intList(calls[0]) != "2,3" || len(calls[1]) != 0 {
+		t.Errorf("ledger calls = %v, want [[2 3] []]", calls)
 	}
 }

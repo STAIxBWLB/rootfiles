@@ -91,18 +91,19 @@ type containerState struct {
 	Exists, Running bool
 	Digest          string
 	Restart         string
+	GPUs            string // the GPUs the container was started with
 }
 
 func (m *Manager) inspect(ctx context.Context, name string) containerState {
 	res, err := m.Runner.Query(ctx, "docker", "inspect", "-f",
-		`{{.State.Running}}|{{index .Config.Labels "rootfiles.tenant.spec"}}|{{.HostConfig.RestartPolicy.Name}}`, name)
+		`{{.State.Running}}|{{index .Config.Labels "rootfiles.tenant.spec"}}|{{.HostConfig.RestartPolicy.Name}}|{{index .Config.Labels "rootfiles.tenant.gpus"}}`, name)
 	if err != nil {
 		return containerState{}
 	}
 	f := strings.Split(strings.TrimSpace(res.Stdout), "|")
 	st := containerState{Exists: true}
-	if len(f) == 3 {
-		st.Running, st.Digest, st.Restart = f[0] == "true", f[1], f[2]
+	if len(f) == 4 {
+		st.Running, st.Digest, st.Restart, st.GPUs = f[0] == "true", f[1], f[2], f[3]
 	}
 	return st
 }
@@ -116,6 +117,7 @@ func (m *Manager) RunArgs(s *Spec) []string {
 		"--restart=always", "--init", "--ipc=host",
 		"--label", "rootfiles.tenant=" + s.Name,
 		"--label", "rootfiles.tenant.spec=" + s.Digest(),
+		"--label", "rootfiles.tenant.gpus=" + intList(s.GPUs),
 	}
 	if len(s.GPUs) > 0 {
 		ids := make([]string, len(s.GPUs))
@@ -154,6 +156,8 @@ func (m *Manager) RunArgs(s *Spec) []string {
 // --- apply ---
 
 // Apply converges tenant s: GPU ledger, volume, system files and container.
+// When it fails, the ledger goes back to the GPUs of whatever container is
+// left running, so GPUs a rolled-back container still uses stay reserved.
 func (m *Manager) Apply(ctx context.Context, s *Spec) error {
 	if err := s.Validate(); err != nil {
 		return err
@@ -163,6 +167,27 @@ func (m *Manager) Apply(ctx context.Context, s *Spec) error {
 			return err
 		}
 	}
+	err := m.converge(ctx, s)
+	if err != nil && m.ReserveGPUs != nil && !m.Runner.DryRun {
+		left := m.inspect(ctx, ContainerName(s.Name))
+		if rerr := m.ReserveGPUs(ctx, s.Name, parseInts(left.GPUs)); rerr != nil {
+			err = fmt.Errorf("%w; restoring the GPU ledger also failed: %v", err, rerr)
+		}
+	}
+	return err
+}
+
+func parseInts(s string) []int {
+	var out []int
+	for _, f := range strings.Split(s, ",") {
+		if n, err := strconv.Atoi(strings.TrimSpace(f)); err == nil {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
+func (m *Manager) converge(ctx context.Context, s *Spec) error {
 	if err := m.EnsureVolume(ctx, s); err != nil {
 		return err
 	}

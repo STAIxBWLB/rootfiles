@@ -13,6 +13,7 @@ const InitScript = `#!/bin/sh
 # Managed by rootfiles: tenant boot contract. Do not edit.
 set -u
 SYS=` + SystemMount + `
+BOOTED=/var/lib/rootfiles-tenant-booted
 log() { echo "tenant-init: $*"; }
 
 sync_users() {
@@ -37,13 +38,14 @@ sync_users() {
       if [ "$sudo" = 1 ]; then usermod -aG "$g" "$name"; else gpasswd -d "$name" "$g" >/dev/null 2>&1; fi
     done
   done < "$SYS/users"
-  # Stored hashes only seed accounts without a usable password, so a
-  # password changed in this container survives a restart.
+  # On a container's first boot the stored hashes replace whatever the
+  # image ships; later they only seed accounts without a usable password,
+  # so a password changed in this container survives a restart.
   [ -f "$SYS/shadow" ] || return 0
   while IFS=: read -r name hash lastchg; do
     [ -n "$name" ] && [ -n "$hash" ] || continue
     cur=$(getent shadow "$name" | cut -d: -f2) || continue
-    case "$cur" in ''|'!'*|'*'*) ;; *) continue ;; esac
+    [ -e "$BOOTED" ] && case "$cur" in ''|'!'*|'*'*) ;; *) continue ;; esac
     printf '%s:%s\n' "$name" "$hash" | chpasswd -e || { log "restoring password of $name failed"; continue; }
     [ -n "$lastchg" ] && chage -d "$lastchg" "$name"
   done < "$SYS/shadow"
@@ -55,6 +57,7 @@ if [ "${1:-boot}" = users ]; then
 fi
 
 sync_users
+mkdir -p /var/lib && : > "$BOOTED"
 if ls "$SYS"/ssh/ssh_host_*_key >/dev/null 2>&1; then
   rm -f /etc/ssh/ssh_host_*
   cp "$SYS"/ssh/ssh_host_* /etc/ssh/

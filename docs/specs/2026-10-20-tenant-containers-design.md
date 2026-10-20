@@ -161,7 +161,8 @@ Implementation starts only on the owner's go-ahead.
 - Config lives under `modules.tenant` (`enabled`, `root`, `ops_group`). The default operator group is `rootfiles-tenant-ops`.
 - The container mounts the volume subdirectories with `--mount type=bind` instead of a named Docker volume `tenant-<t>`. A bind mount fails when its source is missing, so a container cannot start on the bare mount point of an unmounted volume and write past the quota. The named volume added nothing else.
 - The volume image is mounted by a systemd `.mount` unit with `loop,discard,nodev,nosuid`, `Before=docker.service` and `WantedBy=docker.service`. `nosuid,nodev` and a root-only `<root>/<t>` keep host users away from setuid files a tenant leaves in its volume.
-- Stored password hashes only seed accounts that have no usable password (a fresh container). A password changed inside a container therefore survives a plain restart even before the daily sync.
+- On a container's first boot the stored password hashes replace whatever the image ships. On later boots they only seed accounts without a usable password, so a password changed inside a container survives a plain restart even before the daily sync.
+- Tenant names cannot end in `-prev`, the suffix of rollback containers. Containers carry a `rootfiles.tenant.gpus` label; a failed apply returns the GPU ledger to the GPUs of the container left running.
 - The daily sync is `rootfiles tenant sync`, run by `rootfiles-tenant-sync.timer`. `tenant list` prints tenant names.
 - A recreate refuses while `tenant-<t>-prev` still exists, so an earlier rollback copy is never discarded silently.
 - `tenant ops` refuses every flag and clears `ROOTFILES_*` variables before loading the host's applied config, because the sudoers wildcard would otherwise let an operator point `--config` at a spec they control.
