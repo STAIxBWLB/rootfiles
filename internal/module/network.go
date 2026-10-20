@@ -23,6 +23,9 @@ func (m *NetworkModule) requiredPorts(ctx context.Context, rc *RunContext) []int
 	for _, p := range sshPorts(ctx, rc) {
 		set[p] = true
 	}
+	if sp := rc.Config.Modules.Tenant.SSHPiper; sp.Enabled {
+		set[sp.ListenPort()] = true // tenant SSH through sshpiper
+	}
 	ports := make([]int, 0, len(set))
 	for p := range set {
 		ports = append(ports, p)

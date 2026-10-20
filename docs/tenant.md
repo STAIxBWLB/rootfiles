@@ -49,6 +49,7 @@ ssh -p 2222 est.dev@dgx02      # user dev of tenant est
 - Keys: sshpiper checks the client key against the user's `~/.ssh/authorized_keys` inside the container (copied by the 2-minute sync; only plain key lines, options are dropped), then logs in to the container with a host-only key. A tenant created before sshpiper was enabled needs `rootfiles tenant apply <t>` and `rootfiles tenant restart <t>` once before key logins work.
 - sshpiper checks each container's host key against the keys rootfiles stores. Clients see sshpiper's own host key on port 2222.
 - failtoban bans an address for an hour after 5 failed logins.
+- Firewall: with `modules.network.ufw`, the network module admits the port. If UFW is active without that, or its state cannot be read, `check` reports the port as blocked and `apply` stops before starting sshpiper. A port held by another process is refused the same way, also when changing the port of a running sshpiper.
 - The direct per-tenant ports keep working. Disabling sshpiper removes the service and the route files.
 - `rootfiles tenant status` and `create` print the routed command for each account.
 

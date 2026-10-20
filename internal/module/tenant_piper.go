@@ -118,13 +118,36 @@ func piperActive(ctx context.Context, rc *RunContext, unit string) bool {
 	return err == nil && strings.TrimSpace(res.Stdout) == "active"
 }
 
-// piperPortTaken reports whether another process listens on the port.
+// piperPortTaken reports whether a process other than sshpiperd listens
+// on the port, so a port change never restarts sshpiper onto a held port.
 func piperPortTaken(ctx context.Context, rc *RunContext, port int) bool {
-	if piperActive(ctx, rc, piperUnit) {
+	res, err := rc.Runner.Query(ctx, "ss", "-H", "-ltnp", "sport = :"+strconv.Itoa(port))
+	if err != nil {
 		return false
 	}
-	res, err := rc.Runner.Query(ctx, "ss", "-H", "-ltn", "sport = :"+strconv.Itoa(port))
-	return err == nil && strings.TrimSpace(res.Stdout) != ""
+	out := strings.TrimSpace(res.Stdout)
+	return out != "" && !strings.Contains(out, `"sshpiperd"`)
+}
+
+// piperBlock names what would keep the shared port from working: another
+// process holding it, an active UFW without an allowance that the network
+// module will not add in this run, or a UFW whose state cannot be read.
+func piperBlock(ctx context.Context, rc *RunContext, port int) string {
+	if piperPortTaken(ctx, rc, port) {
+		return fmt.Sprintf("port %d is held by another process; free it or set modules.tenant.sshpiper.port", port)
+	}
+	if !rc.Runner.CommandExists("ufw") {
+		return ""
+	}
+	res, err := rc.Runner.Query(ctx, "ufw", "status")
+	if err != nil {
+		return fmt.Sprintf("cannot read the UFW state to admit port %d: %s", port, firstLine(err.Error()))
+	}
+	st := parseUFWStatus(res.Stdout)
+	if !st.Active || st.Allowed[port] || rc.Config.Modules.Network.UFW && rc.moduleSucceeding("network") {
+		return ""
+	}
+	return fmt.Sprintf("UFW is active and does not allow port %d; enable modules.network with ufw, or run `ufw allow %d/tcp`", port, port)
 }
 
 func piperChanges(ctx context.Context, rc *RunContext) ([]Change, error) {
@@ -149,15 +172,14 @@ func piperChanges(ctx context.Context, rc *RunContext) ([]Change, error) {
 	if !rc.Runner.FileExists(filepath.Join(piperConfDir, "upstream_ed25519")) {
 		add("Generate sshpiper upstream key", "ssh-keygen -f "+piperConfDir+"/upstream_ed25519")
 	}
+	if block := piperBlock(ctx, rc, sp.ListenPort()); block != "" {
+		return append(changes, Change{Description: block, State: ChangeBlocked}), nil
+	}
 	if cur, err := rc.Runner.ReadFile(piperUnitPath()); err != nil || string(cur) != piperUnitContent(rc) {
 		add("Write "+piperUnit, "write "+piperUnitPath())
 	}
 	if !unitOn(ctx, rc, piperUnit) || !piperActive(ctx, rc, piperUnit) {
-		if piperPortTaken(ctx, rc, sp.ListenPort()) {
-			changes = append(changes, Change{Description: fmt.Sprintf("Port %d is held by another process; free it or set modules.tenant.sshpiper.port", sp.ListenPort()), State: ChangeBlocked})
-		} else {
-			add("Start "+piperUnit+" on port "+strconv.Itoa(sp.ListenPort()), "systemctl enable --now "+piperUnit)
-		}
+		add("Start "+piperUnit+" on port "+strconv.Itoa(sp.ListenPort()), "systemctl enable --now "+piperUnit)
 	}
 	return changes, nil
 }
@@ -197,6 +219,11 @@ func applyPiper(ctx context.Context, rc *RunContext, note func(string)) error {
 		}
 		note("generated sshpiper upstream key")
 	}
+	// Checked before the unit changes, so a bad port never stops a working
+	// listener.
+	if block := piperBlock(ctx, rc, sp.ListenPort()); block != "" {
+		return fmt.Errorf("%s", block)
+	}
 	restart := false
 	if cur, err := rc.Runner.ReadFile(piperUnitPath()); err != nil || string(cur) != piperUnitContent(rc) {
 		if err := rc.Runner.WriteFile(piperUnitPath(), []byte(piperUnitContent(rc)), 0o644); err != nil {
@@ -210,9 +237,6 @@ func applyPiper(ctx context.Context, rc *RunContext, note func(string)) error {
 	}
 	switch {
 	case !unitOn(ctx, rc, piperUnit) || !piperActive(ctx, rc, piperUnit):
-		if piperPortTaken(ctx, rc, sp.ListenPort()) {
-			return fmt.Errorf("port %d is held by another process; free it or set modules.tenant.sshpiper.port", sp.ListenPort())
-		}
 		if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", piperUnit); err != nil {
 			return err
 		}

@@ -148,3 +148,35 @@ func TestPiperUnit(t *testing.T) {
 		}
 	}
 }
+
+func TestPiperBlock(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	rc := newDryRunRC(t)
+
+	write("ss", `echo 'LISTEN 0 4096 0.0.0.0:2222 0.0.0.0:* users:(("sshpiperd",pid=1,fd=3))'`)
+	write("ufw", `echo "Status: inactive"`)
+	if b := piperBlock(context.Background(), rc, 2222); b != "" {
+		t.Errorf("own listener blocked: %s", b)
+	}
+	write("ss", `echo 'LISTEN 0 4096 0.0.0.0:2222 0.0.0.0:* users:(("sshd",pid=1,fd=3))'`)
+	if b := piperBlock(context.Background(), rc, 2222); !strings.Contains(b, "held by another process") {
+		t.Errorf("foreign listener not blocked: %q", b)
+	}
+	write("ss", `exit 0`)
+	write("ufw", `printf 'Status: active\n\nTo Action From\n22/tcp ALLOW Anywhere\n'`)
+	if b := piperBlock(context.Background(), rc, 2222); !strings.Contains(b, "UFW is active") {
+		t.Errorf("closed firewall not blocked: %q", b)
+	}
+	rc.Config.Modules.Network = config.NetworkConfig{Enabled: true, UFW: true}
+	if b := piperBlock(context.Background(), rc, 2222); b != "" {
+		t.Errorf("network module will open the port, still blocked: %s", b)
+	}
+	write("ufw", `exit 1`)
+	if b := piperBlock(context.Background(), rc, 2222); !strings.Contains(b, "cannot read the UFW state") {
+		t.Errorf("unknown firewall state not blocked: %q", b)
+	}
+}
