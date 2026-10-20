@@ -146,8 +146,9 @@ func (c *Config) Validate() error {
 		for _, ip := range sp.FailtobanIgnore {
 			_, perr := netip.ParsePrefix(ip)
 			_, aerr := netip.ParseAddr(ip)
-			if perr != nil && aerr != nil {
-				add("modules.tenant.sshpiper.failtoban_ignore: %q is not an address or CIDR", ip)
+			// A zone ("%eth0") would read as a systemd specifier in ExecStart.
+			if perr != nil && aerr != nil || strings.Contains(ip, "%") {
+				add("modules.tenant.sshpiper.failtoban_ignore: %q is not an address or CIDR without a zone", ip)
 			}
 		}
 	}
