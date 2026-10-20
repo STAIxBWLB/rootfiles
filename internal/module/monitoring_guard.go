@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 // The exporter firewall guard admits exporter traffic only from allow_from.
@@ -23,7 +24,33 @@ const exporterGuardUnit = "rootfiles-exporter-firewall.service"
 var (
 	exporterGuardHelperPath = "/usr/local/sbin/rootfiles-exporter-firewall"
 	exporterGuardConfPath   = "/etc/rootfiles/exporter-firewall.conf"
+	exporterGuardRootUID    = uint32(0)
+	// exporterGuardSetupFiles are the units and drop-ins the helper's setup
+	// writes. They go into the apply backup, so rollback removes them too.
+	exporterGuardSetupFiles = []string{
+		"/etc/systemd/system/rootfiles-exporter-firewall.service",
+		"/etc/systemd/system/docker.service.d/90-rootfiles-exporter-firewall.conf",
+		"/etc/systemd/system/ufw.service.d/90-rootfiles-exporter-firewall.conf",
+		"/etc/systemd/system/prometheus-node-exporter.service.d/90-rootfiles-exporter-firewall.conf",
+		"/etc/systemd/system/rootfiles-dcgm-exporter.service.d/90-rootfiles-exporter-firewall.conf",
+		"/etc/systemd/system/rootfiles-monitoring-hub.service.d/90-rootfiles-exporter-firewall.conf",
+	}
 )
+
+// exporterGuardFileCurrent reports whether path holds content as a regular,
+// root-owned file that group and others cannot write: systemd runs the
+// helper as root, and the helper trusts its config.
+func exporterGuardFileCurrent(rc *RunContext, path string, content []byte) bool {
+	fi, err := os.Lstat(path)
+	if err != nil || !fi.Mode().IsRegular() || fi.Mode().Perm()&0o022 != 0 {
+		return false
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || st.Uid != exporterGuardRootUID {
+		return false
+	}
+	cur, err := rc.Runner.ReadFile(path)
+	return err == nil && bytes.Equal(cur, content)
+}
 
 // exporterGuardConf renders the helper config. On a hub host the hub's
 // Compose bridge is admitted too, so its Prometheus can scrape this host.
@@ -72,10 +99,10 @@ func checkExporterGuard(ctx context.Context, rc *RunContext) []Change {
 	}
 	setup := exporterGuardHelperPath + " setup"
 	var changes []Change
-	if cur, err := rc.Runner.ReadFile(exporterGuardHelperPath); err != nil || !bytes.Equal(cur, exporterGuardHelper) {
+	if !exporterGuardFileCurrent(rc, exporterGuardHelperPath, exporterGuardHelper) {
 		changes = append(changes, Change{Description: "Install the exporter firewall helper", Command: "write " + exporterGuardHelperPath + " && " + setup})
 	}
-	if cur, err := rc.Runner.ReadFile(exporterGuardConfPath); err != nil || string(cur) != exporterGuardConf(ctx, rc) {
+	if !exporterGuardFileCurrent(rc, exporterGuardConfPath, []byte(exporterGuardConf(ctx, rc))) {
 		changes = append(changes, Change{Description: "Write the exporter firewall config", Command: "write " + exporterGuardConfPath + " && " + setup})
 	}
 	if len(changes) == 0 {
@@ -95,11 +122,18 @@ func applyExporterGuard(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		return nil, fmt.Errorf("%s", block)
 	}
 	write := func(path string, content []byte, mode os.FileMode) (bool, error) {
-		if cur, err := rc.Runner.ReadFile(path); err == nil && bytes.Equal(cur, content) {
+		if exporterGuardFileCurrent(rc, path, content) {
 			return false, nil
 		}
 		if err := rc.Runner.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return false, err
+		}
+		// A fresh file gets root ownership and mode; writing through an
+		// existing one would keep its owner, mode or symlink.
+		if _, err := os.Lstat(path); err == nil {
+			if err := rc.Runner.Remove(path); err != nil {
+				return false, err
+			}
 		}
 		return true, rc.Runner.WriteFile(path, content, mode)
 	}
@@ -116,6 +150,13 @@ func applyExporterGuard(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 			return out, nil
 		}
 	}
+	if !rc.Runner.DryRun {
+		for _, p := range exporterGuardSetupFiles {
+			if err := rc.Runner.Backup.Preserve(p); err != nil {
+				return nil, fmt.Errorf("backing up %s before exporter firewall setup: %w", p, err)
+			}
+		}
+	}
 	// setup rebuilds the owned chains behind a DROP guard, so the exporters
 	// stay closed while it runs.
 	if _, err := rc.Runner.Run(ctx, exporterGuardHelperPath, "setup"); err != nil {
@@ -123,11 +164,11 @@ func applyExporterGuard(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 	}
 	out.Changed = true
 	out.Messages = append(out.Messages, "exporter firewall guard installed and applied")
-	// An exporter refused to start while the rules were missing (its
+	// An enabled exporter refused to start while the rules were missing (its
 	// ExecStartPre verify failed) starts now that they are back.
 	cfg := rc.Config.Modules.Monitoring
 	for unit, on := range map[string]bool{nodeExporterUnit: cfg.NodeExporter, dcgmExporterUnit: cfg.DCGMExporter} {
-		if on && !serviceActive(ctx, rc, unit) {
+		if on && serviceEnabled(ctx, rc, unit) && !serviceActive(ctx, rc, unit) {
 			// Refused starts may have hit the unit's start limit.
 			_, _ = rc.Runner.Run(ctx, "systemctl", "reset-failed", unit)
 			if _, err := rc.Runner.Run(ctx, "systemctl", "start", unit); err != nil {

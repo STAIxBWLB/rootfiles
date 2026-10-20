@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 // fakeGuardHost points the guard at a temp tree and swaps the embedded
@@ -18,12 +19,14 @@ func fakeGuardHost(t *testing.T, active bool) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
 	calls := filepath.Join(dir, "calls.log")
-	oldHelper, oldConf, oldBytes := exporterGuardHelperPath, exporterGuardConfPath, exporterGuardHelper
+	oldHelper, oldConf, oldBytes, oldUID, oldFiles := exporterGuardHelperPath, exporterGuardConfPath, exporterGuardHelper, exporterGuardRootUID, exporterGuardSetupFiles
 	t.Cleanup(func() {
-		exporterGuardHelperPath, exporterGuardConfPath, exporterGuardHelper = oldHelper, oldConf, oldBytes
+		exporterGuardHelperPath, exporterGuardConfPath, exporterGuardHelper, exporterGuardRootUID, exporterGuardSetupFiles = oldHelper, oldConf, oldBytes, oldUID, oldFiles
 	})
 	exporterGuardHelperPath = filepath.Join(dir, "sbin", "rootfiles-exporter-firewall")
 	exporterGuardConfPath = filepath.Join(dir, "etc", "exporter-firewall.conf")
+	exporterGuardRootUID = uint32(os.Getuid())
+	exporterGuardSetupFiles = []string{filepath.Join(dir, "units", "guard.service"), filepath.Join(dir, "units", "docker.conf")}
 	exporterGuardHelper = []byte("#!/bin/sh\necho \"helper $*\" >> " + calls + "\ncase $1 in\ncheck) test -f " + dir + "/rules-ok || { echo 'ERROR: required owner-marked firewall rules are missing or drifted' >&2; exit 1; } ;;\nsetup) touch " + dir + "/rules-ok ;;\nesac\n")
 	state := "inactive"
 	if active {
@@ -32,7 +35,7 @@ func fakeGuardHost(t *testing.T, active bool) (string, string) {
 	fakeMonitoringCommand(t, "iptables", "#!/bin/sh\nexit 0\n")
 	fakeMonitoringCommand(t, "iptables-save", "#!/bin/sh\nexit 0\n")
 	fakeMonitoringCommand(t, "python3", "#!/bin/sh\nexit 0\n")
-	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\necho \"systemctl $*\" >> "+calls+"\ncase $1 in is-active) echo "+state+";; esac\n")
+	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\necho \"systemctl $*\" >> "+calls+"\ncase $1 in is-active) echo "+state+";; is-enabled) echo enabled;; esac\n")
 	return dir, calls
 }
 
@@ -256,6 +259,80 @@ func TestDockerDependentUnitsStartWithDocker(t *testing.T) {
 	} {
 		if !strings.Contains(unit, "\nWantedBy=multi-user.target docker.service\n") {
 			t.Errorf("%s unit must be wanted by docker.service:\n%s", name, unit)
+		}
+	}
+}
+
+// A helper with the right bytes but unsafe metadata is not current: systemd
+// runs it as root.
+func TestExporterGuardReplacesUnsafeHelper(t *testing.T) {
+	dir, _ := fakeGuardHost(t, true)
+	rc := guardRC(t, false)
+	ctx := context.Background()
+	if _, err := applyExporterGuard(ctx, rc); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("group writable", func(t *testing.T) {
+		if err := os.Chmod(exporterGuardHelperPath, 0o770); err != nil {
+			t.Fatal(err)
+		}
+		if changes := checkExporterGuard(ctx, rc); len(changes) != 1 {
+			t.Fatalf("want the helper reported, got %+v", changes)
+		}
+		if _, err := applyExporterGuard(ctx, rc); err != nil {
+			t.Fatal(err)
+		}
+		if fi, _ := os.Stat(exporterGuardHelperPath); fi.Mode().Perm() != 0o750 {
+			t.Fatalf("mode not repaired: %v", fi.Mode())
+		}
+	})
+	t.Run("symlink", func(t *testing.T) {
+		target := filepath.Join(dir, "elsewhere")
+		if err := os.WriteFile(target, exporterGuardHelper, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(exporterGuardHelperPath); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, exporterGuardHelperPath); err != nil {
+			t.Fatal(err)
+		}
+		if changes := checkExporterGuard(ctx, rc); len(changes) != 1 {
+			t.Fatalf("want the symlinked helper reported, got %+v", changes)
+		}
+		if _, err := applyExporterGuard(ctx, rc); err != nil {
+			t.Fatal(err)
+		}
+		if fi, err := os.Lstat(exporterGuardHelperPath); err != nil || !fi.Mode().IsRegular() {
+			t.Fatalf("symlink not replaced: %v %v", fi, err)
+		}
+		if changes := checkExporterGuard(ctx, rc); len(changes) != 0 {
+			t.Fatalf("check after repair: %+v", changes)
+		}
+	})
+}
+
+// The units setup writes are in the apply backup, so rollback removes them
+// along with the helper and config.
+func TestExporterGuardSetupFilesAreBackedUp(t *testing.T) {
+	_, _ = fakeGuardHost(t, true)
+	rc := guardRC(t, false)
+	root := t.TempDir()
+	rc.Runner.Backup = exec.NewBackup(root, "test")
+	if _, err := applyExporterGuard(context.Background(), rc); err != nil {
+		t.Fatal(err)
+	}
+	m, err := exec.LoadBackup(root, rc.Runner.Backup.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := map[string]bool{}
+	for _, e := range m.Entries {
+		created[e.Path] = !e.Existed
+	}
+	for _, p := range append([]string{exporterGuardHelperPath, exporterGuardConfPath}, exporterGuardSetupFiles...) {
+		if !created[p] {
+			t.Errorf("%s missing from the backup as a created file: %+v", p, m.Entries)
 		}
 	}
 }
