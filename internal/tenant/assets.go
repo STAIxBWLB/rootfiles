@@ -66,7 +66,14 @@ if ls "$SYS"/ssh/ssh_host_*_key >/dev/null 2>&1; then
 fi
 if [ -x /usr/sbin/sshd ]; then
   mkdir -p /run/sshd && chmod 755 /run/sshd
-  /usr/sbin/sshd || log "sshd failed to start"
+  # With sshpiper routing, sshpiperd checks client keys itself and then logs
+  # in with the host's upstream key, which sshd trusts for every account.
+  if [ -f "$SYS/piper.pub" ]; then
+    install -m 0644 "$SYS/piper.pub" /etc/ssh/rootfiles_piper_authorized_keys
+    /usr/sbin/sshd -o "AuthorizedKeysFile=.ssh/authorized_keys .ssh/authorized_keys2 /etc/ssh/rootfiles_piper_authorized_keys" || log "sshd failed to start"
+  else
+    /usr/sbin/sshd || log "sshd failed to start"
+  fi
 else
   log "openssh-server is not installed in this image"
 fi

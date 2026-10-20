@@ -114,3 +114,69 @@ func TestTenantModuleCheck(t *testing.T) {
 		t.Errorf("sudoers rule: %s", tenantSudoersContent("ops"))
 	}
 }
+
+func TestInstallPiperRejectsWrongChecksum(t *testing.T) {
+	dir := t.TempDir()
+	oldLib, oldURL, oldArch := piperLibDir, piperURL, piperGOARCH
+	piperLibDir, piperGOARCH = filepath.Join(dir, "lib"), "amd64"
+	archive := filepath.Join(dir, "fake.tar.gz")
+	os.WriteFile(archive, []byte("not the release"), 0o644)
+	piperURL = "file://" + archive + "?%s%s"
+	t.Cleanup(func() { piperLibDir, piperURL, piperGOARCH = oldLib, oldURL, oldArch })
+	rc := newRealRC(t)
+	err := installPiper(context.Background(), rc, "v1.6.1")
+	if err == nil || !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("tampered archive installed: %v", err)
+	}
+	if piperInstalled("v1.6.1") || fileExists(piperDir("v1.6.1")) {
+		t.Error("files left after a rejected download")
+	}
+	if _, _, err := piperSum("v9.9.9"); err == nil {
+		t.Error("unpinned version accepted")
+	}
+}
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+func TestPiperUnit(t *testing.T) {
+	rc := newDryRunRC(t)
+	rc.Config.Modules.Tenant.SSHPiper = config.SSHPiperConfig{Enabled: true}
+	u := piperUnitContent(rc)
+	for _, want := range []string{"--port 2222", "--address 0.0.0.0", "/v1.6.1/plugins/yaml --config /etc/rootfiles/sshpiper/tenants/*.yaml -- ", "/plugins/failtoban", "--server-key-generate-mode notexist"} {
+		if !strings.Contains(u, want) {
+			t.Errorf("unit lacks %q:\n%s", want, u)
+		}
+	}
+}
+
+func TestPiperBlock(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) {
+		os.WriteFile(filepath.Join(dir, name), []byte("#!/bin/sh\n"+body+"\n"), 0o755)
+	}
+	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	rc := newDryRunRC(t)
+
+	write("ss", `echo 'LISTEN 0 4096 0.0.0.0:2222 0.0.0.0:* users:(("sshpiperd",pid=1,fd=3))'`)
+	write("ufw", `echo "Status: inactive"`)
+	if b := piperBlock(context.Background(), rc, 2222); b != "" {
+		t.Errorf("own listener blocked: %s", b)
+	}
+	write("ss", `echo 'LISTEN 0 4096 0.0.0.0:2222 0.0.0.0:* users:(("sshd",pid=1,fd=3))'`)
+	if b := piperBlock(context.Background(), rc, 2222); !strings.Contains(b, "held by another process") {
+		t.Errorf("foreign listener not blocked: %q", b)
+	}
+	write("ss", `exit 0`)
+	write("ufw", `printf 'Status: active\n\nTo Action From\n22/tcp ALLOW Anywhere\n'`)
+	if b := piperBlock(context.Background(), rc, 2222); !strings.Contains(b, "UFW is active") {
+		t.Errorf("closed firewall not blocked: %q", b)
+	}
+	rc.Config.Modules.Network = config.NetworkConfig{Enabled: true, UFW: true}
+	if b := piperBlock(context.Background(), rc, 2222); b != "" {
+		t.Errorf("network module will open the port, still blocked: %s", b)
+	}
+	write("ufw", `exit 1`)
+	if b := piperBlock(context.Background(), rc, 2222); !strings.Contains(b, "cannot read the UFW state") {
+		t.Errorf("unknown firewall state not blocked: %q", b)
+	}
+}

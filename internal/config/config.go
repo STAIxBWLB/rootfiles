@@ -51,6 +51,36 @@ type TenantConfig struct {
 	// OpsGroup members may run `sudo rootfiles tenant ops` for the tenants
 	// that list them as operators.
 	OpsGroup string `yaml:"ops_group,omitempty"`
+	// SSHPiper routes `ssh <tenant>.<user>@host -p <port>` to the tenants
+	// through one port.
+	SSHPiper SSHPiperConfig `yaml:"sshpiper,omitempty"`
+}
+
+// SSHPiperConfig runs sshpiperd for single-port tenant SSH.
+type SSHPiperConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Port    int    `yaml:"port,omitempty"`    // default 2222
+	Address string `yaml:"address,omitempty"` // default all addresses
+	Version string `yaml:"version,omitempty"` // default DefaultSSHPiperVersion
+}
+
+// DefaultSSHPiperVersion is the sshpiper release rootfiles installs.
+const DefaultSSHPiperVersion = "v1.6.1"
+
+// ListenPort returns the port, 2222 when unset.
+func (p SSHPiperConfig) ListenPort() int {
+	if p.Port == 0 {
+		return 2222
+	}
+	return p.Port
+}
+
+// Release returns the version, DefaultSSHPiperVersion when unset.
+func (p SSHPiperConfig) Release() string {
+	if p.Version == "" {
+		return DefaultSSHPiperVersion
+	}
+	return p.Version
 }
 
 // DataRoot returns the tenant root, /raid/tenants when unset.

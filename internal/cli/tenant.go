@@ -195,6 +195,9 @@ func newTenantCreateCmd() *cobra.Command {
 						return err
 					}
 				}
+				for _, r := range m.Routes(s) {
+					fmt.Fprintln(cmd.OutOrStdout(), "Through sshpiper:", r)
+				}
 				return nil
 			})
 		},
@@ -564,9 +567,14 @@ host's applied configuration. Every attempt is audited.`,
 func newTenantSyncCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",
-		Short: "Save the password hashes of every running tenant (daily timer)",
-		Args:  cobra.NoArgs,
+		Short: "Save password hashes and refresh sshpiper keys of every tenant (2-minute timer)",
+		Long: `Runs without the global lock, so the timer never fails because an apply is
+running: it only rewrites each tenant's derived files. It still needs root.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if geteuid() != 0 {
+				return fmt.Errorf("'%s' must run as root", cmd.CommandPath())
+			}
 			_, m, err := tenantEnv(cmd)
 			if err != nil {
 				return err
@@ -579,7 +587,7 @@ func newTenantSyncCmd() *cobra.Command {
 			for _, t := range names {
 				s, err := m.Load(t)
 				if err == nil {
-					err = m.SyncShadow(cmd.Context(), s)
+					err = m.Sync(cmd.Context(), s)
 				}
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "✗ %s: %v\n", t, err)

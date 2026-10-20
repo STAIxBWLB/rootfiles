@@ -238,7 +238,10 @@ echo "$*" >> ` + argsLog + `
 case "$1 $2" in
   "inspect -f") [ -n "$FAKE_INSPECT" ] || exit 1; echo "$FAKE_INSPECT" ;;
   "exec -i") cat >> ` + stdinLog + ` ;;
-  "exec tenant-est") [ "$3" = cat ] && echo 'est:$y$new:0:0:99999:7:::' ;;
+  "exec tenant-est") case "$*" in
+      *"head -c "*/etc/shadow) echo 'est:$y$new:0:0:99999:7:::' ;;
+      *"head -c "*/authorized_keys) printf '%s\n' "$FAKE_KEYS" ;;
+    esac ;;
 esac
 exit 0
 `
@@ -342,5 +345,59 @@ func TestFailedApplyRestoresGPULedger(t *testing.T) {
 	}
 	if len(calls) != 2 || intList(calls[0]) != "2,3" || len(calls[1]) != 0 {
 		t.Errorf("ledger calls = %v, want [[2 3] []]", calls)
+	}
+}
+
+const testKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOJJp7dZbRrS8A7klbE7caOiDsdP+g+4fnRvtAj4lL0a"
+
+func TestCleanKeys(t *testing.T) {
+	in := testKey + " alice@laptop\n" +
+		`from="10.0.0.0/8" ` + testKey + "\n" + // options: sshpiper would ignore them
+		"ssh-rsa " + strings.TrimPrefix(testKey, "ssh-ed25519 ") + "\n" + // blob names another type
+		"ssh-ed25519 not-base64\n# comment\n\ngarbage\n"
+	if got := string(cleanKeys(in)); got != testKey+"\n" {
+		t.Errorf("cleanKeys = %q", got)
+	}
+}
+
+func TestWriteRoutes(t *testing.T) {
+	fakeDocker(t)
+	t.Setenv("FAKE_INSPECT", "true|x|always|")
+	t.Setenv("FAKE_KEYS", testKey+" alice\nbroken line")
+	conf := t.TempDir()
+	m := &Manager{
+		Runner: exec.NewRunner(false, slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil))),
+		Root:   t.TempDir(), Out: &bytes.Buffer{},
+		Piper: &Piper{ConfigDir: conf, Port: 2222},
+	}
+	s := validSpec()
+	sshDir := filepath.Join(m.Paths("est").System, "ssh")
+	os.MkdirAll(sshDir, 0o700)
+	os.WriteFile(filepath.Join(sshDir, "ssh_host_ed25519_key.pub"), []byte(testKey+" tenant-est\n"), 0o644)
+	if err := m.WriteRoutes(context.Background(), s); err != nil {
+		t.Fatal(err)
+	}
+	routes, _ := os.ReadFile(filepath.Join(conf, "tenants", "est.yaml"))
+	r := string(routes)
+	if strings.Count(r, `username: "est.est"`) != 2 || strings.Count(r, "private_key:") != 1 {
+		t.Errorf("want one key pipe and one password pipe:\n%s", r)
+	}
+	// The password pipe (second) must not carry the upstream key.
+	if pw := r[strings.LastIndex(r, "- from:"):]; strings.Contains(pw, "private_key") || strings.Contains(pw, "authorized_keys") {
+		t.Errorf("password pipe carries a key:\n%s", pw)
+	}
+	known, _ := os.ReadFile(filepath.Join(m.Paths("est").System, "piper", "known_hosts"))
+	if string(known) != "[127.0.0.1]:3889 "+testKey+"\n" {
+		t.Errorf("known_hosts = %q", known)
+	}
+	keys, _ := os.ReadFile(filepath.Join(m.Paths("est").System, "piper", "keys", "est"))
+	if string(keys) != testKey+"\n" {
+		t.Errorf("synced keys = %q", keys)
+	}
+	if fi, _ := os.Stat(filepath.Join(conf, "tenants", "est.yaml")); fi.Mode().Perm()&0o077 != 0 {
+		t.Errorf("route file mode %v; sshpiper refuses group/other bits", fi.Mode())
+	}
+	if got := m.Routes(s); len(got) != 1 || got[0] != "ssh -p 2222 est.est@HOST" {
+		t.Errorf("Routes = %v", got)
 	}
 }

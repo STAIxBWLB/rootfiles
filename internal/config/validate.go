@@ -133,6 +133,17 @@ func (c *Config) Validate() error {
 	if t := c.Modules.Tenant; t.Root != "" && (!validTenantRoot.MatchString(t.Root) || filepath.Clean(t.Root) != t.Root || t.Root == "/") {
 		add("modules.tenant.root: %q must be a clean absolute path of letters, digits, '_', '.', '-' and '/'", t.Root)
 	}
+	if sp := c.Modules.Tenant.SSHPiper; sp.Enabled || sp.Port != 0 || sp.Address != "" {
+		checkPort("modules.tenant.sshpiper.port", sp.Port)
+		if sp.Port != 0 && sp.Port == c.SSH.Port || sp.ListenPort() == 22 && (c.SSH.Port == 0 || c.SSH.Port == 22) {
+			add("modules.tenant.sshpiper.port: %d is the host's SSH port", sp.ListenPort())
+		}
+		if sp.Address != "" {
+			if _, err := netip.ParseAddr(sp.Address); err != nil {
+				add("modules.tenant.sshpiper.address: %q is not an IP address", sp.Address)
+			}
+		}
+	}
 	if g := c.Modules.Tenant.OpsGroup; g != "" && (!validAccountName.MatchString(g) || len(g) > 32) {
 		add("modules.tenant.ops_group: invalid group name %q", g)
 	}

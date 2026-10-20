@@ -44,6 +44,7 @@ func NewTenantManager(rc *RunContext, out io.Writer) *tenant.Manager {
 		ReserveGPUs: func(ctx context.Context, t string, gpus []int) error {
 			return ReserveTenantGPUs(ctx, rc, t, gpus)
 		},
+		Piper: newPiper(rc),
 	}
 }
 
@@ -82,7 +83,7 @@ WantedBy=timers.target
 `, 0o644},
 		{unit(tenantSyncUnit + ".service"), `# Managed by rootfiles
 [Unit]
-Description=rootfiles: save tenant password hashes
+Description=rootfiles: save tenant password hashes and sshpiper keys
 After=docker.service
 
 [Service]
@@ -91,12 +92,11 @@ ExecStart=` + fleetSudoBinaryDefault + ` tenant sync
 `, 0o644},
 		{unit(tenantSyncUnit + ".timer"), `# Managed by rootfiles
 [Unit]
-Description=rootfiles daily tenant password sync
+Description=rootfiles tenant password and key sync
 
 [Timer]
-OnCalendar=daily
-RandomizedDelaySec=1h
-Persistent=true
+OnBootSec=2min
+OnUnitActiveSec=2min
 
 [Install]
 WantedBy=timers.target
@@ -159,7 +159,11 @@ func tenantChanges(ctx context.Context, rc *RunContext) ([]Change, error) {
 			add("Install volume mount unit of tenant "+s.Name, "write "+mgr.UnitFor(s.Name))
 		}
 	}
-	return changes, nil
+	piper, err := piperChanges(ctx, rc)
+	if err != nil {
+		return nil, err
+	}
+	return append(changes, piper...), nil
 }
 
 func loadTenantSpecs(rc *RunContext) ([]*tenant.Spec, error) {
@@ -256,6 +260,9 @@ func (m *TenantModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 			return nil, err
 		}
 		note("installed tenant operator sudoers rule for %" + group)
+	}
+	if err := applyPiper(ctx, rc, note); err != nil {
+		return nil, err
 	}
 	if rc.DryRun {
 		res.Changed = false
