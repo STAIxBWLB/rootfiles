@@ -106,7 +106,7 @@ func TestExporterGuardStartsExporterRefusedWithoutRules(t *testing.T) {
 	if _, err := applyExporterGuard(context.Background(), rc); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(readCalls(t, calls), "systemctl start "+nodeExporterUnit) {
+	if !strings.Contains(readCalls(t, calls), "systemctl reset-failed "+nodeExporterUnit+"\nsystemctl start "+nodeExporterUnit) {
 		t.Fatalf("inactive exporter not started after setup: %s", readCalls(t, calls))
 	}
 	if strings.Contains(readCalls(t, calls), dcgmExporterUnit) {

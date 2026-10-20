@@ -32,7 +32,9 @@ check() { # check DESCRIPTION COMMAND...
 }
 refused() { ! "$@" >/dev/null 2>&1; }
 scrape() { # scrape SOURCE_IP: fetch node exporter metrics from that address
-    docker run --rm --network efw-test --ip "$1" "$CURL" -fsS --max-time 5 "http://$BIND:9100/metrics" 2>/dev/null | grep -q '^node_exporter_build_info'
+    local out
+    out="$(docker run --rm --network efw-test --ip "$1" "$CURL" -fsS --max-time 5 "http://$BIND:9100/metrics" 2>&1)" || { echo "    scrape from $1: ${out:0:200}"; return 1; }
+    grep -q '^node_exporter_build_info' <<<"$out"
 }
 rules() { # the owned rules, without counters
     { sudo iptables -S RFILES_EXPORTER_IN; sudo iptables -S RFILES_DCGM_DU
@@ -101,6 +103,7 @@ check "check reports the drift" refused $RF check --config "$CFG" --module monit
 $RF apply --config "$CFG" --module monitoring --yes
 check "apply restores the rules" sudo "$HELPER" check
 check "apply starts the refused exporter" systemctl is-active --quiet prometheus-node-exporter
+systemctl is-active --quiet prometheus-node-exporter || sudo systemctl status prometheus-node-exporter --no-pager -l | tail -20
 check "allowed source scrapes after restore" scrape "$ALLOWED"
 
 echo "--- AC3: Docker stop and start ---"

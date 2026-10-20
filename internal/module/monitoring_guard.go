@@ -128,8 +128,10 @@ func applyExporterGuard(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 	cfg := rc.Config.Modules.Monitoring
 	for unit, on := range map[string]bool{nodeExporterUnit: cfg.NodeExporter, dcgmExporterUnit: cfg.DCGMExporter} {
 		if on && !serviceActive(ctx, rc, unit) {
+			// Refused starts may have hit the unit's start limit.
+			_, _ = rc.Runner.Run(ctx, "systemctl", "reset-failed", unit)
 			if _, err := rc.Runner.Run(ctx, "systemctl", "start", unit); err != nil {
-				out.Warnings = append(out.Warnings, "starting "+unit+": "+firstLine(err.Error()))
+				out.Warnings = append(out.Warnings, "starting "+unit+": "+lastLine(err.Error()))
 			}
 		}
 	}
@@ -143,4 +145,13 @@ func guardError(err error) string {
 		return firstLine(msg[i+len("ERROR: "):])
 	}
 	return firstLine(msg)
+}
+
+// lastLine returns the stderr Runner errors end with, or their first line.
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if last := strings.TrimSpace(strings.TrimPrefix(lines[len(lines)-1], "stderr:")); len(lines) > 1 && last != "" {
+		return last
+	}
+	return firstLine(s)
 }
