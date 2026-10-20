@@ -650,9 +650,14 @@ modules:
     allow_from:
       - 10.0.0.5/32
     perimeter_firewall: false
+    exporter_firewall: false
 ```
 
 DCGM exporter requires an already working NVIDIA GPU, driver, Docker daemon, and NVIDIA container runtime. A missing prerequisite shows as `blocked` in `rootfiles check` and fails `apply --dry-run`; `apply` still sets up node exporter and the rest of the module, then fails with the DCGM error and the fix (for a missing runtime: `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl reload docker`). If UFW is active, `allow_from` only applies when its incoming default is deny/reject and there are no broader allow rules for either exporter port. rootfiles reports conflicts and leaves existing firewall rules unchanged. It does not enable UFW.
+
+`exporter_firewall: true` installs an iptables guard that admits the exporter ports only from `allow_from`, for hosts without UFW whose segment is not closed by a perimeter firewall. It needs an IPv4 `listen_address`, exactly one IPv4 `/32` in `allow_from`, the default ports 9100 and 9400, Docker running (the guard filters DCGM in `DOCKER-USER`) and python3; an active firewalld is reported as blocked. rootfiles writes `/usr/local/sbin/rootfiles-exporter-firewall` and `/etc/rootfiles/exporter-firewall.conf` and runs the helper's `setup`, which adds owner-marked chains (`RFILES_EXPORTER_IN` on INPUT, `RFILES_DCGM_DU` on DOCKER-USER), `rootfiles-exporter-firewall.service` and drop-ins that reapply the rules when Docker or UFW starts. An exporter starts only while its rules are present (`ExecStartPre` runs the helper's `verify-host`/`verify-docker`); stopping the guard unit or Docker leaves the rules and node exporter in place. On a hub host the hub's Compose bridge is admitted so its Prometheus can scrape the host. A guard installed by hand with the same helper is adopted without rule changes. Setting the option back to `false` leaves the guard in place; `rootfiles doctor` reports it as unmanaged, and `sudo rootfiles-exporter-firewall rollback` removes it.
+
+The DCGM exporter and monitoring hub units are wanted by `docker.service`, so they start again whenever Docker starts.
 
 The default DCGM image is pinned to `nvcr.io/nvidia/k8s/dcgm-exporter:3.3.8-3.6.0-ubuntu22.04` for the fleet's older R535 driver baseline. Blackwell and newer driver combinations have not been qualified with that old DCGM release. Select a pinned `dcgm_exporter_image` only after checking NVIDIA's supported GPU, driver, and paired DCGM/exporter versions and validating the endpoint on that host. NVIDIA documents that driver 580.126.16 requires DCGM 4.3.x or newer, so the default image must not be assumed compatible with R580 hosts. The suggested 4.6.1-4.8.4 distroless override needs real GPU validation before rollout.
 
@@ -738,7 +743,7 @@ hosts:
     config: sites/gpu01.yaml
 ```
 
-For an exporter host with existing Docker and NVIDIA runtime, enable only monitoring and bind the exporters to its private address and allow the hub address through the host firewall. If a perimeter firewall already restricts the segment, set `perimeter_firewall: true` instead of adding host firewall rules.
+For an exporter host with existing Docker and NVIDIA runtime, enable only monitoring and bind the exporters to its private address and allow the hub address through the host firewall. If a perimeter firewall already restricts the segment, set `perimeter_firewall: true` instead of adding host firewall rules; without UFW, `exporter_firewall: true` restricts the exporters on the host itself.
 
 ```yaml
 modules:

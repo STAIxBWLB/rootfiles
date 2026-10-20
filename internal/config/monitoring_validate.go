@@ -115,6 +115,22 @@ func (c *Config) validateMonitoring(add func(string, ...any)) {
 	if m.DCGMExporter {
 		image("dcgm_exporter_image", m.ExporterImage())
 	}
+	if m.ExporterFirewall {
+		addr, err := netip.ParseAddr(m.ListenAddress)
+		switch {
+		case err != nil || !addr.Is4():
+			add("modules.monitoring.exporter_firewall: listen_address must be an IPv4 address")
+		case !m.NodeExporter && !m.DCGMExporter:
+			add("modules.monitoring.exporter_firewall: enable node_exporter or dcgm_exporter")
+		case m.NodePort() != 9100 || m.DCGMPort() != 9400:
+			add("modules.monitoring.exporter_firewall: requires the default exporter ports 9100 and 9400")
+		}
+		if len(m.AllowFrom) != 1 {
+			add("modules.monitoring.exporter_firewall: allow_from must list exactly one address")
+		} else if p, err := netip.ParsePrefix(m.AllowFrom[0]); err != nil || !p.Addr().Is4() || p.Bits() != 32 || p.String() != m.AllowFrom[0] {
+			add("modules.monitoring.exporter_firewall: allow_from must be one IPv4 /32 such as 192.0.2.10/32")
+		}
+	}
 	if m.Hub.Enabled {
 		h := m.Hub.WithDefaults()
 		ip("hub.listen_address", h.ListenAddress)

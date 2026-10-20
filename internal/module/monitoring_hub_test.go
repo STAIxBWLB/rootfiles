@@ -607,7 +607,10 @@ func fakeMonitoringHub(t *testing.T) (tmp, stateFile, stoppedFile, failFile, cal
 	calls = filepath.Join(tmp, "calls.log")
 	dockerScript := "#!/bin/sh\nprintf 'docker %s\\n' \"$*\" >> '" + calls + "'\ncase \"$4\" in\nps) if test -f '" + failFile + "'; then printf '[]\\n'; elif test -f '" + stoppedFile + "'; then printf '[{\"Service\":\"prometheus\",\"State\":\"running\"},{\"Service\":\"alertmanager\",\"State\":\"running\"}]\\n'; elif test -f '" + stateFile + "'; then printf '[{\"Service\":\"prometheus\",\"State\":\"running\"},{\"Service\":\"alertmanager\",\"State\":\"running\"},{\"Service\":\"grafana\",\"State\":\"running\"}]\\n'; else printf '[]\\n'; fi ;;\nup) rm -f '" + stoppedFile + "' ;;\nesac\nexit 0\n"
 	fakeMonitoringCommand(t, "docker", dockerScript)
-	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\nprintf 'systemctl %s\\n' \"$*\" >> '"+calls+"'\ncase \"$1\" in\nis-active) if test -f '"+stateFile+"'; then exit 0; else exit 3; fi ;;\nenable) docker compose -f '"+monitoringHubCompose+"' up -d || exit $?; touch '"+stateFile+"' ;;\nesac\nexit 0\n")
+	oldWants := dockerWantsDir
+	dockerWantsDir = filepath.Join(tmp, "docker.service.wants")
+	t.Cleanup(func() { dockerWantsDir = oldWants })
+	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\nprintf 'systemctl %s\\n' \"$*\" >> '"+calls+"'\ncase \"$1\" in\nis-active) if test -f '"+stateFile+"'; then exit 0; else exit 3; fi ;;\nenable) docker compose -f '"+monitoringHubCompose+"' up -d || exit $?; touch '"+stateFile+"' ;;\nreenable) mkdir -p '"+dockerWantsDir+"' && touch '"+dockerWantsDir+"'/\"$2\" ;;\nesac\nexit 0\n")
 	return tmp, stateFile, stoppedFile, failFile, calls
 }
 

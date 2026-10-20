@@ -39,6 +39,7 @@ func (m *MonitoringModule) Check(ctx context.Context, rc *RunContext) (*CheckRes
 		return nil, err
 	}
 	changes = append(changes, hubChanges...)
+	changes = append(changes, checkExporterGuard(ctx, rc)...)
 	return &CheckResult{Satisfied: len(changes) == 0, Changes: changes}, nil
 }
 
@@ -62,7 +63,12 @@ func (m *MonitoringModule) Apply(ctx context.Context, rc *RunContext) (*ApplyRes
 	if err != nil {
 		return nil, err
 	}
-	return mergeApplyResults(exporters, hub), exportErr
+	// After the hub, so a first apply admits the bridge the hub just created.
+	guard, err := applyExporterGuard(ctx, rc)
+	if err != nil {
+		return nil, err
+	}
+	return mergeApplyResults(mergeApplyResults(exporters, hub), guard), exportErr
 }
 
 func mergeApplyResults(a, b *ApplyResult) *ApplyResult {

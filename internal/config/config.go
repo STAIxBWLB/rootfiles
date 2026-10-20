@@ -137,13 +137,16 @@ type MonitoringConfig struct {
 	// NodeExporter installs prometheus-node-exporter; rootfiles' scheduled
 	// report also publishes rootfiles_* metrics through its textfile
 	// collector.
-	NodeExporter      bool                `yaml:"node_exporter"`
-	DCGMExporter      bool                `yaml:"dcgm_exporter"`
-	NodeExporterPort  int                 `yaml:"node_exporter_port,omitempty"`
-	DCGMExporterPort  int                 `yaml:"dcgm_exporter_port,omitempty"`
-	ListenAddress     string              `yaml:"listen_address,omitempty"`
-	AllowFrom         []string            `yaml:"allow_from,omitempty"`
-	PerimeterFirewall bool                `yaml:"perimeter_firewall"`
+	NodeExporter      bool     `yaml:"node_exporter"`
+	DCGMExporter      bool     `yaml:"dcgm_exporter"`
+	NodeExporterPort  int      `yaml:"node_exporter_port,omitempty"`
+	DCGMExporterPort  int      `yaml:"dcgm_exporter_port,omitempty"`
+	ListenAddress     string   `yaml:"listen_address,omitempty"`
+	AllowFrom         []string `yaml:"allow_from,omitempty"`
+	PerimeterFirewall bool     `yaml:"perimeter_firewall"`
+	// ExporterFirewall installs the iptables guard that admits exporter
+	// traffic only from allow_from (IPv4, one /32, default ports).
+	ExporterFirewall  bool                `yaml:"exporter_firewall"`
 	DCGMExporterImage string              `yaml:"dcgm_exporter_image,omitempty"`
 	Hub               MonitoringHubConfig `yaml:"hub"`
 }

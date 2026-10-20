@@ -159,6 +159,7 @@ func TestDCGMInstalledPrerequisitesDoNotRequireEnabledModules(t *testing.T) {
 	fakeMonitoringCommand(t, "nvidia-smi", "#!/bin/sh\necho 'GPU 0: Test GPU'\n")
 	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\ncase \"$1\" in is-active) echo active;; is-enabled) echo enabled;; esac\n")
 	fakeMonitoringCommand(t, "ufw", "#!/bin/sh\necho 'Status: inactive'\n")
+	withDockerWants(t, dcgmExporterUnit)
 	rc := newRealRC(t)
 	// Both lifecycle modules are disabled so their existing host configuration
 	// remains untouched, while the installed runtime and GPU are usable.
@@ -366,6 +367,20 @@ func TestDCGMRuntimeFromNvidiaModuleIsPendingNotBlocked(t *testing.T) {
 	for _, c := range check.Changes {
 		if c.State == ChangeBlocked {
 			t.Fatalf("runtime provided by the nvidia module must not be blocked: %+v", c)
+		}
+	}
+}
+
+// withDockerWants points the Docker wants directory at a temp dir holding
+// links for units.
+func withDockerWants(t *testing.T, units ...string) {
+	t.Helper()
+	old := dockerWantsDir
+	dockerWantsDir = t.TempDir()
+	t.Cleanup(func() { dockerWantsDir = old })
+	for _, u := range units {
+		if err := os.WriteFile(filepath.Join(dockerWantsDir, u), nil, 0o644); err != nil {
+			t.Fatal(err)
 		}
 	}
 }
