@@ -71,6 +71,8 @@ func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, er
 		got, err := rc.Runner.ReadFile(dcgmUnitPath)
 		if err != nil || string(got) != want {
 			changes = append(changes, Change{Description: "Install or update DCGM exporter systemd unit", Command: "write " + dcgmUnitPath})
+		} else if !rc.Runner.FileExists(dockerWantsLink(dcgmExporterUnit)) {
+			changes = append(changes, Change{Description: "Start the DCGM exporter whenever Docker starts", Command: "systemctl reenable " + dcgmExporterUnit})
 		}
 		if !serviceActive(ctx, rc, dcgmExporterUnit) || !serviceEnabled(ctx, rc, dcgmExporterUnit) {
 			changes = append(changes, Change{Description: "Start DCGM exporter", Command: "systemctl enable --now " + dcgmExporterUnit})
@@ -172,6 +174,12 @@ func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult
 			if _, err := rc.Runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
 				return nil, err
 			}
+		}
+		if unitChanged || !rc.Runner.FileExists(dockerWantsLink(dcgmExporterUnit)) {
+			if _, err := rc.Runner.Run(ctx, "systemctl", "reenable", dcgmExporterUnit); err != nil {
+				return nil, fmt.Errorf("enabling DCGM exporter: %w", err)
+			}
+			out.Changed = true
 		}
 		if !serviceActive(ctx, rc, dcgmExporterUnit) || !serviceEnabled(ctx, rc, dcgmExporterUnit) || unitChanged || collectorsChanged {
 			args := []string{"enable", "--now", dcgmExporterUnit}
@@ -280,7 +288,7 @@ func renderDCGMUnit(cfg config.MonitoringConfig) string {
 		address = "0.0.0.0"
 	}
 	publish := net.JoinHostPort(address, strconv.Itoa(cfg.DCGMPort())) + ":9400"
-	return fmt.Sprintf("[Unit]\nDescription=rootfiles NVIDIA DCGM exporter\nAfter=docker.service\nRequires=docker.service\n\n[Service]\nRestart=always\nRestartSec=5\nExecStartPre=-/usr/bin/docker rm -f rootfiles-dcgm-exporter\nExecStart=/usr/bin/docker run --rm --name rootfiles-dcgm-exporter --runtime=nvidia --gpus all -p %s --mount type=bind,src=%s,dst=%s,readonly %s -f %s\nExecStop=/usr/bin/docker stop rootfiles-dcgm-exporter\n\n[Install]\nWantedBy=multi-user.target\n", publish, dcgmCollectorsPath, dcgmCollectorsContainer, cfg.ExporterImage(), dcgmCollectorsContainer)
+	return fmt.Sprintf("[Unit]\nDescription=rootfiles NVIDIA DCGM exporter\nAfter=docker.service\nRequires=docker.service\n\n[Service]\nRestart=always\nRestartSec=5\nExecStartPre=-/usr/bin/docker rm -f rootfiles-dcgm-exporter\nExecStart=/usr/bin/docker run --rm --name rootfiles-dcgm-exporter --runtime=nvidia --gpus all -p %s --mount type=bind,src=%s,dst=%s,readonly %s -f %s\nExecStop=/usr/bin/docker stop rootfiles-dcgm-exporter\n\n[Install]\nWantedBy=multi-user.target docker.service\n", publish, dcgmCollectorsPath, dcgmCollectorsContainer, cfg.ExporterImage(), dcgmCollectorsContainer)
 }
 
 // DCGM's collectors file replaces image defaults. Keep only fields shared by
@@ -295,6 +303,12 @@ DCGM_FI_DEV_FB_USED, gauge, Framebuffer memory used (in MiB).
 DCGM_FI_DEV_ECC_DBE_VOL_TOTAL, counter, Total number of double-bit volatile ECC errors.
 DCGM_FI_DEV_XID_ERRORS, gauge, Value of the last XID error encountered.
 `
+
+// dockerWantsDir holds the links `systemctl enable` makes for units with
+// WantedBy=docker.service, which start again whenever Docker starts.
+var dockerWantsDir = monitoringSystemdDir + "/docker.service.wants"
+
+func dockerWantsLink(unit string) string { return filepath.Join(dockerWantsDir, unit) }
 
 func exporterPorts(cfg config.MonitoringConfig) []int {
 	var ports []int

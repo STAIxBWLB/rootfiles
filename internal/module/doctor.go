@@ -53,8 +53,27 @@ func Doctor(ctx context.Context, rc *RunContext) []Finding {
 
 func doctorExporterExposure(ctx context.Context, rc *RunContext) []Finding {
 	cfg := rc.Config.Modules.Monitoring
+	var out []Finding
+	if !cfg.ExporterFirewall && rc.Runner.FileExists(exporterGuardHelperPath) {
+		out = append(out, Finding{Check: "exporter firewall", Level: LevelWarn,
+			Detail: exporterGuardHelperPath + " is installed but not managed by rootfiles",
+			Hint:   "set modules.monitoring.exporter_firewall: true, or remove it with `sudo " + exporterGuardHelperPath + " rollback`"})
+	}
 	if !cfg.NodeExporter && !cfg.DCGMExporter {
-		return nil
+		return out
+	}
+	return append(out, doctorExporterListener(ctx, rc)...)
+}
+
+func doctorExporterListener(ctx context.Context, rc *RunContext) []Finding {
+	cfg := rc.Config.Modules.Monitoring
+	if cfg.ExporterFirewall {
+		if _, err := rc.Runner.Query(ctx, exporterGuardHelperPath, "check"); err != nil {
+			return []Finding{{Check: "exporter exposure", Level: LevelWarn,
+				Detail: "exporter firewall check fails: " + guardError(err),
+				Hint:   "sudo rootfiles apply --module monitoring"}}
+		}
+		return []Finding{{Check: "exporter exposure", Level: LevelOK, Detail: "exporters admit only " + strings.Join(cfg.AllowFrom, ", ") + " (rootfiles exporter firewall)"}}
 	}
 	address := cfg.ListenAddress
 	ports := exporterPorts(cfg)
@@ -83,7 +102,7 @@ func doctorExporterExposure(ctx context.Context, rc *RunContext) []Finding {
 	}
 	return []Finding{{Check: "exporter exposure", Level: LevelWarn,
 		Detail: fmt.Sprintf("exporter listener %s is not covered by a host or perimeter firewall", listener),
-		Hint:   "set a private listen_address, configure modules.monitoring.allow_from with an active UFW firewall, or set perimeter_firewall: true"}}
+		Hint:   "set a private listen_address, set exporter_firewall: true, configure modules.monitoring.allow_from with an active UFW firewall, or set perimeter_firewall: true"}}
 }
 
 func isPrivateListenAddress(address string) bool {

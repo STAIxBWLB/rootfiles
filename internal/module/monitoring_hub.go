@@ -100,7 +100,7 @@ func checkMonitoringHub(ctx context.Context, rc *RunContext) ([]Change, error) {
 		}
 	}
 	unit, err := rc.Runner.ReadFile(monitoringHubUnitPath)
-	if err != nil || string(unit) != monitoringHubSystemdUnit(monitoringHubCompose) {
+	if err != nil || string(unit) != monitoringHubSystemdUnit(monitoringHubCompose) || !rc.Runner.FileExists(dockerWantsLink(monitoringHubUnit)) {
 		configDrift = true
 	}
 	if configDrift {
@@ -253,6 +253,12 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		if _, err := rc.Runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
 			return nil, fmt.Errorf("reloading systemd: %w", err)
 		}
+	}
+	if unitChanged || !rc.Runner.FileExists(dockerWantsLink(monitoringHubUnit)) {
+		if _, err := rc.Runner.Run(ctx, "systemctl", "reenable", monitoringHubUnit); err != nil {
+			return nil, fmt.Errorf("enabling monitoring hub unit: %w", err)
+		}
+		changed = true
 	}
 	active := unitActive(ctx, rc)
 	if changed && active {
@@ -794,7 +800,7 @@ func monitoringAlertmanagerVolumes(h config.MonitoringHubConfig) []monitoringHub
 }
 
 func monitoringHubSystemdUnit(composePath string) string {
-	return "[Unit]\nDescription=rootfiles monitoring hub\nRequires=docker.service\nAfter=docker.service\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nWorkingDirectory=" + monitoringHubConfigDir + "\nExecStart=/usr/bin/docker compose -f " + composePath + " up -d\nExecStop=/usr/bin/docker compose -f " + composePath + " down\nTimeoutStartSec=0\n\n[Install]\nWantedBy=multi-user.target\n"
+	return "[Unit]\nDescription=rootfiles monitoring hub\nRequires=docker.service\nAfter=docker.service\n\n[Service]\nType=oneshot\nRemainAfterExit=yes\nWorkingDirectory=" + monitoringHubConfigDir + "\nExecStart=/usr/bin/docker compose -f " + composePath + " up -d\nExecStop=/usr/bin/docker compose -f " + composePath + " down\nTimeoutStartSec=0\n\n[Install]\nWantedBy=multi-user.target docker.service\n"
 }
 
 const monitoringHubDefaultAlertConfig = "route:\n  receiver: default\nreceivers:\n  - name: default\n"

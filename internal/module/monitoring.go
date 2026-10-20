@@ -39,6 +39,7 @@ func (m *MonitoringModule) Check(ctx context.Context, rc *RunContext) (*CheckRes
 		return nil, err
 	}
 	changes = append(changes, hubChanges...)
+	changes = append(changes, checkExporterGuard(ctx, rc)...)
 	return &CheckResult{Satisfied: len(changes) == 0, Changes: changes}, nil
 }
 
@@ -52,6 +53,11 @@ func (m *MonitoringModule) Apply(ctx context.Context, rc *RunContext) (*ApplyRes
 	if _, err := checkMonitoringHub(ctx, rc); err != nil {
 		return nil, err
 	}
+	// The guard goes first, so no exporter starts before its rules exist.
+	guard, err := applyExporterGuard(ctx, rc)
+	if err != nil {
+		return nil, err
+	}
 	// exporters carries a result next to a blocked-DCGM error; the hub is
 	// still applied before that error fails the module.
 	exporters, exportErr := applyMonitoringExporters(ctx, rc)
@@ -62,7 +68,16 @@ func (m *MonitoringModule) Apply(ctx context.Context, rc *RunContext) (*ApplyRes
 	if err != nil {
 		return nil, err
 	}
-	return mergeApplyResults(exporters, hub), exportErr
+	out := mergeApplyResults(mergeApplyResults(guard, exporters), hub)
+	if rc.Config.Modules.Monitoring.Hub.Enabled {
+		// Again after the hub, so a first apply admits the bridge it created.
+		bridge, err := applyExporterGuard(ctx, rc)
+		if err != nil {
+			return nil, err
+		}
+		out = mergeApplyResults(out, bridge)
+	}
+	return out, exportErr
 }
 
 func mergeApplyResults(a, b *ApplyResult) *ApplyResult {
