@@ -14,6 +14,7 @@ var (
 	validHostname    = regexp.MustCompile(`^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`)
 	validSize        = regexp.MustCompile(`^[1-9][0-9]*[KMGT]$`)
 	validSysctlKey   = regexp.MustCompile(`^[a-z0-9_]+(\.[a-zA-Z0-9_*-]+)+$`)
+	validTenantRoot  = regexp.MustCompile(`^/[A-Za-z0-9_./-]+$`)
 )
 
 // Validate reports semantic errors that YAML decoding cannot catch. All
@@ -127,6 +128,13 @@ func (c *Config) Validate() error {
 	checkAbs("modules.cloudflared.tunnel_token_file", c.Modules.Cloudflared.TunnelTokenFile)
 	if iface := c.Modules.Cloudflared.PrivateNetwork.Interface; len(iface) > 15 || strings.ContainsAny(iface, " /") {
 		add("modules.cloudflared.private_network.interface: %q is not a valid interface name", iface)
+	}
+
+	if t := c.Modules.Tenant; t.Root != "" && (!validTenantRoot.MatchString(t.Root) || filepath.Clean(t.Root) != t.Root || t.Root == "/") {
+		add("modules.tenant.root: %q must be a clean absolute path of letters, digits, '_', '.', '-' and '/'", t.Root)
+	}
+	if g := c.Modules.Tenant.OpsGroup; g != "" && (!validAccountName.MatchString(g) || len(g) > 32) {
+		add("modules.tenant.ops_group: invalid group name %q", g)
 	}
 
 	if strings.ContainsAny(c.Timezone, " ") || strings.HasPrefix(c.Timezone, "/") || strings.Contains(c.Timezone, "..") {

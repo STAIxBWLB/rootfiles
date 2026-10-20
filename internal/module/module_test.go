@@ -25,14 +25,15 @@ func TestRegistry_ResolveAll(t *testing.T) {
 			Storage:     config.StorageConfig{Enabled: true},
 			Network:     config.NetworkConfig{Enabled: true},
 			Monitoring:  config.MonitoringConfig{Enabled: true},
+			Tenant:      config.TenantConfig{Enabled: true},
 		},
 	}
 	modules := reg.Resolve(cfg, nil)
-	if len(modules) != 13 {
-		t.Errorf("expected 13 modules, got %d", len(modules))
+	if len(modules) != 14 {
+		t.Errorf("expected 14 modules, got %d", len(modules))
 	}
 	// Verify order
-	expected := []string{"locale", "system", "packages", "users", "ssh", "security", "docker", "nvidia", "gpu", "cloudflared", "storage", "network", "monitoring"}
+	expected := []string{"locale", "system", "packages", "users", "ssh", "security", "docker", "nvidia", "gpu", "cloudflared", "storage", "network", "monitoring", "tenant"}
 	for i, m := range modules {
 		if m.Name() != expected[i] {
 			t.Errorf("module[%d] = %q, want %q", i, m.Name(), expected[i])

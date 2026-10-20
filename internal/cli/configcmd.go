@@ -44,7 +44,7 @@ func loadForInspection(cmd *cobra.Command) (*config.Config, string, error) {
 	}
 	if sys.OS == "rocky" {
 		names := []string{}
-		for _, name := range []string{"locale", "system", "packages", "users", "ssh", "security", "docker", "nvidia", "gpu", "cloudflared", "storage", "network", "monitoring"} {
+		for _, name := range []string{"locale", "system", "packages", "users", "ssh", "security", "docker", "nvidia", "gpu", "cloudflared", "storage", "network", "monitoring", "tenant"} {
 			if cfg.IsModuleEnabled(name) {
 				names = append(names, name)
 			}

@@ -31,10 +31,6 @@ func fleetSudoersPath() string {
 	return filepath.Join(sudoersDir, "rootfiles-fleet")
 }
 
-func fleetSudoersTempPath() string {
-	return filepath.Join(sudoersDir, ".rootfiles-fleet.tmp")
-}
-
 func fleetSudoersContent(users []string) ([]byte, error) {
 	if len(users) == 0 {
 		return nil, nil
@@ -269,33 +265,39 @@ func applyFleetSudo(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 }
 
 func writeFleetSudoers(ctx context.Context, rc *RunContext, content []byte) error {
-	tmp := fleetSudoersTempPath()
+	return installSudoersFile(ctx, rc, fleetSudoersPath(), content, "fleet")
+}
+
+// installSudoersFile installs a sudoers drop-in through a temporary file
+// that visudo must accept, so a broken rule never reaches sudoers.d.
+func installSudoersFile(ctx context.Context, rc *RunContext, final string, content []byte, what string) error {
+	tmp := filepath.Join(filepath.Dir(final), "."+filepath.Base(final)+".tmp")
 	if info, err := fleetSudoLstat(tmp); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			return fmt.Errorf("unsafe temporary fleet sudoers path %s", tmp)
+			return fmt.Errorf("unsafe temporary %s sudoers path %s", what, tmp)
 		}
 		if err := rc.Runner.Remove(tmp); err != nil {
-			return fmt.Errorf("removing stale fleet sudoers temp file: %w", err)
+			return fmt.Errorf("removing stale %s sudoers temp file: %w", what, err)
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("checking temporary fleet sudoers path: %w", err)
+		return fmt.Errorf("checking temporary %s sudoers path: %w", what, err)
 	}
 	if err := rc.Runner.WriteFile(tmp, content, 0440); err != nil {
-		return fmt.Errorf("writing fleet sudoers temporary file: %w", err)
+		return fmt.Errorf("writing %s sudoers temporary file: %w", what, err)
 	}
 	if rc.DryRun {
-		return rc.Runner.Rename(tmp, fleetSudoersPath())
+		return rc.Runner.Rename(tmp, final)
 	}
 	if !rc.Runner.CommandExists("visudo") {
 		_ = rc.Runner.Remove(tmp)
-		return fmt.Errorf("visudo is required to validate the fleet sudoers rule")
+		return fmt.Errorf("visudo is required to validate the %s sudoers rule", what)
 	}
 	if _, err := rc.Runner.Run(ctx, "visudo", "-cf", tmp); err != nil {
 		_ = rc.Runner.Remove(tmp)
-		return fmt.Errorf("fleet sudoers validation failed: %w", err)
+		return fmt.Errorf("%s sudoers validation failed: %w", what, err)
 	}
-	if err := rc.Runner.Rename(tmp, fleetSudoersPath()); err != nil {
-		return fmt.Errorf("installing fleet sudoers drop-in: %w", err)
+	if err := rc.Runner.Rename(tmp, final); err != nil {
+		return fmt.Errorf("installing %s sudoers drop-in: %w", what, err)
 	}
 	return nil
 }
