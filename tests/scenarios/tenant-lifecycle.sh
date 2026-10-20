@@ -10,6 +10,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO_ROOT/tests/integration/assert.sh"
 
 BIN="${ROOTFILES_TEST_BINARY:?ROOTFILES_TEST_BINARY must name a Linux rootfiles binary}"
+# The operator sudoers rule needs a binary only root can replace; hosted
+# runners ship a group-writable /usr/local/bin.
+sudo chmod go-w /usr/local /usr/local/bin
 sudo install -m 0755 -o root -g root "$BIN" /usr/local/bin/rootfiles
 RF="sudo /usr/local/bin/rootfiles"
 command -v sshpass >/dev/null || sudo apt-get install -y -qq sshpass >/dev/null
