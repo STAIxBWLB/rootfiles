@@ -404,7 +404,17 @@ func (m *Manager) writeIfChanged(path string, data []byte, perm os.FileMode) err
 	if fi, err := os.Lstat(path); err == nil && !fi.Mode().IsRegular() {
 		return fmt.Errorf("refusing to write %s: not a regular file", path)
 	}
-	return m.Runner.WriteFile(path, data, perm)
+	// Through a rename: sshpiperd reads route and key files on every
+	// connection, and the lock-free sync may rewrite them during an apply.
+	tmp := path + ".rootfiles-tmp-" + strconv.Itoa(os.Getpid())
+	if err := m.Runner.WriteFile(tmp, data, perm); err != nil {
+		return err
+	}
+	if err := m.Runner.Rename(tmp, path); err != nil {
+		_ = m.Runner.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // --- passwords ---
