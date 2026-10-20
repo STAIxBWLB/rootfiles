@@ -146,7 +146,7 @@ type MonitoringConfig struct {
 	PerimeterFirewall bool     `yaml:"perimeter_firewall"`
 	// ExporterFirewall installs the iptables guard that admits exporter
 	// traffic only from allow_from (IPv4, one /32, default ports).
-	ExporterFirewall  bool                `yaml:"exporter_firewall"`
+	ExporterFirewall  bool                `yaml:"exporter_firewall,omitempty"`
 	DCGMExporterImage string              `yaml:"dcgm_exporter_image,omitempty"`
 	Hub               MonitoringHubConfig `yaml:"hub"`
 }

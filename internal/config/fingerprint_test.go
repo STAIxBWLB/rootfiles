@@ -52,3 +52,17 @@ func TestFingerprintIgnoresRuntimeAndSecretButDetectsIntent(t *testing.T) {
 		t.Fatal("intent change did not affect fingerprint")
 	}
 }
+
+// Every host records the fingerprint of its last apply, and fleet rollouts
+// stop on a host whose fingerprint no longer matches. A new config key must
+// therefore leave the encoding of configs that do not set it unchanged
+// (omitempty); this pins the value earlier releases computed.
+func TestFingerprintStableAcrossReleases(t *testing.T) {
+	fp, err := (&Config{Timezone: "UTC"}).Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "c4ec434e963b8ec0ce76b900c608e439b90f27a533fd581b9401dfbdd5bc89ac"; fp != want {
+		t.Fatalf("fingerprint changed for a config that sets no new keys: %s, want %s", fp, want)
+	}
+}
