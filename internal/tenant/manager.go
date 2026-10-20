@@ -294,7 +294,11 @@ func (m *Manager) Verify(ctx context.Context, s *Spec) error {
 			return fmt.Errorf("GPU check: nvidia-smi lists %d GPUs, want %d", n, len(s.GPUs))
 		}
 	}
-	m.printf("✓ %s: sshd on port %d, host key and GPUs verified\n", ContainerName(s.Name), s.SSHPort)
+	what := "sshd and host key"
+	if len(s.GPUs) > 0 {
+		what += " and GPUs " + intList(s.GPUs)
+	}
+	m.printf("✓ %s: %s verified on port %d\n", ContainerName(s.Name), what, s.SSHPort)
 	return nil
 }
 

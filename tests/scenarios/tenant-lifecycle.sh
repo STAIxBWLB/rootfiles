@@ -77,7 +77,7 @@ echo "$out"
 PW=$(temp_password <<<"$out")
 check "temporary password issued" test -n "$PW"
 check "container running" bash -c '[ "$(docker inspect -f {{.State.Running}} tenant-t1)" = true ]'
-check "volume mounted" mountpoint -q /srv/tenants/t1/vol
+check "volume mounted" sudo mountpoint -q /srv/tenants/t1/vol
 check "mount unit enabled" systemctl is-enabled --quiet srv-tenants-t1-vol.mount
 login=$(ssh_as alice "$PW" 2201 true 2>&1 || true)
 echo "$login" | tail -n 3
