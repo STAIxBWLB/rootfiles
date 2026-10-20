@@ -218,9 +218,16 @@ func (m *Manager) recreate(ctx context.Context, s *Spec, st containerState) erro
 		{"rename", name, prev},
 		{"update", "--restart=no", prev},
 	}
-	for _, a := range steps {
+	for i, a := range steps {
 		if err := m.run(ctx, "docker", a...); err != nil {
-			return fmt.Errorf("preparing recreate: %w", err)
+			// Undo what ran: the rename, then the stop.
+			if i == 2 {
+				_ = m.run(ctx, "docker", "rename", prev, name)
+			}
+			if i > 0 {
+				_ = m.run(ctx, "docker", "start", name)
+			}
+			return fmt.Errorf("preparing recreate (old container restarted): %w", err)
 		}
 	}
 	err := m.run(ctx, "docker", m.RunArgs(s)...)

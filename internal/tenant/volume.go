@@ -221,7 +221,9 @@ func (m *Manager) shrink(ctx context.Context, s *Spec, size uint64) error {
 		return fmt.Errorf("checking %s before shrink (volume left unmounted): %w", p.Image, err)
 	}
 	if err := m.run(ctx, "resize2fs", p.Image, strconv.FormatUint(size/1024, 10)+"K"); err != nil {
-		_ = m.run(ctx, "systemctl", "start", unit)
+		if m.run(ctx, "systemctl", "start", unit) == nil && running {
+			_ = m.run(ctx, "docker", "start", name)
+		}
 		return fmt.Errorf("shrinking filesystem (data too large for %s?): %w", s.Volume.Size, err)
 	}
 	if err := m.run(ctx, "truncate", "-s", strconv.FormatUint(size, 10), p.Image); err != nil {
