@@ -62,6 +62,9 @@ type SSHPiperConfig struct {
 	Port    int    `yaml:"port,omitempty"`    // default 2222
 	Address string `yaml:"address,omitempty"` // default all addresses
 	Version string `yaml:"version,omitempty"` // default DefaultSSHPiperVersion
+	// FailtobanIgnore lists addresses or CIDRs never banned after failed
+	// logins, such as a VPN gateway that many users share.
+	FailtobanIgnore []string `yaml:"failtoban_ignore,omitempty"`
 }
 
 // DefaultSSHPiperVersion is the sshpiper release rootfiles installs.

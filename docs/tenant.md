@@ -37,6 +37,7 @@ modules:
       enabled: true
       port: 2222       # default; must not be the host's SSH port
       # address: 0.0.0.0, version: v1.6.1 (pinned; the archive SHA-256 is checked)
+      # failtoban_ignore: [172.16.229.33/32]   # shared VPN gateway, never banned
 ```
 
 `sudo rootfiles apply --module tenant` installs sshpiperd with its yaml and failtoban plugins under `/usr/local/lib/rootfiles/sshpiper/<version>` and runs `rootfiles-sshpiper.service`. Users then reach any tenant through one port by naming the tenant in the user name:
@@ -48,7 +49,7 @@ ssh -p 2222 est.dev@dgx02      # user dev of tenant est
 - Passwords go to the tenant's own sshd, which checks them and enforces the change of a temporary password.
 - Keys: sshpiper checks the client key against the user's `~/.ssh/authorized_keys` inside the container (copied by the 2-minute sync; only plain key lines, options are dropped), then logs in to the container with a host-only key. A tenant created before sshpiper was enabled needs `rootfiles tenant apply <t>` and `rootfiles tenant restart <t>` once before key logins work.
 - sshpiper checks each container's host key against the keys rootfiles stores. Clients see sshpiper's own host key on port 2222.
-- failtoban bans an address for an hour after 5 failed logins.
+- failtoban bans an address for an hour after 5 failed logins. Users behind one VPN or NAT gateway share its address, so one user's typos would lock out all of them: list such gateways in `failtoban_ignore` (addresses or CIDRs). Applying a changed list restarts sshpiper, which also clears current bans and drops sessions open through it.
 - Firewall: with `modules.network.ufw`, the network module admits the port. If UFW is active without that, or its state cannot be read, `check` reports the port as blocked and `apply` stops before starting sshpiper. A port held by another process is refused the same way, also when changing the port of a running sshpiper.
 - The direct per-tenant ports keep working. Disabling sshpiper removes the service and the route files.
 - `rootfiles tenant status` and `create` print the routed command for each account.

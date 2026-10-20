@@ -143,6 +143,13 @@ func (c *Config) Validate() error {
 				add("modules.tenant.sshpiper.address: %q is not an IP address", sp.Address)
 			}
 		}
+		for _, ip := range sp.FailtobanIgnore {
+			_, perr := netip.ParsePrefix(ip)
+			_, aerr := netip.ParseAddr(ip)
+			if perr != nil && aerr != nil {
+				add("modules.tenant.sshpiper.failtoban_ignore: %q is not an address or CIDR", ip)
+			}
+		}
 	}
 	if g := c.Modules.Tenant.OpsGroup; g != "" && (!validAccountName.MatchString(g) || len(g) > 32) {
 		add("modules.tenant.ops_group: invalid group name %q", g)
