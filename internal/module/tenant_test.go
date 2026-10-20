@@ -180,3 +180,17 @@ func TestPiperBlock(t *testing.T) {
 		t.Errorf("unknown firewall state not blocked: %q", b)
 	}
 }
+
+func TestPiperUnitFailtobanIgnore(t *testing.T) {
+	rc := newDryRunRC(t)
+	rc.Config.Modules.Tenant.SSHPiper = config.SSHPiperConfig{Enabled: true, FailtobanIgnore: []string{"172.16.229.33/32", "10.0.0.1"}}
+	if u := piperUnitContent(rc); !strings.Contains(u, "/plugins/failtoban --ignore-ip 172.16.229.33/32 --ignore-ip 10.0.0.1\n") {
+		t.Errorf("unit lacks ignore list:\n%s", u)
+	}
+	for _, bad := range []string{"not-an-ip", "fe80::1%eth0"} {
+		rc.Config.Modules.Tenant.SSHPiper.FailtobanIgnore = []string{bad}
+		if err := rc.Config.Validate(); err == nil || !strings.Contains(err.Error(), "failtoban_ignore") {
+			t.Errorf("bad entry %q accepted: %v", bad, err)
+		}
+	}
+}

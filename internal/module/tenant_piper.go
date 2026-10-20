@@ -82,6 +82,10 @@ func piperUnitContent(rc *RunContext) string {
 	if addr == "" {
 		addr = "0.0.0.0"
 	}
+	ignore := ""
+	for _, ip := range sp.FailtobanIgnore {
+		ignore += " --ignore-ip " + ip
+	}
 	return `# Managed by rootfiles
 [Unit]
 Description=rootfiles sshpiper: one SSH port for tenant containers
@@ -91,7 +95,7 @@ Wants=network-online.target
 [Service]
 ExecStart=` + d + `/sshpiperd --address ` + addr + ` --port ` + strconv.Itoa(sp.ListenPort()) +
 		` --server-key ` + piperConfDir + `/ssh_host_ed25519_key --server-key-generate-mode notexist ` +
-		d + `/plugins/yaml --config ` + piperConfDir + `/tenants/*.yaml -- ` + d + `/plugins/failtoban
+		d + `/plugins/yaml --config ` + piperConfDir + `/tenants/*.yaml -- ` + d + `/plugins/failtoban` + ignore + `
 Restart=always
 RestartSec=5
 

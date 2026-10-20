@@ -143,6 +143,14 @@ func (c *Config) Validate() error {
 				add("modules.tenant.sshpiper.address: %q is not an IP address", sp.Address)
 			}
 		}
+		for _, ip := range sp.FailtobanIgnore {
+			_, perr := netip.ParsePrefix(ip)
+			_, aerr := netip.ParseAddr(ip)
+			// A zone ("%eth0") would read as a systemd specifier in ExecStart.
+			if perr != nil && aerr != nil || strings.Contains(ip, "%") {
+				add("modules.tenant.sshpiper.failtoban_ignore: %q is not an address or CIDR without a zone", ip)
+			}
+		}
 	}
 	if g := c.Modules.Tenant.OpsGroup; g != "" && (!validAccountName.MatchString(g) || len(g) > 32) {
 		add("modules.tenant.ops_group: invalid group name %q", g)
