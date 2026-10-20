@@ -21,12 +21,36 @@ sudo rootfiles apply --module tenant
 The module installs:
 
 - `rootfiles-gpu-guard.timer`: every minute, restores GPU access of running `--gpus` containers whose device filter a `systemctl daemon-reload` rebuilt without their `/dev/nvidia*` nodes (`systemctl set-property --runtime ... DeviceAllow`). Tenant containers use the nvidia runtime and do not need it; it covers the other GPU containers on the host.
-- `rootfiles-tenant-sync.timer`: daily `rootfiles tenant sync`, which saves the password hashes of running tenants.
+- `rootfiles-tenant-sync.timer`: every 2 minutes, `rootfiles tenant sync` saves the password hashes of running tenants and refreshes their sshpiper keys and routes. It needs root but not the global lock, so it never fails because an `apply` is running.
 - `fstrim.timer`, so space deleted inside a volume returns to the host.
 - `/etc/sudoers.d/rootfiles-tenant-ops`: `%<ops_group> ALL=(root) NOPASSWD: /usr/local/bin/rootfiles tenant ops *`, validated with `visudo`.
 - A mount unit per existing tenant volume (rewritten after an OS reinstall).
 
 GPU tenants need the `nvidia` module (Docker's `nvidia` runtime).
+
+## One SSH port for every tenant (sshpiper)
+
+```yaml
+modules:
+  tenant:
+    sshpiper:
+      enabled: true
+      port: 2222       # default; must not be the host's SSH port
+      # address: 0.0.0.0, version: v1.6.1 (pinned; the archive SHA-256 is checked)
+```
+
+`sudo rootfiles apply --module tenant` installs sshpiperd with its yaml and failtoban plugins under `/usr/local/lib/rootfiles/sshpiper/<version>` and runs `rootfiles-sshpiper.service`. Users then reach any tenant through one port by naming the tenant in the user name:
+
+```bash
+ssh -p 2222 est.dev@dgx02      # user dev of tenant est
+```
+
+- Passwords go to the tenant's own sshd, which checks them and enforces the change of a temporary password.
+- Keys: sshpiper checks the client key against the user's `~/.ssh/authorized_keys` inside the container (copied by the 2-minute sync; only plain key lines, options are dropped), then logs in to the container with a host-only key. A tenant created before sshpiper was enabled needs `rootfiles tenant apply <t>` and `rootfiles tenant restart <t>` once before key logins work.
+- sshpiper checks each container's host key against the keys rootfiles stores. Clients see sshpiper's own host key on port 2222.
+- failtoban bans an address for an hour after 5 failed logins.
+- The direct per-tenant ports keep working. Disabling sshpiper removes the service and the route files.
+- `rootfiles tenant status` and `create` print the routed command for each account.
 
 ## Create a tenant
 

@@ -32,6 +32,12 @@ ssh_as() { # ssh_as USER PASSWORD PORT COMMAND
     sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile="$KH" -o PreferredAuthentications=password \
         -o PubkeyAuthentication=no -o ConnectTimeout=10 -p "$3" "$1@127.0.0.1" "$4"
 }
+piper_as() { # piper_as ROUTE PASSWORD COMMAND: through sshpiper on 2222
+    sshpass -p "$2" ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile="$KH.piper" -o PreferredAuthentications=password \
+        -o PubkeyAuthentication=no -o ConnectTimeout=10 -p 2222 "$1@127.0.0.1" "$3"
+}
+refused() { ! "$@" >/dev/null 2>&1; } # refused COMMAND...: the command fails
+outputs() { local want=$1; shift; [ "$("$@" 2>/dev/null)" = "$want" ]; }
 temp_password() { sed -n 's/^Temporary password for [^:]*: \([^ ]*\) .*/\1/p' | head -n1; }
 
 echo "=== Scenario: tenant-lifecycle ==="
@@ -55,6 +61,9 @@ modules:
     enabled: true
     root: /srv/tenants
     ops_group: tenant-ops
+    sshpiper:
+      enabled: true
+      port: 2222
 EOF
 
 echo "--- host prep ---"
@@ -64,6 +73,8 @@ check "sync timer enabled" systemctl is-enabled --quiet rootfiles-tenant-sync.ti
 check "operator group created" getent group tenant-ops
 check "operator sudoers rule" sudo grep -q '^%tenant-ops ALL=(root) NOPASSWD: /usr/local/bin/rootfiles tenant ops \*$' /etc/sudoers.d/rootfiles-tenant-ops
 check "tenant module satisfied after apply" $RF check --module tenant
+check "sshpiper running" systemctl is-active --quiet rootfiles-sshpiper.service
+check "sshpiper listening on 2222" bash -c 'ss -H -ltn "sport = :2222" | grep -q .' 
 
 echo "--- AC10: dry run changes nothing ---"
 $RF tenant create t9 --image rootfiles-tenant-test:1 --ssh-port 2209 --size 64M --account bob:2009 --dry-run >/dev/null
@@ -103,6 +114,21 @@ docker rm tenant-t1-prev >/dev/null
 # Back to the running container's settings: nothing to recreate.
 check "apply is idempotent" bash -c "$RF tenant port t1 2201 | grep -q 'up to date'"
 
+echo "--- sshpiper routing (#80) ---"
+check "route file written" sudo test -f /etc/rootfiles/sshpiper/tenants/t1.yaml
+check "routed password login" outputs 2000 piper_as t1.alice Changed-Pass-42 "id -u"
+check "routed wrong password refused" refused piper_as t1.alice wrong-password true
+check "unknown route refused" refused piper_as nobody.alice Changed-Pass-42 true
+ssh-keygen -q -t ed25519 -N '' -f "$TMP/alice_key"
+key_login() {
+    ssh -i "$TMP/alice_key" -o IdentitiesOnly=yes -o PreferredAuthentications=publickey -o StrictHostKeyChecking=no \
+        -o UserKnownHostsFile="$KH.piper" -o ConnectTimeout=10 -p 2222 t1.alice@127.0.0.1 "id -u"
+}
+check "unlisted key refused" refused key_login
+docker exec -i tenant-t1 sh -c 'mkdir -p /home/alice/.ssh && cat > /home/alice/.ssh/authorized_keys && chown -R 2000:2000 /home/alice/.ssh && chmod 700 /home/alice/.ssh && chmod 600 /home/alice/.ssh/authorized_keys' < "$TMP/alice_key.pub"
+$RF tenant sync
+check "key added in the container logs in after sync" outputs 2000 key_login
+
 echo "--- AC3: quota and online growth ---"
 started=$(docker inspect -f '{{.State.StartedAt}}' tenant-t1)
 check "writes past the quota fail" bash -c '! docker exec tenant-t1 dd if=/dev/zero of=/data/fill bs=1M count=150 2>/dev/null'
@@ -121,7 +147,12 @@ docker start tenant-t1 >/dev/null
 check "data intact after remount" docker exec tenant-t1 test -f /data/hello
 
 echo "--- AC6: operator delegation ---"
-$RF tenant create t2 --image rootfiles-tenant-test:1 --ssh-port 2202 --size 64M --account carol:2100 >/dev/null
+out2=$($RF tenant create t2 --image rootfiles-tenant-test:1 --ssh-port 2202 --size 64M --account carol:2100)
+PW2=$(temp_password <<<"$out2")
+check "create prints the route" grep -q "ssh -p 2222 t2.carol@HOST" <<<"$out2"
+login2=$(piper_as t2.carol "$PW2" true 2>&1 || true)
+check "routed temporary password forces the change" grep -qiE 'expired|change.*password' <<<"$login2"
+check "other tenant's user has no route" refused piper_as t2.alice Changed-Pass-42 true
 sudo useradd -m opsuser
 sudo usermod -aG tenant-ops opsuser
 ops() { sudo -u opsuser sudo -n /usr/local/bin/rootfiles tenant ops "$@"; }
@@ -147,6 +178,16 @@ $RF tenant import t3 --from legacy --size 512M --data /srv/legacy-data --keep /h
 check "imported data" docker exec tenant-t3 test -s /data/blob
 check "imported writable-layer path" docker exec tenant-t3 test -f /home/ubuntu/keep.txt
 check "legacy container kept stopped" bash -c '[ "$(docker inspect -f {{.State.Running}}/{{.HostConfig.RestartPolicy.Name}} legacy)" = false/no ]'
+
+echo "--- AC5: disabling sshpiper ---"
+sudo python3 - <<'PY'
+p = "/etc/rootfiles-test/tenant.yaml"
+s = open(p).read().replace("    sshpiper:\n      enabled: true", "    sshpiper:\n      enabled: false")
+open(p, "w").write(s)
+PY
+$RF apply --config /etc/rootfiles-test/tenant.yaml --module tenant --yes
+check "sshpiper service removed" bash -c '! systemctl cat rootfiles-sshpiper.service >/dev/null 2>&1'
+check "route files removed" bash -c '! sudo ls /etc/rootfiles/sshpiper/tenants/ | grep -q yaml'
 
 $RF tenant status
 report

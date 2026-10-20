@@ -114,3 +114,37 @@ func TestTenantModuleCheck(t *testing.T) {
 		t.Errorf("sudoers rule: %s", tenantSudoersContent("ops"))
 	}
 }
+
+func TestInstallPiperRejectsWrongChecksum(t *testing.T) {
+	dir := t.TempDir()
+	oldLib, oldURL, oldArch := piperLibDir, piperURL, piperGOARCH
+	piperLibDir, piperGOARCH = filepath.Join(dir, "lib"), "amd64"
+	archive := filepath.Join(dir, "fake.tar.gz")
+	os.WriteFile(archive, []byte("not the release"), 0o644)
+	piperURL = "file://" + archive + "?%s%s"
+	t.Cleanup(func() { piperLibDir, piperURL, piperGOARCH = oldLib, oldURL, oldArch })
+	rc := newRealRC(t)
+	err := installPiper(context.Background(), rc, "v1.6.1")
+	if err == nil || !strings.Contains(err.Error(), "SHA-256") {
+		t.Fatalf("tampered archive installed: %v", err)
+	}
+	if piperInstalled("v1.6.1") || fileExists(piperDir("v1.6.1")) {
+		t.Error("files left after a rejected download")
+	}
+	if _, _, err := piperSum("v9.9.9"); err == nil {
+		t.Error("unpinned version accepted")
+	}
+}
+
+func fileExists(p string) bool { _, err := os.Stat(p); return err == nil }
+
+func TestPiperUnit(t *testing.T) {
+	rc := newDryRunRC(t)
+	rc.Config.Modules.Tenant.SSHPiper = config.SSHPiperConfig{Enabled: true}
+	u := piperUnitContent(rc)
+	for _, want := range []string{"--port 2222", "--address 0.0.0.0", "/v1.6.1/plugins/yaml --config /etc/rootfiles/sshpiper/tenants/*.yaml -- ", "/plugins/failtoban", "--server-key-generate-mode notexist"} {
+		if !strings.Contains(u, want) {
+			t.Errorf("unit lacks %q:\n%s", want, u)
+		}
+	}
+}

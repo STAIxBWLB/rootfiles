@@ -147,7 +147,7 @@ All modules are idempotent and support `--dry-run`.
 | `storage` | RAID/NVMe directory setup, symlinks |
 | `network` | UFW firewall, port rules (SSH port always allowed) |
 | `monitoring` | Opt-in Prometheus node exporter and DCGM GPU exporter, plus an optional Prometheus/Alertmanager/Grafana hub that reloads on rule changes |
-| `tenant` | Opt-in host prep for `rootfiles tenant`: GPU device guard timer, daily tenant password sync, fstrim, operator sudoers rule, tenant volume mount units |
+| `tenant` | Opt-in host prep for `rootfiles tenant`: GPU device guard timer, tenant password and key sync, fstrim, operator sudoers rule, tenant volume mount units, optional sshpiper single-port SSH routing |
 
 Modules run in this order; `users` precedes `ssh` so declared operators exist before password auth is turned off.
 

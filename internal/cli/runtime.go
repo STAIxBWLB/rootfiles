@@ -37,7 +37,7 @@ var mutatingCommands = [][]string{
 	{"tenant", "create"}, {"tenant", "apply"}, {"tenant", "user", "add"},
 	{"tenant", "passwd"}, {"tenant", "reset"}, {"tenant", "gpu"}, {"tenant", "image"},
 	{"tenant", "port"}, {"tenant", "volume", "resize"}, {"tenant", "restart"},
-	{"tenant", "import"}, {"tenant", "ops"}, {"tenant", "sync"},
+	{"tenant", "import"}, {"tenant", "ops"},
 }
 
 func markMutating(root *cobra.Command) {

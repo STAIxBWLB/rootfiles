@@ -34,6 +34,8 @@ type Manager struct {
 	ReserveGPUs func(ctx context.Context, tenant string, gpus []int) error
 	// WaitTimeout bounds the readiness check of a new container.
 	WaitTimeout time.Duration
+	// Piper, when set, keeps sshpiper routes for every tenant user.
+	Piper *Piper
 }
 
 // Paths are a tenant's host paths.
@@ -168,6 +170,9 @@ func (m *Manager) Apply(ctx context.Context, s *Spec) error {
 		}
 	}
 	err := m.converge(ctx, s)
+	if err == nil {
+		err = m.WriteRoutes(ctx, s)
+	}
 	if err != nil && m.ReserveGPUs != nil && !m.Runner.DryRun {
 		left := m.inspect(ctx, ContainerName(s.Name))
 		if rerr := m.ReserveGPUs(ctx, s.Name, parseInts(left.GPUs)); rerr != nil {
@@ -377,6 +382,9 @@ func (m *Manager) writeSystem(ctx context.Context, s *Spec) error {
 	if err := m.writeIfChanged(filepath.Join(p.System, "users"), usersFile(s), 0o644); err != nil {
 		return err
 	}
+	if err := m.writePiperKey(s); err != nil {
+		return err
+	}
 	for _, kt := range []string{"ed25519", "ecdsa", "rsa"} {
 		key := filepath.Join(p.System, "ssh", "ssh_host_"+kt+"_key")
 		if m.Runner.FileExists(key) {
@@ -453,7 +461,7 @@ func (m *Manager) SyncShadow(ctx context.Context, s *Spec) error {
 	if !m.Runner.DryRun && !m.inspect(ctx, name).Running {
 		return nil // nothing to read; the stored hashes stay
 	}
-	res, err := m.Runner.Query(ctx, "docker", "exec", name, "cat", "/etc/shadow")
+	res, err := m.readInContainer(ctx, name, "/etc/shadow")
 	if err != nil {
 		if m.Runner.DryRun {
 			return nil
@@ -461,6 +469,13 @@ func (m *Manager) SyncShadow(ctx context.Context, s *Spec) error {
 		return fmt.Errorf("reading passwords of %s: %w", name, err)
 	}
 	return m.writeIfChanged(filepath.Join(m.Paths(s.Name).System, "shadow"), shadowFile(s, res.Stdout), 0o600)
+}
+
+// readInContainer reads a file inside a container, where its symlinks
+// resolve against the container's root, bounded in size and time: the
+// tenant controls the file.
+func (m *Manager) readInContainer(ctx context.Context, container, path string) (*exec.Result, error) {
+	return m.Runner.Query(ctx, "docker", "exec", container, "timeout", "10", "head", "-c", "4194304", path)
 }
 
 // shadowFile keeps name:hash:lastchg of the spec users with usable hashes.
@@ -617,6 +632,9 @@ func (m *Manager) Status(ctx context.Context, names []string, detail bool) error
 			gpus = intList(s.GPUs)
 		}
 		fmt.Fprintf(m.Out, "%-14s %-9s %-7d %-6s %-8s %-19s %s\n", n, state, s.SSHPort, gpus, drift, vol, s.Image)
+		for _, r := range m.Routes(s) {
+			fmt.Fprintf(m.Out, "  %s\n", r)
+		}
 		if detail && st.Exists {
 			if size := m.writableSize(ctx, ContainerName(n)); size != "" {
 				fmt.Fprintf(m.Out, "  writable layer: %s (no quota; keep data in /data, /home or /tmp)\n", size)

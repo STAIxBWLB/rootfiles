@@ -195,7 +195,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 			_ = m.run(ctx, "docker", "cp", "-L", o.From+":/etc/ssh/"+f, filepath.Join(p.System, "ssh", f))
 		}
 	}
-	if sh, err := m.Runner.Query(ctx, "docker", "exec", o.From, "cat", "/etc/shadow"); err == nil {
+	if sh, err := m.readInContainer(ctx, o.From, "/etc/shadow"); err == nil {
 		if err := m.writeIfChanged(filepath.Join(p.System, "shadow"), shadowFile(s, sh.Stdout), 0o600); err != nil {
 			return nil, err
 		}
@@ -259,11 +259,11 @@ func legacyGPUs(c legacyContainer) ([]int, error) {
 // legacyUsers reads the regular accounts (uid 1000-65533 with a login
 // shell) and their sudo/wheel membership from a running container.
 func (m *Manager) legacyUsers(ctx context.Context, from string) ([]User, error) {
-	pw, err := m.Runner.Query(ctx, "docker", "exec", from, "cat", "/etc/passwd")
+	pw, err := m.readInContainer(ctx, from, "/etc/passwd")
 	if err != nil {
 		return nil, err
 	}
-	gr, err := m.Runner.Query(ctx, "docker", "exec", from, "cat", "/etc/group")
+	gr, err := m.readInContainer(ctx, from, "/etc/group")
 	if err != nil {
 		return nil, err
 	}
