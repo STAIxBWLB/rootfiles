@@ -8,6 +8,7 @@ additional `/codex:review` or `/code-review` passes, and human reviewers alike.
 Run these passes and tag every finding with its pass:
 
 - Bugs: logic errors, broken edge cases, regressions.
+- Error messages: a new or changed error, refusal or failure message a person or agent sees names the cause (what failed and why) and the next step (the command, setting or target that fixes it). When secrets, ids or paths must stay out, it names the cause class and how to check it. A message missing either is a finding; Important when it is the only signal of a blocked action (a CLI exit, a refused tool call), otherwise a nit.
 - Security: injection, auth gaps, secrets or PII in logs and diffs.
 - Compliance: the change matches the issue spec and the approved plan.
   Workflow changes (`.github/workflows/`) are also checked for job timeouts, concurrency, and
