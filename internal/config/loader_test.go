@@ -813,6 +813,33 @@ func TestLoad_HomeBaseDetectionOnlyWhenUnset(t *testing.T) {
 	}
 }
 
+func TestLoad_VLANAddressOverrideSatisfiesValidation(t *testing.T) {
+	site := filepath.Join(t.TempDir(), "site.yaml")
+	body := "extends: minimal\nusers:\n  home_base: /home\nmodules:\n  cloudflared:\n    private_network:\n      enabled: true\n      interface: vlan0\n"
+	if err := os.WriteFile(site, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sys := &SystemInfo{OS: "ubuntu"}
+
+	if _, err := Load("", site, sys); err == nil || !strings.Contains(err.Error(), "modules.cloudflared.private_network.address") {
+		t.Fatalf("without --vlan-address: want the address error, got %v", err)
+	}
+
+	// The flag is folded in before validation, so it satisfies the check the
+	// file alone fails, and it wins over the environment override.
+	t.Setenv("ROOTFILES_VLAN_ADDRESS", "198.51.100.11/32")
+	cfg, err := LoadWithOverrides("", site, sys, Overrides{VLANAddress: "203.0.113.10/32"})
+	if err != nil {
+		t.Fatalf("--vlan-address should satisfy the address check: %v", err)
+	}
+	if got := cfg.Modules.Cloudflared.PrivateNetwork.Address; got != "203.0.113.10/32" {
+		t.Errorf("address = %q, want the flag value 203.0.113.10/32", got)
+	}
+	if !cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
+		t.Error("private_network.enabled should stay true")
+	}
+}
+
 func TestLoadSite_RequiresExplicitHomeBase(t *testing.T) {
 	site := filepath.Join(t.TempDir(), "site.yaml")
 	if err := os.WriteFile(site, []byte("extends: minimal\n"), 0600); err != nil {

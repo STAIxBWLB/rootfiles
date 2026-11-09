@@ -33,7 +33,7 @@ func loadForInspection(cmd *cobra.Command) (*config.Config, string, error) {
 	if reportPath != "" {
 		source = "config " + reportPath
 	}
-	cfg, err := config.LoadWithHomeBase(profile, configPath, sys, homeBaseFlag(cmd))
+	cfg, err := config.LoadWithOverrides(profile, configPath, sys, loadOverrides(cmd))
 	if err != nil {
 		return nil, source, err
 	}
