@@ -49,6 +49,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 
 	rc := readOnlyRunContext(cfg, sys, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rc.Out = cmd.OutOrStdout()
 	findings := doctorChecks(cmd.Context(), rc)
 	if loadErr != nil {
 		findings = append(findings, module.Finding{Check: "configuration", Level: module.LevelFail, Detail: loadErr.Error()})
@@ -109,7 +110,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			}
 			ui.WriteBullet(out, marker, fmt.Sprintf("%-16s %s", f.Check, f.Detail))
 			if f.Hint != "" && f.Level != module.LevelOK {
-				fmt.Fprintf(out, "      %s\n", ui.StyleHint.Render("→ "+f.Hint))
+				fmt.Fprintf(out, "      %s\n", ui.StyleHint.Render(ui.MarkPending+" "+f.Hint))
 			}
 		}
 		fmt.Fprintln(out)

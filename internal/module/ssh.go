@@ -12,6 +12,7 @@ import (
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 type SSHModule struct{}
@@ -157,7 +158,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 			if !rc.Force {
 				return nil, fmt.Errorf("%w (re-run with --force to override)", err)
 			}
-			fmt.Printf("  ⚠ ssh: %v — continuing because of --force\n", err)
+			ui.WriteText(rc.Output(), "  "+ui.MarkWarn+" ssh: %v — continuing because of --force\n", err)
 		}
 	}
 

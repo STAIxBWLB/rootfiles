@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // GuardPath is the GPU device guard the host-prep module installs.
@@ -240,7 +241,7 @@ func (m *Manager) recreate(ctx context.Context, s *Spec, st containerState) erro
 		}
 	}
 	if size := m.writableSize(ctx, name); size != "" {
-		m.printf("⚠ %s writable layer holds %s; files outside /data, /home and /tmp stay in %s, not in the new container\n", name, size, prev)
+		m.printf(ui.MarkWarn+" %s writable layer holds %s; files outside /data, /home and /tmp stay in %s, not in the new container\n", name, size, prev)
 	}
 	m.printf("Recreating %s (image %s)\n", name, s.Image)
 	steps := [][]string{
@@ -265,7 +266,7 @@ func (m *Manager) recreate(ctx context.Context, s *Spec, st containerState) erro
 		err = m.Verify(ctx, s)
 	}
 	if err != nil {
-		m.printf("✗ new container failed (%v); rolling back\n", firstLine(err.Error()))
+		m.printf(ui.MarkFail+" new container failed (%v); rolling back\n", firstLine(err.Error()))
 		_ = m.run(ctx, "docker", "rm", "-f", name)
 		for _, a := range [][]string{{"rename", prev, name}, {"update", "--restart=" + orDefault(st.Restart, "always"), name}, {"start", name}} {
 			if rerr := m.run(ctx, "docker", a...); rerr != nil {
@@ -328,7 +329,7 @@ func (m *Manager) Verify(ctx context.Context, s *Spec) error {
 	if len(s.GPUs) > 0 {
 		what += " and GPUs " + intList(s.GPUs)
 	}
-	m.printf("✓ %s: %s verified on port %d\n", ContainerName(s.Name), what, s.SSHPort)
+	m.printf(ui.MarkOK+" %s: %s verified on port %d\n", ContainerName(s.Name), what, s.SSHPort)
 	return nil
 }
 
@@ -352,7 +353,7 @@ func sshBanner(addr string) error {
 func (m *Manager) checkHostKey(ctx context.Context, s *Spec) error {
 	pub, err := os.ReadFile(filepath.Join(m.Paths(s.Name).System, "ssh", "ssh_host_ed25519_key.pub"))
 	if err != nil || !m.Runner.CommandExists("ssh-keyscan") {
-		m.printf("⚠ host key not compared (no stored ed25519 key or no ssh-keyscan)\n")
+		m.printf(ui.MarkWarn + " host key not compared (no stored ed25519 key or no ssh-keyscan)\n")
 		return nil
 	}
 	want := strings.Fields(string(pub))
@@ -658,9 +659,9 @@ func (m *Manager) Status(ctx context.Context, names []string, detail bool) error
 	}
 	if len(specs) > 0 {
 		c := m.commitment(specs)
-		mark := "✓"
+		mark := ui.MarkOK
 		if c.Overcommitted() {
-			mark = "⚠ overcommitted:"
+			mark = ui.MarkWarn + " overcommitted:"
 		}
 		fmt.Fprintf(m.Out, "%s volumes commit %s, %s allocated, %s free on %s\n", mark, human(c.Committed), human(c.Allocated), human(c.Free), m.Root)
 	}

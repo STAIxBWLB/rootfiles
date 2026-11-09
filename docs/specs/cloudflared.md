@@ -32,6 +32,8 @@ The `cloudflared` module and `rootfiles tunnel` install the upstream `cloudflare
 
 ## Behaviour
 
+- Native tunnel text uses the run-context writer; update-check and CLI confirmation text use the command writer. Machine-facing download commands retain the unstyled arrow byte. Writer routing changes no query, download, reload or restart.
+
 - `InspectCloudflared` owns the production binary path and performs one read-only version query. It returns presence, raw stdout, parsed version and query error separately; status keeps raw output while update comparisons keep their existing parsed/normalized policies. CLI path variables are test overrides only.
 - Rootfiles and cloudflared latest-tag lookups share `FetchLatestGitHubTag`; wrappers keep their existing clients, deadlines, raw tag strings and error wording. Cloudflared retains its 15-second timeout. `ui.FirstNonEmpty` shares display fallback without trimming.
 
@@ -59,7 +61,3 @@ The `cloudflared` module and `rootfiles tunnel` install the upstream `cloudflare
 - `internal/module/cloudflared_test.go`: token service convergence, private-network address drift, bad token rejection, token file accepted/rejected (symlink, mode, owner), explicit token over file.
 - `internal/cli/tunnel_test.go`: subcommand tree and the run-context loaders (contract owned by [cli-runtime](cli-runtime.md)).
 - Scenario `tests/scenarios/tunnel-setup-teardown.sh` (CI `scenario` job).
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining output through `ui` and injected writers; path/version observation, latest-tag lookup and display fallback are shared.

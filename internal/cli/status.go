@@ -65,6 +65,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
 	rc := readOnlyRunContext(cfg, sysInfo, logger)
+	rc.Out = cmd.OutOrStdout()
 
 	if rc.Config.Users.HomeBase != "" {
 		warnStatusMetadata(rc) // on stderr, so JSON stays clean

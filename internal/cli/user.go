@@ -311,16 +311,16 @@ func newUserPasswdCmd() *cobra.Command {
 				return fmt.Errorf("no users to process")
 			}
 
-			fmt.Printf("Target users (%d):\n", len(entries))
+			ui.WriteText(cmd.OutOrStdout(), "Target users (%d):\n", len(entries))
 			for _, e := range entries {
-				fmt.Printf("  - %s\n", e.Username)
+				ui.WriteText(cmd.OutOrStdout(), "  - %s\n", e.Username)
 			}
 			ok, err := ui.Confirm("Set passwords for these users?", rc.Yes)
 			if err != nil {
 				return err
 			}
 			if !ok {
-				fmt.Println("Cancelled.")
+				ui.WriteLine(cmd.OutOrStdout(), "Cancelled.")
 				return nil
 			}
 

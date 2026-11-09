@@ -56,6 +56,8 @@ Release notes (`scripts/check-release-notes.sh`)
 
 ## Behaviour
 
+- Update progress/check text uses the command writer through UI plain-text helpers. Exit codes, error printing, download/replace behavior and message bytes are unchanged.
+
 - Test workflow input prefixes refer to existing source/build/test paths; stale root-level `profiles/` and `templates/` prefixes are absent. Documentation inputs added by the docs workflow remain independently tracked.
 
 - `rootfiles update [--check] [--version vX.Y.Z] [--dry-run]`: prints current and target, downloads, verifies, extracts the regular file named `rootfiles` from the archive, replaces, ensures the alias, then reports apply-pending. `--check` prints whether an update exists and exits 0 either way.
@@ -82,4 +84,3 @@ Release notes (`scripts/check-release-notes.sh`)
 ## Open issues
 
 - [#87](https://github.com/STAIxBWLB/rootfiles/issues/87): Go toolchain and action pinning, required checks (workflows use `go-version: stable` and `govulncheck@latest`).
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining `upgrade.go` output through `ui` and `cmd.OutOrStdout()`; latest-tag lookup and version parsing/observation are shared without changing comparisons.

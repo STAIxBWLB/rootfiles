@@ -70,7 +70,3 @@ paths:
 - `internal/module/doctor_test.go`: `TestDoctorSSHWarnsPasswordOnlyAccounts` (shared access helpers).
 - `tests/scenarios/ssh-lockout-guard.sh` (CI `scenario` job): refusal without key logins, hardening with a key-holding operator, password-only accounts, UFW admits port 22, idempotent second run.
 - CI `module` job: `ssh` and `network` on `ubuntu-22.04` and `ubuntu-24.04` via `tests/integration/run-module.sh`.
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `ssh.go` prints the `--force` warning to stdout directly; daemon-reload failure policy to unify.

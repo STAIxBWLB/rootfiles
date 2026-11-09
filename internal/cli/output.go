@@ -81,10 +81,12 @@ func boolMetric(b bool) int {
 	return 0
 }
 
-func writeJSON(w io.Writer, v any) error {
+func writeJSON(w io.Writer, v any) error { return writeJSONEscaping(w, v, false) }
+
+func writeJSONEscaping(w io.Writer, v any, escapeHTML bool) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	enc.SetEscapeHTML(false)
+	enc.SetEscapeHTML(escapeHTML)
 	return enc.Encode(v)
 }
 

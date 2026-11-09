@@ -1,0 +1,16 @@
+Profile: minimal
+Mode: dry-run (no changes will be made)
+Modules: locale, system, packages, users, ssh, security, cloudflared
+
+  → locale: Install locale generation tools
+  → locale: Generate locale en_US.UTF-8
+  → locale: Set locale to en_US.UTF-8
+  → locale: Set timezone to Asia/Seoul
+  → system: Cap journald at 2G
+  → packages: Install 21 packages: [ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban]
+  → users: Set default useradd HOME to /home
+  → ssh: Deploy custom sshd configuration
+  → security: Install [unattended-upgrades fail2ban python3-systemd systemd-timesyncd]
+  → security: Enable security-only unattended upgrades (no reboot, NVIDIA stack excluded)
+  → security: Configure fail2ban sshd jail
+  → cloudflared: Install cloudflared binary

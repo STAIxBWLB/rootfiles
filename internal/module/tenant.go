@@ -35,6 +35,9 @@ var tenantTimers = []string{tenantGuardUnit + ".timer", tenantSyncUnit + ".timer
 // NewTenantManager returns a tenant manager wired to rc's runner, config and
 // the shared GPU ledger.
 func NewTenantManager(rc *RunContext, out io.Writer) *tenant.Manager {
+	if out == nil {
+		out = rc.Output()
+	}
 	return &tenant.Manager{
 		Runner:  rc.Runner,
 		Root:    rc.Config.Modules.Tenant.DataRoot(),

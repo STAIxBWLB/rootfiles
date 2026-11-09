@@ -43,7 +43,7 @@ func newRollbackCmd() *cobra.Command {
 				return fmt.Errorf("loading backup %s: %w", args[0], err)
 			}
 			for _, a := range preview {
-				fmt.Fprintln(out, "  → "+a)
+				ui.WriteLine(out, "  "+ui.MarkPending+" "+a)
 			}
 			if dryRun {
 				return nil

@@ -63,7 +63,3 @@ paths:
 - `internal/module/metadata_test.go`: `TestMetadataCommandsRefuseUntrustedBase` covers storage Check refusing an untrusted base.
 - CI `module` job: `locale`, `system`, `storage` on `ubuntu-22.04` and `ubuntu-24.04` (`tests/integration/run-module.sh`); CI `rocky` job for Rocky locale and journald.
 - `tests/scenarios/os-reinstall-recovery.sh` applies `storage` with the `dgx` profile.
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining repeated home-base defaults and output routing; ordinary sysctl/journald/APT-mirror writes already use the shared helper.

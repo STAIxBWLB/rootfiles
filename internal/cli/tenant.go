@@ -13,6 +13,7 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/tenant"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 func newTenantCmd() *cobra.Command {
@@ -72,7 +73,7 @@ func recordTenant(t, action string, err error) {
 		result = "error: " + strings.SplitN(err.Error(), "\n", 2)[0]
 	}
 	if aerr := tenant.Audit(actor, t, action, result); aerr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ tenant audit log: %v\n", aerr)
+		ui.WriteText(os.Stderr, ui.MarkWarn+" tenant audit log: %v\n", aerr)
 	}
 }
 
@@ -269,7 +270,7 @@ func newTenantApplyCmd() *cobra.Command {
 					recordTenant(t, "apply", err)
 				}
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "✗ %s: %v\n", t, err)
+					ui.WriteText(os.Stderr, ui.MarkFail+" %s: %v\n", t, err)
 					failed = append(failed, t)
 				}
 			}
@@ -518,7 +519,7 @@ host's applied configuration. Every attempt is audited.`,
 			actor, viaSudo := tenant.Actor()
 			refuse := func(err error) error {
 				if aerr := tenant.Audit(actor, t, "ops "+action, "refused: "+err.Error()); aerr != nil {
-					fmt.Fprintf(os.Stderr, "⚠ tenant audit log: %v\n", aerr)
+					ui.WriteText(os.Stderr, ui.MarkWarn+" tenant audit log: %v\n", aerr)
 				}
 				return err
 			}
@@ -594,7 +595,7 @@ running: it only rewrites each tenant's derived files. It still needs root.`,
 					err = m.Sync(cmd.Context(), s)
 				}
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "✗ %s: %v\n", t, err)
+					ui.WriteText(os.Stderr, ui.MarkFail+" %s: %v\n", t, err)
 					failed = append(failed, t)
 				}
 			}

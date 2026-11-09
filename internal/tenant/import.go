@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // ImportOptions describe moving a hand-made container under rootfiles.
@@ -163,7 +165,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 		m.printf("  copy %s -> %s\n", it.src, it.dst)
 	}
 	for _, n := range notes {
-		m.printf("  ⚠ %s\n", n)
+		m.printf("  "+ui.MarkWarn+" %s\n", n)
 	}
 	m.printf("  data to copy %s, volume %s, free on %s %s\n", human(total), human(size), m.Root, human(free))
 	if total > size*95/100 {
@@ -222,7 +224,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 		_ = m.run(ctx, "docker", "start", o.From)
 		return nil, fmt.Errorf("%w; %s was restarted, the copied volume and spec are kept for another try", err, o.From)
 	}
-	m.printf("✓ tenant %s imported; %s is stopped and kept for rollback until you remove it\n", s.Name, o.From)
+	m.printf(ui.MarkOK+" tenant %s imported; %s is stopped and kept for rollback until you remove it\n", s.Name, o.From)
 	return s, nil
 }
 

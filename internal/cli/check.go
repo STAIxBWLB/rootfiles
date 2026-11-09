@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -60,10 +59,11 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{
 		Level: slog.LevelWarn,
 	}))
 	rc := readOnlyRunContext(cfg, sysInfo, logger)
+	rc.Out = cmd.OutOrStdout()
 	// Check is a strict evaluator, unlike overview reports which retain a
 	// backend for diagnostic output on unsupported operating systems.
 	rc.APT, err = exec.NewPackageManager(rc.Runner, sysInfo)

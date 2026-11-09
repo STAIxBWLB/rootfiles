@@ -1,0 +1,98 @@
+[
+  {
+    "profile": "base",
+    "stage": "before",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common\"\n"
+  },
+  {
+    "profile": "base",
+    "stage": "after",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common\"\n"
+  },
+  {
+    "profile": "minimal",
+    "stage": "before",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n chrony ntpsec ntp openntpd\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n unattended-upgrades fail2ban python3-systemd systemd-timesyncd\"\ntime=<clock> level=INFO msg=query cmd=\"timedatectl show -p NTP --value\"\n"
+  },
+  {
+    "profile": "minimal",
+    "stage": "after",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n chrony ntpsec ntp openntpd\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n unattended-upgrades fail2ban python3-systemd systemd-timesyncd\"\ntime=<clock> level=INFO msg=query cmd=\"timedatectl show -p NTP --value\"\n"
+  },
+  {
+    "profile": "dgx",
+    "stage": "before",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n chrony ntpsec ntp openntpd\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n unattended-upgrades fail2ban python3-systemd systemd-timesyncd\"\ntime=<clock> level=INFO msg=query cmd=\"timedatectl show -p NTP --value\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active docker\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n nvidia-container-toolkit\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl list-unit-files nvidia-persistenced.service --no-legend\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl list-unit-files nvidia-fabricmanager.service --no-legend\"\n"
+  },
+  {
+    "profile": "dgx",
+    "stage": "after",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n chrony ntpsec ntp openntpd\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n unattended-upgrades fail2ban python3-systemd systemd-timesyncd\"\ntime=<clock> level=INFO msg=query cmd=\"timedatectl show -p NTP --value\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active docker\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n nvidia-container-toolkit\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl list-unit-files nvidia-persistenced.service --no-legend\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl list-unit-files nvidia-fabricmanager.service --no-legend\"\n"
+  },
+  {
+    "profile": "gpu-server",
+    "stage": "before",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n chrony ntpsec ntp openntpd\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n unattended-upgrades fail2ban python3-systemd systemd-timesyncd\"\ntime=<clock> level=INFO msg=query cmd=\"timedatectl show -p NTP --value\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active docker\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n nvidia-container-toolkit\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl list-unit-files nvidia-persistenced.service --no-legend\"\n"
+  },
+  {
+    "profile": "gpu-server",
+    "stage": "after",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n chrony ntpsec ntp openntpd\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n unattended-upgrades fail2ban python3-systemd systemd-timesyncd\"\ntime=<clock> level=INFO msg=query cmd=\"timedatectl show -p NTP --value\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active docker\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n nvidia-container-toolkit\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl list-unit-files nvidia-persistenced.service --no-legend\"\n"
+  },
+  {
+    "profile": "full",
+    "stage": "before",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n chrony ntpsec ntp openntpd\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n unattended-upgrades fail2ban python3-systemd systemd-timesyncd\"\ntime=<clock> level=INFO msg=query cmd=\"timedatectl show -p NTP --value\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active docker\"\n"
+  },
+  {
+    "profile": "full",
+    "stage": "after",
+    "system_fixture": "ubuntu",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n chrony ntpsec ntp openntpd\"\ntime=<clock> level=INFO msg=query cmd=\"dpkg-query -W -f=${Package} ${Status}\\\\n unattended-upgrades fail2ban python3-systemd systemd-timesyncd\"\ntime=<clock> level=INFO msg=query cmd=\"timedatectl show -p NTP --value\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active docker\"\n"
+  },
+  {
+    "profile": "rocky",
+    "stage": "before",
+    "system_fixture": "rocky",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"localectl list-locales\"\ntime=<clock> level=INFO msg=query cmd=\"rpm -q --qf %{NAME}\\\\n ca-certificates curl wget gnupg2 git vim-enhanced tmux tree jq unzip zip gcc gcc-c++ make glibc-langpack-en zsh openssh-server chrony dnf-automatic curl-minimal\"\ntime=<clock> level=INFO msg=query cmd=\"rpm -q --qf %{NAME}\\\\n dnf-automatic chrony\"\ntime=<clock> level=INFO msg=query cmd=\"python3 -c import dnf\\nimport os\\nimport sys\\nimport xml.etree.ElementTree as ET\\n\\nrequired = set((\\\"baseos\\\", \\\"appstream\\\"))\\nbase = dnf.Base()\\nbase.conf.cacheonly = True\\nbase.conf.substitutions.update_from_etc(base.conf.installroot)\\nstrict = len(sys.argv) > 1 and sys.argv[1] == \\\"strict\\\"\\nbase.read_all_repos()\\nrepos = list(base.repos.iter_enabled())\\nif not repos:\\n    raise RuntimeError(\\\"no enabled DNF repositories\\\")\\nenabled = set(repo.id for repo in repos)\\nmissing_required = required - enabled\\nif missing_required:\\n    raise RuntimeError(\\\"required Rocky security repositories are not enabled: \\\" + \\\",\\\".join(sorted(missing_required)))\\nverified = []\\nrefresh = []\\ncoverage_gaps = []\\nfor repo in repos:\\n    required_repo = repo.id in required\\n    try:\\n        repo.load()\\n    except dnf.exceptions.RepoError as exc:\\n        if strict and required_repo:\\n            raise\\n        if required_repo:\\n            refresh.append(repo.id)\\n        else:\\n            coverage_gaps.append(repo.id)\\n        continue\\n    if strict and repo._repo.isExpired():\\n        if required_repo:\\n            raise RuntimeError(\\\"expired DNF metadata for required repository \\\" + repo.id)\\n        coverage_gaps.append(repo.id)\\n        continue\\n    path = repo.get_metadata_path(\\\"updateinfo\\\")\\n    if not path:\\n        if strict and required_repo:\\n            raise RuntimeError(\\\"missing updateinfo metadata for enabled repository \\\" + repo.id)\\n        if required_repo:\\n            refresh.append(repo.id)\\n        else:\\n            coverage_gaps.append(repo.id)\\n        continue\\n    if not os.path.isfile(path) or os.path.getsize(path) == 0:\\n        if strict and required_repo:\\n            raise RuntimeError(\\\"missing updateinfo metadata for enabled repository \\\" + repo.id)\\n        if required_repo:\\n            refresh.append(repo.id)\\n        else:\\n            coverage_gaps.append(repo.id)\\n        continue\\n    if path.endswith(\\\".solvx\\\"):\\n        pass\\n    else:\\n        content = repo.get_metadata_content(\\\"updateinfo\\\")\\n        if not content:\\n            if strict and required_repo:\\n                raise RuntimeError(\\\"empty updateinfo metadata for enabled repository \\\" + repo.id)\\n            if required_repo:\\n                refresh.append(repo.id)\\n            else:\\n                coverage_gaps.append(repo.id)\\n            continue\\n        try:\\n            root = ET.fromstring(content)\\n        except ET.ParseError:\\n            if strict and required_repo:\\n                raise\\n            if required_repo:\\n                refresh.append(repo.id)\\n            else:\\n                coverage_gaps.append(repo.id)\\n            continue\\n        if root.tag.rsplit(\\\"}\\\", 1)[-1] != \\\"updates\\\":\\n            if strict and required_repo:\\n                raise RuntimeError(\\\"invalid updateinfo root for enabled repository \\\" + repo.id)\\n            if required_repo:\\n                refresh.append(repo.id)\\n            else:\\n                coverage_gaps.append(repo.id)\\n            continue\\n    verified.append(repo.id)\\nbase.close()\\nif refresh:\\n    print(\\\"rootfiles-updateinfo-refresh-needed:\\\" + \\\",\\\".join(refresh))\\nelse:\\n    print(\\\"rootfiles-updateinfo-ok:\\\" + \\\",\\\".join(sorted(required.intersection(verified))))\\n    if coverage_gaps:\\n        print(\\\"rootfiles-updateinfo-coverage-gap:\\\" + \\\",\\\".join(sorted(set(coverage_gaps))))\\n\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active dnf-automatic-install.timer\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active chronyd\"\n"
+  },
+  {
+    "profile": "rocky",
+    "stage": "after",
+    "system_fixture": "rocky",
+    "stderr_clock_normalized": true,
+    "exit": 0,
+    "stderr": "time=<clock> level=INFO msg=query cmd=\"localectl list-locales\"\ntime=<clock> level=INFO msg=query cmd=\"rpm -q --qf %{NAME}\\\\n ca-certificates curl wget gnupg2 git vim-enhanced tmux tree jq unzip zip gcc gcc-c++ make glibc-langpack-en zsh openssh-server chrony dnf-automatic curl-minimal\"\ntime=<clock> level=INFO msg=query cmd=\"rpm -q --qf %{NAME}\\\\n dnf-automatic chrony\"\ntime=<clock> level=INFO msg=query cmd=\"python3 -c import dnf\\nimport os\\nimport sys\\nimport xml.etree.ElementTree as ET\\n\\nrequired = set((\\\"baseos\\\", \\\"appstream\\\"))\\nbase = dnf.Base()\\nbase.conf.cacheonly = True\\nbase.conf.substitutions.update_from_etc(base.conf.installroot)\\nstrict = len(sys.argv) > 1 and sys.argv[1] == \\\"strict\\\"\\nbase.read_all_repos()\\nrepos = list(base.repos.iter_enabled())\\nif not repos:\\n    raise RuntimeError(\\\"no enabled DNF repositories\\\")\\nenabled = set(repo.id for repo in repos)\\nmissing_required = required - enabled\\nif missing_required:\\n    raise RuntimeError(\\\"required Rocky security repositories are not enabled: \\\" + \\\",\\\".join(sorted(missing_required)))\\nverified = []\\nrefresh = []\\ncoverage_gaps = []\\nfor repo in repos:\\n    required_repo = repo.id in required\\n    try:\\n        repo.load()\\n    except dnf.exceptions.RepoError as exc:\\n        if strict and required_repo:\\n            raise\\n        if required_repo:\\n            refresh.append(repo.id)\\n        else:\\n            coverage_gaps.append(repo.id)\\n        continue\\n    if strict and repo._repo.isExpired():\\n        if required_repo:\\n            raise RuntimeError(\\\"expired DNF metadata for required repository \\\" + repo.id)\\n        coverage_gaps.append(repo.id)\\n        continue\\n    path = repo.get_metadata_path(\\\"updateinfo\\\")\\n    if not path:\\n        if strict and required_repo:\\n            raise RuntimeError(\\\"missing updateinfo metadata for enabled repository \\\" + repo.id)\\n        if required_repo:\\n            refresh.append(repo.id)\\n        else:\\n            coverage_gaps.append(repo.id)\\n        continue\\n    if not os.path.isfile(path) or os.path.getsize(path) == 0:\\n        if strict and required_repo:\\n            raise RuntimeError(\\\"missing updateinfo metadata for enabled repository \\\" + repo.id)\\n        if required_repo:\\n            refresh.append(repo.id)\\n        else:\\n            coverage_gaps.append(repo.id)\\n        continue\\n    if path.endswith(\\\".solvx\\\"):\\n        pass\\n    else:\\n        content = repo.get_metadata_content(\\\"updateinfo\\\")\\n        if not content:\\n            if strict and required_repo:\\n                raise RuntimeError(\\\"empty updateinfo metadata for enabled repository \\\" + repo.id)\\n            if required_repo:\\n                refresh.append(repo.id)\\n            else:\\n                coverage_gaps.append(repo.id)\\n            continue\\n        try:\\n            root = ET.fromstring(content)\\n        except ET.ParseError:\\n            if strict and required_repo:\\n                raise\\n            if required_repo:\\n                refresh.append(repo.id)\\n            else:\\n                coverage_gaps.append(repo.id)\\n            continue\\n        if root.tag.rsplit(\\\"}\\\", 1)[-1] != \\\"updates\\\":\\n            if strict and required_repo:\\n                raise RuntimeError(\\\"invalid updateinfo root for enabled repository \\\" + repo.id)\\n            if required_repo:\\n                refresh.append(repo.id)\\n            else:\\n                coverage_gaps.append(repo.id)\\n            continue\\n    verified.append(repo.id)\\nbase.close()\\nif refresh:\\n    print(\\\"rootfiles-updateinfo-refresh-needed:\\\" + \\\",\\\".join(refresh))\\nelse:\\n    print(\\\"rootfiles-updateinfo-ok:\\\" + \\\",\\\".join(sorted(required.intersection(verified))))\\n    if coverage_gaps:\\n        print(\\\"rootfiles-updateinfo-coverage-gap:\\\" + \\\",\\\".join(sorted(set(coverage_gaps))))\\n\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active dnf-automatic-install.timer\"\ntime=<clock> level=INFO msg=query cmd=\"systemctl is-active chronyd\"\n"
+  }
+]
