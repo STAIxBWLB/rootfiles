@@ -29,15 +29,14 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 		return nil, fmt.Errorf("reading sshd drop-in %s: %w; repair its permissions before retrying", sshdDropInPath, readErr)
 	}
-	portChanges, err := managedSSHPortChanges(ctx, rc, existing, cfg.Port)
-	if err != nil {
-		return nil, err
-	}
+
+	includeChanged := false
 	if config.IsRocky(rc.Config.System) {
-		_, _, _, includeChanged, err := rockySSHDMainState(rc)
+		_, _, _, changed, err := rockySSHDMainState(rc)
 		if err != nil {
 			return nil, err
 		}
+		includeChanged = changed
 		if includeChanged {
 			desc := "Enable Rocky sshd_config.d managed drop-ins"
 			if err := m.lockoutGuard(rc); err != nil {
@@ -45,6 +44,16 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 			}
 			changes = append(changes, Change{Description: desc, Command: "add Include " + sshdConfigDir + "/*.conf to " + sshdConfigPath})
 		}
+	}
+	activeDropIn := existing
+	if includeChanged {
+		activeDropIn = nil
+	}
+	portChanges, err := managedSSHPortChanges(ctx, rc, activeDropIn, cfg.Port)
+	if err != nil {
+		return nil, err
+	}
+	if config.IsRocky(rc.Config.System) {
 		if cfg.Port > 0 {
 			if portChanges {
 				allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
@@ -100,10 +109,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 		return nil, fmt.Errorf("reading sshd drop-in %s: %w; repair its permissions before retrying", sshdDropInPath, readErr)
 	}
-	portChanges, err := managedSSHPortChanges(ctx, rc, existing, cfg.Port)
-	if err != nil {
-		return nil, err
-	}
+
 	needsUFWAllow := false
 
 	var originalMain, updatedMain []byte
@@ -115,6 +121,16 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		if err != nil {
 			return nil, err
 		}
+	}
+	activeDropIn := existing
+	if mainIncludeChanged {
+		activeDropIn = nil
+	}
+	portChanges, err := managedSSHPortChanges(ctx, rc, activeDropIn, cfg.Port)
+	if err != nil {
+		return nil, err
+	}
+	if config.IsRocky(rc.Config.System) {
 		if portChanges {
 			allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
 			if err != nil {
@@ -408,13 +424,13 @@ func firstLine(s string) string {
 }
 
 // managedSSHPortChanges shares current-port discovery across Ubuntu and Rocky.
-// A managed directive is authoritative; otherwise inspect sshd without writes,
-// then fall back to an explicit main-config Port or an unambiguous default.
-func managedSSHPortChanges(ctx context.Context, rc *RunContext, existing []byte, requested int) (bool, error) {
+// Callers pass only active managed bytes (nil when an Include is being added).
+// Otherwise inspect sshd without writes, then resolve the current config.
+func managedSSHPortChanges(ctx context.Context, rc *RunContext, activeDropIn []byte, requested int) (bool, error) {
 	if requested <= 0 {
 		return false, nil
 	}
-	if ports := parsePortDirectives(string(existing)); len(ports) > 0 {
+	if ports := parsePortDirectives(string(activeDropIn)); len(ports) > 0 {
 		return ports[0] != requested, nil
 	}
 	if bin := sshdBinary(rc); bin != "" {

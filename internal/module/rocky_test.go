@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -888,6 +889,94 @@ func TestSSHIncludeFallbackReportsPathFailures(t *testing.T) {
 			_, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), nil, 22)
 			if err == nil || !strings.Contains(err.Error(), tc.expected) || !strings.Contains(err.Error(), "before retrying") {
 				t.Fatalf("missing path/cause/fix: %v", err)
+			}
+		})
+	}
+}
+
+func TestRockySSHInactiveDropInChecksFirewallBeforeInclude(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		current        int
+		probe, blocked bool
+	}{
+		{"effective current22", 22, true, true},
+		{"fallback current22", 22, false, true},
+		{"main already on target", 2222, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := rockySSHTestPaths(t)
+			calls := filepath.Join(dir, "calls")
+			if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			main := []byte(fmt.Sprintf("# managed Include is absent\nPort %d\n", tc.current))
+			module := NewSSHModule()
+			drop := []byte(module.buildConfig(config.SSHConfig{Port: 2222}))
+			if err := os.WriteFile(sshdConfigPath, main, 0640); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(sshdDropInPath, drop, 0644); err != nil {
+				t.Fatal(err)
+			}
+			sshdBody := fmt.Sprintf("if [ \"$1\" = '-T' ]; then printf 'port %d\\n'; fi", tc.current)
+			if !tc.probe {
+				sshdBody = "if [ \"$1\" = '-T' ]; then exit 1; fi"
+			}
+			scripts := map[string]string{
+				"sshd":      sshdBody,
+				"ufw":       "printf 'Status: active\\n22/tcp ALLOW IN Anywhere\\n22/tcp (v6) ALLOW IN Anywhere (v6)\\n2222/tcp ALLOW IN 192.0.2.0/24\\n'",
+				"semanage":  "printf 'ssh_port_t tcp 22, 2222\\n'",
+				"systemctl": "if [ \"$1\" = 'is-active' ]; then echo inactive; fi",
+			}
+			for name, body := range scripts {
+				script := "#!/bin/sh\nprintf '%s\\n' '" + name + " '\"$*\" >> '" + calls + "'\n" + body + "\n"
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("PATH", dir)
+			rc := newRealRC(t)
+			rc.Runner.Backup = exec.NewBackup(filepath.Join(dir, "backups"), "inactive drop-in fixture")
+			rc.Config.System = &config.SystemInfo{OS: "rocky", Version: "9.4"}
+			rc.Config.SSH = config.SSHConfig{Port: 2222}
+			rc.Force = true
+			check, err := module.Check(context.Background(), rc)
+			if tc.blocked {
+				if err == nil || !strings.Contains(err.Error(), "does not allow SSH port 2222") {
+					t.Fatalf("inactive port escaped Check firewall verification: %+v, %v", check, err)
+				}
+			} else if err != nil || check.Satisfied {
+				t.Fatalf("Include-only change should be pending: %+v, %v", check, err)
+			}
+			result, err := module.Apply(context.Background(), rc)
+			if tc.blocked {
+				if err == nil || !strings.Contains(err.Error(), "does not allow SSH port 2222") {
+					t.Fatalf("inactive port escaped Apply firewall verification: %+v, %v", result, err)
+				}
+				if rc.Runner.Backup.Used() {
+					t.Fatal("firewall refusal happened after a backed-up write")
+				}
+				if after, err := os.ReadFile(sshdConfigPath); err != nil || string(after) != string(main) {
+					t.Fatalf("main changed before firewall proof: %q, %v", after, err)
+				}
+			} else {
+				if err != nil || !result.Changed {
+					t.Fatalf("same effective port Include repair: %+v, %v", result, err)
+				}
+				if after, err := os.ReadFile(sshdConfigPath); err != nil || !strings.Contains(string(after), "Include "+sshdConfigDir+"/*.conf") {
+					t.Fatalf("Include not repaired: %q, %v", after, err)
+				}
+			}
+			if after, err := os.ReadFile(sshdDropInPath); err != nil || string(after) != string(drop) {
+				t.Fatalf("drop-in changed: %q, %v", after, err)
+			}
+			data, _ := os.ReadFile(calls)
+			if tc.blocked && (strings.Contains(string(data), "semanage ") || strings.Contains(string(data), "sshd -t") || strings.Contains(string(data), "systemctl ")) {
+				t.Fatalf("host mutation/validation ran before firewall proof: %s", data)
+			}
+			if !tc.blocked && strings.Contains(string(data), "ufw ") {
+				t.Fatalf("same effective port queried firewall: %s", data)
 			}
 		})
 	}
