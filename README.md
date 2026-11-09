@@ -271,6 +271,8 @@ Check for updates without installing:
 rootfiles update --check
 ```
 
+Both `rootfiles update --check` and `rootfiles tunnel update --check` run without root or the host lock. They exit 0 when current, 2 when an update (or a missing cloudflared installation) is available, and 1 on a lookup error. Scripts that treated an available update as exit 0 must handle exit 2.
+
 Pin a specific version:
 
 ```bash
@@ -284,6 +286,8 @@ sudo rootfiles update --dry-run
 ```
 
 `update` is the canonical spelling; `rootfiles upgrade` works as an alias for muscle-memory compatibility.
+
+Audit command arguments and backup-session notes redact `--tunnel-token`, `--password` (both separated and `=` forms), and the positional token in `tunnel setup`. Existing audit logs and backup notes are not rewritten; review and securely remove or redact any historical copies containing credentials, and rotate exposed credentials. Backup payloads may contain the original managed configuration and must remain protected.
 
 ### System backup (for OS upgrade)
 
@@ -525,7 +529,7 @@ Upgrade just the `cloudflared` binary to the latest upstream release (no other m
 
 ```bash
 sudo rootfiles tunnel update                     # fetch latest
-sudo rootfiles tunnel update --check             # compare installed vs. latest, no download
+rootfiles tunnel update --check                  # no root/lock; exit 2 if an update is available
 sudo rootfiles tunnel update --version 2024.9.1  # pin to a specific cloudflared release
 ```
 

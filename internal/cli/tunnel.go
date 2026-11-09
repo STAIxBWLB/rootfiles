@@ -117,7 +117,8 @@ without downloading or restarting anything.`,
 			return module.TunnelUpdate(ctx, rc, version)
 		},
 	}
-	updateCmd.Flags().Bool("check", false, "Report current and latest cloudflared version without downloading")
+	updateCmd.Flags().Bool("check", false, "Report current and latest cloudflared version without downloading (exit 2 when available)")
+	_ = updateCmd.Flags().SetAnnotation("check", annotReadOnly, []string{"true"})
 	updateCmd.Flags().String("version", "", "Pin to a specific cloudflared release (e.g. 2024.9.1)")
 	tunnel.AddCommand(updateCmd)
 
@@ -138,8 +139,7 @@ without downloading or restarting anything.`,
 
 // tunnelUpdateCheck prints the installed and upstream cloudflared versions
 // via the same ui helpers used by `rootfiles status`, without touching the
-// binary. Returns a non-nil error only when the upstream lookup fails and
-// we have no useful output to produce.
+// binary. Returns exitDrift when installation or an update is available.
 func tunnelUpdateCheck(ctx context.Context, rc *module.RunContext) error {
 	latest, err := module.FetchLatestCloudflaredVersion(ctx)
 	if err != nil {
@@ -170,20 +170,22 @@ func tunnelUpdateCheck(ctx context.Context, rc *module.RunContext) error {
 
 	switch {
 	case current == "":
-		ui.WriteHint(os.Stdout, "run `rootfiles tunnel install` to install.")
-	case current == latest:
+		ui.WriteHint(os.Stdout, "run `sudo rootfiles tunnel install` to install.")
+		return &ExitError{Code: exitDrift}
+	case normalizeVersion(current) == normalizeVersion(latest):
 		fmt.Println("  " + ui.StyleSuccess.Render(ui.MarkOK+" up to date."))
 	default:
-		ui.WriteHint(os.Stdout, "run `rootfiles tunnel update` to upgrade.")
+		ui.WriteHint(os.Stdout, "run `sudo rootfiles tunnel update` to upgrade.")
+		return &ExitError{Code: exitDrift}
 	}
 	return nil
 }
 
-// cloudflaredPath mirrors internal/module/cloudflared.go's cloudflaredBinary
+// cloudflaredPath is overridable in tests and mirrors internal/module/cloudflared.go's cloudflaredBinary
 // constant. Duplicated here rather than exported to keep the module surface
 // minimal; if it ever drifts, the `tunnel status` / `tunnel update --check`
 // pair will report inconsistent paths, which scenario tests will catch.
-const cloudflaredPath = "/usr/local/bin/cloudflared"
+var cloudflaredPath = "/usr/local/bin/cloudflared"
 
 // buildRunContext loads the profile config and returns any load error. A
 // zero config would read and write user and GPU state under /home, skipping
