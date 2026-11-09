@@ -46,6 +46,9 @@ paths:
 
 ## Safety
 
+- RPM implements package operations but not the separate APT repository capability. Docker/NVIDIA refuse that missing capability before mutations, in addition to existing distro validation.
+- The shared managed-header comparison keeps a legacy `automatic.conf` unchanged when its only difference is the management marker.
+
 - Capability errors happen before any host change; never move a capability check after a module's Apply.
 - Unknown firewall state blocks an SSH port change. Do not add a path that changes `Port` on Rocky without `rockyFirewallAllowsSSH`.
 - Never relabel an SELinux port that another type owns.
@@ -69,5 +72,4 @@ paths:
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `tunnel` and `gpu` mutations skip `ValidateCapabilities` and always build an APT backend.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): module-name list duplicated in `SupportedModules`; `config.ModuleNames()` planned.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `RPM.AddKeyring`/`AddSourceList` stubs move to an APT-only interface; `# Managed by rootfiles-v2` header in `automatic.conf`.
 - [#96](https://github.com/STAIxBWLB/rootfiles/issues/96): docs/rocky-support.md still says Rocky CI "remains required" although the `rocky` job exists.

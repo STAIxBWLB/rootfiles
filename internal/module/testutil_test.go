@@ -107,7 +107,7 @@ func setModuleFixturePaths(root string) {
 		&procSwapsPath, &swapfilePath, &fstabPath, &sysctlPath, &journaldConfPath,
 		&autoUpgradesPath, &unattendedPolicyPath, &fail2banJailPath,
 		&rockyAutomaticConfigPath, &rockyPlatformPython, &dockerDaemonJSONPath,
-		&dockerComposePath, &gpuDeviceDir, &gpuProfileDir, &gpuSystemdDir, &procMountsPath, &cloudflaredBinary, &cloudflaredUnitPath,
+		&dockerComposePath, &dockerWrapperPath, &gpuDeviceDir, &gpuProfileDir, &gpuSystemdDir, &procMountsPath, &cloudflaredBinary, &cloudflaredUnitPath,
 		&cloudflaredEnvPath, &vlanNetdevPath, &vlanNetworkPath,
 		&rebootRequiredPath, &rebootRequiredPkgsPath, &nodeExporterTextfileDir,
 		&exporterGuardHelperPath, &exporterGuardConfPath,

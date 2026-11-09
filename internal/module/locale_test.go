@@ -101,10 +101,6 @@ func (p *localePackageManager) Installed(packages []string) map[string]bool {
 	}
 	return installed
 }
-func (*localePackageManager) AddKeyring(context.Context, string, string) error { return nil }
-func (*localePackageManager) AddSourceList(context.Context, string, string) error {
-	return nil
-}
 
 func TestRockyLocaleCheckReportsMissingNativeLangpack(t *testing.T) {
 	fakeLocaleFS(t)
@@ -267,11 +263,11 @@ func TestLocaleModule_UnknownTimezone(t *testing.T) {
 	}
 }
 
-func TestSetDefaultLocale(t *testing.T) {
+func TestSetLocaleConfig(t *testing.T) {
 	fakeLocaleFS(t)
 	os.WriteFile(defaultLocalePath, []byte("LANG=C\nLC_ALL=C\nLANGUAGE=en\n"), 0644)
 	rc := newRealRC(t)
-	if err := setDefaultLocale(rc, "ko_KR.UTF-8"); err != nil {
+	if err := setLocaleConfig(rc, defaultLocalePath, "ko_KR.UTF-8"); err != nil {
 		t.Fatal(err)
 	}
 	data, _ := os.ReadFile(defaultLocalePath)

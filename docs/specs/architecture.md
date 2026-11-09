@@ -26,7 +26,7 @@ paths:
   - `internal/cli` is the only package that imports `fleet` and the only one `cmd/rootfiles` imports.
 - **Entry point** (`cmd/rootfiles/main.go`): `main` builds a context cancelled on SIGINT/SIGTERM and calls `cli.Execute`. An error that unwraps to `*cli.ExitError` exits with its `Code`, printing `Error: <Msg>` to stderr only when `Msg` is non-empty (drift exit 2 is silent). Any other error is printed as `Error: <err>` and exits 1. Never let an error exit without output. `version` and `commit` are set by goreleaser ldflags (`-X main.version`, `-X main.commit`; see [self-update](self-update.md)).
 - **Output styling** (`internal/ui/styles.go`, `markers.go`, `format.go`): status-style reports go through `WriteHeader`, `WriteSection`, `WriteKV`, `WriteHint`, `WriteBullet` and the `OKMark`/`FailMark`/`PendingMark`/`WarnMark` helpers, writing to an `io.Writer`. lipgloss degrades to plain text when stdout is not a TTY or `NO_COLOR` is set; do not add manual colour gating. Use the `Mark*` constants instead of glyph literals. Several packages still print literal glyphs or raw `fmt` (`internal/module/users.go`, `ssh.go`, `module.go`, `internal/cli/rollback.go`, `upgrade.go`, `doctor.go`, `internal/tenant/manager.go` and others); that is known debt tracked in #94, not a pattern to copy.
-- **Prompts** (`internal/ui/prompt.go`, Charm huh): every prompt helper takes `unattended` and returns its default (`Confirm` returns true, `InputPassword` an empty string) without reading the terminal when it is true. `--yes` must reach every prompt as `unattended`, so unattended runs never block.
+- **Prompts** (`internal/ui/prompt.go`, Charm huh): every prompt helper takes `unattended` and returns its default (`Confirm` returns true) without reading the terminal when it is true. `--yes` must reach every prompt as `unattended`, so unattended runs never block.
 
 ## Behaviour
 
@@ -60,5 +60,4 @@ paths:
 ## Open issues
 
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94) route module and CLI output through `internal/ui` and an injected writer; remove literal glyphs outside `internal/ui`.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95) removes dead `ui.InputPassword`, `ui.AbsentMark` and `MarkStarred`.
 - [#96](https://github.com/STAIxBWLB/rootfiles/issues/96) moves the architecture list out of README/AGENTS.md into `docs/architecture.md`.

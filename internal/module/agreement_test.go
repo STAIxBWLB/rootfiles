@@ -10,15 +10,20 @@ import (
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 type agreementPackageManager struct {
 	installed map[string]bool
 	installs  [][]string
+	updates   int
 	onInstall func([]string) error
 }
 
-func (*agreementPackageManager) Update(context.Context) error { return nil }
+func (p *agreementPackageManager) Update(context.Context) error {
+	p.updates++
+	return nil
+}
 func (p *agreementPackageManager) Install(_ context.Context, packages []string) error {
 	p.installs = append(p.installs, append([]string(nil), packages...))
 	if p.installed == nil {
@@ -458,5 +463,68 @@ func TestUpgradeFromV0181ConvergedModulesStayClean(t *testing.T) {
 	}
 	if _, err := os.Stat(actions); !os.IsNotExist(err) {
 		t.Fatalf("ran upgrade-only mutations: %v", err)
+	}
+}
+
+func TestAPTOnlyModulesRefuseBackendBeforeMutation(t *testing.T) {
+	for _, name := range []string{"docker", "nvidia"} {
+		for _, backend := range []string{"rpm", "packages-only"} {
+			t.Run(name+"/"+backend, func(t *testing.T) {
+				rc := newRealRC(t)
+				dir := fakeDockerAgreementPaths(t)
+				t.Setenv("PATH", dir)
+				calls := filepath.Join(dir, "calls")
+				for _, command := range []string{"docker", "rpm", "dnf", "apt-get", "curl", "systemctl", "nvidia-ctk"} {
+					agreementCommand(t, dir, command, "printf called >> "+agreementQuote(calls))
+				}
+				before := []byte(`{"unmanaged":"preserve"}`)
+				if err := os.WriteFile(dockerDaemonJSONPath, before, 0o644); err != nil {
+					t.Fatal(err)
+				}
+				rc.Config.Modules.Docker.StorageDir = filepath.Join(dir, "new-docker-root")
+				packages := &agreementPackageManager{}
+				if backend == "rpm" {
+					rc.APT = exec.NewRPM(rc.Runner)
+					rc.Config.System = &config.SystemInfo{OS: "rocky", Version: "9.5"}
+				} else {
+					// Narrow the wrapper's method set to package operations, even
+					// though the wrapped agreement fake can also configure APT.
+					rc.APT = struct{ exec.PackageManager }{packages}
+					rc.Config.System = &config.SystemInfo{OS: "ubuntu", Version: "24.04"}
+				}
+				queries := 0
+				guard := rc.Runner.QueryGuard
+				rc.Runner.QueryGuard = func(executable string) error {
+					queries++
+					return guard(executable)
+				}
+				var module Module = NewDockerModule()
+				if name == "nvidia" {
+					module = NewNvidiaModule()
+				}
+				result, err := module.Apply(context.Background(), rc)
+				if err == nil || !strings.Contains(err.Error(), "APT repository support") || !strings.Contains(err.Error(), "disable modules."+name+".enabled") {
+					t.Fatalf("Apply result=%+v error=%v, want cause and next step", result, err)
+				}
+				if packages.updates != 0 || len(packages.installs) != 0 {
+					t.Errorf("refusal changed packages: updates=%d installs=%v", packages.updates, packages.installs)
+				}
+				if queries != 0 {
+					t.Errorf("refusal queried %d commands before checking backend capability", queries)
+				}
+				if _, err := os.Stat(calls); !os.IsNotExist(err) {
+					t.Fatalf("refused backend executed commands: %v", err)
+				}
+				after, err := os.ReadFile(dockerDaemonJSONPath)
+				if err != nil || string(after) != string(before) {
+					t.Fatalf("refusal changed daemon.json: %q, %v", after, err)
+				}
+				for _, file := range []string{dockerComposePath, rc.Config.Modules.Docker.StorageDir} {
+					if _, err := os.Lstat(file); !os.IsNotExist(err) {
+						t.Errorf("refusal created %s: %v", file, err)
+					}
+				}
+			})
+		}
 	}
 }

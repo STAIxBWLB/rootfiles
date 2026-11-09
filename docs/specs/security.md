@@ -27,7 +27,7 @@ paths:
 - `20auto-upgrades` (`autoUpgradesPath`) enables periodic list update and unattended-upgrade.
 - The effective policy is judged, not just the file: `nonSecurityOrigins` reads `apt-config dump` and reports any allowed origin outside `securityOrigins` and any `Origins-Pattern`. Check reports it as drift; real Apply fails after writing when the effective policy is still wider (it cannot fix a later-sorting file, so it must not report success). An `apt-config` failure counts as not security-only.
 - Managed apt.conf.d files must be world-readable (non-root apt reads them); Check flags and Apply `chmod 0644`s them (`unreadableAptConf`).
-- Legacy files in `legacyUnattendedPaths` (the earlier `52rootfiles-unattended-upgrades` and a hand-placed origins fix) are drift; Apply removes them through `rc.Runner.Remove`, which backs them up first.
+- Legacy files in `legacyUnattendedPaths` (the earlier `52rootfiles-unattended-upgrades` and a hand-placed origins fix) are drift; Apply removes them through `rc.Runner.Remove`, which backs them up first. Keep this compatibility cleanup through v0.19; removal is eligible for v0.20.0 only after rollout verification.
 - fail2ban jail `/etc/fail2ban/jail.d/rootfiles-sshd.conf` (`fail2banJail`) uses `sshPorts` (see [ssh-access](ssh-access.md)), `backend = systemd`, `maxretry = 5`, `findtime = 10m`, `bantime = 1h`. A port change rewrites the jail.
 - Time sync manages the NTP daemon already installed (`chrony`, `ntpsec`, `ntp`, `openntpd`, in that order, `timeSyncPackage`) and only falls back to `systemd-timesyncd`, because installing it would remove a conflicting daemon. A failed `timedatectl` status query adds no pending change, matching the warning-only Apply path; it is not a claim that NTP is configured. Apply reports the query failure with repair guidance and attempts no time-sync mutation. Dry-run must not block an operation that real Apply only warns about.
 - All writes go through `rc.Runner` (`MkdirAll`, `WriteFile`, `Remove`, `Run`), so dry-run and backups apply.
@@ -41,9 +41,11 @@ paths:
 ## Distro support
 
 - Ubuntu and DGX OS: full module.
-- Rocky: DNF automatic and chronyd via `security_rocky.go`. `security.fail2ban` is rejected by `ValidateCapabilities` (it would need an explicitly configured EPEL repository), so the Rocky branch of `SecurityModule.packages` that adds `fail2ban` is unreachable (#95).
+- Rocky: DNF automatic and chronyd via `security_rocky.go`. `security.fail2ban` is rejected by `ValidateCapabilities` (it would need an explicitly configured EPEL repository), so the package list contains no Rocky fail2ban branch.
 
 ## Safety
+
+- Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
 
 - Never widen the update policy to non-security origins, enable automatic reboot, or drop the NVIDIA/CUDA blacklist; driver changes need a planned reboot with matching kernel modules.
 - Never report the policy applied when the effective configuration is wider than the managed one.
@@ -61,5 +63,4 @@ paths:
 
 ## Open issues
 
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): unreachable Rocky fail2ban branch; `# Managed by rootfiles-v2` header; set a removal release for the `legacyUnattendedPaths` cleanup.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): hand-written write-if-changed loop to replace with the shared `ensureFile` helper.

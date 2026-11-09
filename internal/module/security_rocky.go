@@ -108,7 +108,7 @@ else:
         print("rootfiles-updateinfo-coverage-gap:" + ",".join(sorted(set(coverage_gaps))))
 `
 
-const rockyAutomaticConfig = `# Managed by rootfiles-v2
+const rockyAutomaticConfig = `# Managed by rootfiles
 [commands]
 upgrade_type = security
 download_updates = yes

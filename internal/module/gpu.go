@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -60,7 +61,7 @@ func (m *GPUModule) Check(_ context.Context, rc *RunContext) (*CheckResult, erro
 			scriptPath := profileDScriptPath(alloc.Username)
 			expected := buildProfileDScript(alloc.Username, alloc.GPUs)
 			data, _ := rc.Runner.ReadFile(scriptPath)
-			if string(data) != expected {
+			if !exec.ManagedContentEqual(string(data), expected) {
 				changes = append(changes, Change{
 					Description: fmt.Sprintf("Write GPU env script for %s (GPUs: %s)", alloc.Username, gpuListStr(alloc.GPUs)),
 					Command:     fmt.Sprintf("write %s", scriptPath),
@@ -76,7 +77,7 @@ func (m *GPUModule) Check(_ context.Context, rc *RunContext) (*CheckResult, erro
 			slicePath := cgroupSlicePath(u.Uid)
 			expected := buildCgroupConf(alloc.GPUs)
 			data, _ := rc.Runner.ReadFile(slicePath)
-			if string(data) != expected {
+			if !exec.ManagedContentEqual(string(data), expected) {
 				changes = append(changes, Change{
 					Description: fmt.Sprintf("Write cgroup GPU slice for %s (GPUs: %s)", alloc.Username, gpuListStr(alloc.GPUs)),
 					Command:     fmt.Sprintf("write %s", slicePath),
@@ -88,7 +89,7 @@ func (m *GPUModule) Check(_ context.Context, rc *RunContext) (*CheckResult, erro
 	// Check Docker wrapper
 	expectedWrapper := buildDockerWrapper(gpuDBPath(rc))
 	wrapperData, _ := rc.Runner.ReadFile(dockerWrapperPath)
-	if string(wrapperData) != expectedWrapper {
+	if !exec.ManagedContentEqual(string(wrapperData), expectedWrapper) {
 		changes = append(changes, Change{
 			Description: "Install Docker GPU enforcement wrapper",
 			Command:     fmt.Sprintf("write %s", dockerWrapperPath),
@@ -130,7 +131,7 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 			scriptPath := profileDScriptPath(alloc.Username)
 			expected := buildProfileDScript(alloc.Username, alloc.GPUs)
 			data, _ := rc.Runner.ReadFile(scriptPath)
-			if string(data) != expected {
+			if !exec.ManagedContentEqual(string(data), expected) {
 				if err := rc.Runner.WriteFile(scriptPath, []byte(expected), 0644); err != nil {
 					return nil, fmt.Errorf("writing profile.d script for %s: %w", alloc.Username, err)
 				}
@@ -148,7 +149,7 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 			slicePath := cgroupSlicePath(u.Uid)
 			expected := buildCgroupConf(alloc.GPUs)
 			data, _ := rc.Runner.ReadFile(slicePath)
-			if string(data) != expected {
+			if !exec.ManagedContentEqual(string(data), expected) {
 				sliceDir := filepath.Dir(slicePath)
 				if err := rc.Runner.MkdirAll(sliceDir, 0755); err != nil {
 					return nil, fmt.Errorf("creating slice dir for %s: %w", alloc.Username, err)
@@ -168,7 +169,7 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	// Apply Docker wrapper
 	expectedWrapper := buildDockerWrapper(gpuDBPath(rc))
 	wrapperData, _ := rc.Runner.ReadFile(dockerWrapperPath)
-	if string(wrapperData) != expectedWrapper {
+	if !exec.ManagedContentEqual(string(wrapperData), expectedWrapper) {
 		if err := rc.Runner.WriteFile(dockerWrapperPath, []byte(expectedWrapper), 0755); err != nil {
 			return nil, fmt.Errorf("writing docker wrapper: %w", err)
 		}
@@ -444,16 +445,15 @@ func ShowGPUStatus(ctx context.Context, rc *RunContext) error {
 	return nil
 }
 
-// Docker wrapper constants
-const (
-	dockerWrapperPath = "/usr/local/bin/docker"
-	dockerRealPath    = "/usr/bin/docker"
-)
+// dockerWrapperPath is overridable in tests, like the GPU env/cgroup directories.
+var dockerWrapperPath = "/usr/local/bin/docker"
+
+const dockerRealPath = "/usr/bin/docker"
 
 // buildDockerWrapper generates a bash wrapper script that enforces per-user GPU allocations for Docker commands.
 func buildDockerWrapper(gpuDBPath string) string {
 	return `#!/bin/bash
-# Managed by rootfiles-v2 — do not edit
+# Managed by rootfiles — do not edit
 # Docker wrapper that enforces per-user GPU allocations.
 set -euo pipefail
 
@@ -575,7 +575,7 @@ func installDockerWrapper(rc *RunContext) error {
 	dbPath := gpuDBPath(rc)
 	expected := buildDockerWrapper(dbPath)
 	data, _ := rc.Runner.ReadFile(dockerWrapperPath)
-	if string(data) == expected {
+	if exec.ManagedContentEqual(string(data), expected) {
 		return nil
 	}
 	if rc.DryRun {
@@ -852,7 +852,7 @@ func profileDScriptPath(username string) string {
 
 func buildProfileDScript(username string, gpus []int) string {
 	gpuStr := gpuListStr(gpus)
-	return fmt.Sprintf(`# Managed by rootfiles-v2 — do not edit
+	return fmt.Sprintf(`# Managed by rootfiles — do not edit
 if [ "$(id -un)" = "%s" ]; then
     export CUDA_VISIBLE_DEVICES=%s
     export NVIDIA_VISIBLE_DEVICES=%s
@@ -866,7 +866,7 @@ func cgroupSlicePath(uid string) string {
 
 func buildCgroupConf(gpus []int) string {
 	var lines []string
-	lines = append(lines, "# Managed by rootfiles-v2 — do not edit")
+	lines = append(lines, "# Managed by rootfiles — do not edit")
 	lines = append(lines, "[Slice]")
 	lines = append(lines, "DevicePolicy=strict")
 	// Standard character devices needed for basic user operation

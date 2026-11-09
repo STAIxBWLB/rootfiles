@@ -101,14 +101,3 @@ func (r *RPM) Installed(packages []string) map[string]bool {
 	}
 	return installed
 }
-
-// AddKeyring is not an RPM repository operation. Callers must install and
-// verify native repository configuration through an explicit DNF path.
-func (r *RPM) AddKeyring(_ context.Context, name, _ string) error {
-	return fmt.Errorf("APT keyring operation %q is unsupported by the DNF backend", name)
-}
-
-// AddSourceList rejects APT source syntax on RPM-family systems.
-func (r *RPM) AddSourceList(_ context.Context, name, _ string) error {
-	return fmt.Errorf("APT source-list operation %q is unsupported by the DNF backend", name)
-}

@@ -18,8 +18,6 @@ import (
 //go:embed assets/exporter-firewall.sh
 var exporterGuardHelper []byte
 
-const exporterGuardUnit = "rootfiles-exporter-firewall.service"
-
 // Overridable in tests.
 var (
 	exporterGuardHelperPath = "/usr/local/sbin/rootfiles-exporter-firewall"

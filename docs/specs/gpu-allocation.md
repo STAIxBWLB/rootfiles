@@ -31,7 +31,7 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
   - `cgroup`: `/etc/systemd/system/user-<uid>.slice.d/gpu-access.conf` with `DevicePolicy=strict`, the standard character devices, the assigned `/dev/nvidia<N>` and the shared NVIDIA control devices (`buildCgroupConf`).
   - `both`: the two above.
 - **Docker wrapper.** While any user allocation exists, `/usr/local/bin/docker` is a managed bash wrapper (`buildDockerWrapper`) in front of `/usr/bin/docker`: root bypasses it; for a user with an allocation, `run`/`create` drop any `--gpus` argument and inject `NVIDIA_VISIBLE_DEVICES`/`CUDA_VISIBLE_DEVICES`, and `compose` gets them exported. Without allocations the wrapper is removed (module Apply, `RevokeGPUs`).
-- **Check and Apply agree** on each user's env script, cgroup drop-in and the wrapper content; files are compared byte for byte with the generated content. A missing account skips its cgroup drop-in (warning in Apply).
+- **Check and Apply agree** on each user's env script, cgroup drop-in and the wrapper content; file content is compared exactly except for the shared legacy management marker. A missing account skips its cgroup drop-in (warning in Apply).
 - **daemon-reload is a warning.** `systemdReload` returns a warning instead of failing: the drop-in is written and takes effect on the next login or boot.
 - **Revoke removes only rootfiles files:** the env script, the `gpu-access.conf` drop-in, and the slice directory only when empty.
 - **MIG is read-only.** `MIGStatus` reads `nvidia-smi` mode and `nvidia-smi -L` instances; repartitioning is left to the operator because it destroys running instances.
@@ -49,6 +49,8 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
 
 ## Safety
 
+- Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
+
 - Root-mutating subcommands build their context with `buildRunContext` ([cli-runtime](cli-runtime.md)).
 - The wrapper replaces `/usr/local/bin/docker`; never write it when no user allocation exists, and never point it at anything but `/usr/bin/docker`.
 - `env` alone is not isolation; `cgroup` is the enforced method.
@@ -65,4 +67,3 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `gpu assign`/`revoke` skip capability validation and always build an APT backend.
 - [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `Example` on `gpu assign`; stale `gpu assign` hint in `status`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `systemdReload` shared helper, home-base defaulting, output through `ui`.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `# Managed by rootfiles-v2` header in generated files.

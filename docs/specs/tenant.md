@@ -116,5 +116,4 @@ Single-port SSH (sshpiper)
 
 - [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `tenant reset` becomes an alias of `tenant passwd`; `Example` on `tenant create`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): shared `writeIfChanged` and `generatePassword` helpers, output through `internal/ui`.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): remove dead `Manager.RemoveRoutes`.
 - Not tracked: the 2026-10-20 design stored GPU UUIDs and checked OCI `linux.devices`; the code stores indices and verifies with `nvidia-smi -L`.

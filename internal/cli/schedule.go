@@ -27,7 +27,7 @@ var (
 
 func scheduleService(bin string) string {
 	dir := state.Dir()
-	return fmt.Sprintf(`# Managed by rootfiles-v2
+	return fmt.Sprintf(`# Managed by rootfiles
 [Unit]
 Description=rootfiles drift and health report
 After=network-online.target
@@ -44,7 +44,7 @@ ExecStart=/bin/sh -c 'd=%[3]s; [ -d "$d" ] || exit 0; { %[1]s check -o prometheu
 }
 
 func scheduleTimer(onCalendar string) string {
-	return fmt.Sprintf(`# Managed by rootfiles-v2
+	return fmt.Sprintf(`# Managed by rootfiles
 [Unit]
 Description=Run rootfiles drift and health report %s
 
@@ -88,16 +88,14 @@ func newScheduleCmd() *cobra.Command {
 			if err := rc.Runner.MkdirAll(state.Dir(), 0755); err != nil {
 				return err
 			}
-			svc := filepath.Join(scheduleUnitDir, scheduleName+".service")
-			tmr := filepath.Join(scheduleUnitDir, scheduleName+".timer")
-			if err := rc.Runner.WriteFile(svc, []byte(scheduleService(bin)), 0644); err != nil {
+			unitsChanged, err := writeScheduleUnits(rc.Runner, bin, onCal)
+			if err != nil {
 				return err
 			}
-			if err := rc.Runner.WriteFile(tmr, []byte(scheduleTimer(onCal)), 0644); err != nil {
-				return err
-			}
-			if _, err := rc.Runner.Run(cmd.Context(), "systemctl", "daemon-reload"); err != nil {
-				return fmt.Errorf("units written but systemd not reachable: %w", err)
+			if unitsChanged {
+				if _, err := rc.Runner.Run(cmd.Context(), "systemctl", "daemon-reload"); err != nil {
+					return fmt.Errorf("units written but systemd not reachable: %w; run systemctl daemon-reload after restoring access to systemd", err)
+				}
 			}
 			if _, err := rc.Runner.Run(cmd.Context(), "systemctl", "enable", "--now", scheduleName+".timer"); err != nil {
 				return err
@@ -132,6 +130,27 @@ func newScheduleCmd() *cobra.Command {
 
 	cmd.AddCommand(enable, disable)
 	return usesConfigTarget(cmd)
+}
+
+// writeScheduleUnits preserves an installed unit when only its legacy marker
+// differs. The caller reloads systemd only after a real unit content change.
+func writeScheduleUnits(runner *exec.Runner, bin, onCalendar string) (bool, error) {
+	changed := false
+	for _, unit := range []struct{ suffix, content string }{{".service", scheduleService(bin)}, {".timer", scheduleTimer(onCalendar)}} {
+		file := filepath.Join(scheduleUnitDir, scheduleName+unit.suffix)
+		current, err := runner.ReadFile(file)
+		if err == nil && exec.ManagedContentEqual(string(current), unit.content) {
+			continue
+		}
+		if err != nil && !os.IsNotExist(err) {
+			return changed, fmt.Errorf("cannot read schedule unit %s: %w; repair its permissions before enabling the schedule", file, err)
+		}
+		if err := runner.WriteFile(file, []byte(unit.content), 0644); err != nil {
+			return changed, fmt.Errorf("cannot write schedule unit %s: %w; check unit directory and backup permissions before retrying", file, err)
+		}
+		changed = true
+	}
+	return changed, nil
 }
 
 // startFirstReport runs the report service once when no report exists yet,

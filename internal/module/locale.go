@@ -209,12 +209,6 @@ func (m *LocaleModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 	return &ApplyResult{Changed: changed, Messages: messages, Warnings: warnings}, nil
 }
 
-// setDefaultLocale sets LANG in /etc/default/locale, keeping other lines
-// but dropping a stale LC_ALL that earlier versions wrote.
-func setDefaultLocale(rc *RunContext, locale string) error {
-	return setLocaleConfig(rc, defaultLocalePath, locale)
-}
-
 func setLocaleConfig(rc *RunContext, path, locale string) error {
 	data, _ := rc.Runner.ReadFile(path)
 	var lines []string

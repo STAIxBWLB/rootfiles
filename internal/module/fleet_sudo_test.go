@@ -86,7 +86,7 @@ func TestFleetSudoersContentIsExactAndStable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "# Managed by rootfiles-v2\n" +
+	want := "# Managed by rootfiles\n" +
 		"Cmnd_Alias ROOTFILES_FLEET_READONLY = /usr/local/bin/rootfiles status -o json, /usr/local/bin/rootfiles check -o json, /usr/local/bin/rootfiles doctor -o json\n" +
 		"alice,zoe ALL=(root) NOPASSWD: ROOTFILES_FLEET_READONLY\n"
 	if string(content) != want {

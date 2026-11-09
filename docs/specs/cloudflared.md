@@ -43,6 +43,8 @@ The `cloudflared` module and `rootfiles tunnel` install the upstream `cloudflare
 
 ## Safety
 
+- Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
+
 - Never log, print or pass the token as an argument from rootfiles itself. Note that a token given as `tunnel setup TOKEN` or `--tunnel-token` is still recorded in the audit log and backup note today (#88); prefer `tunnel_token_file`.
 - Never leave a partially downloaded binary at the install path.
 - Removing `private_network` from a config does not tear down an existing interface; only `tunnel uninstall` does (unverified beyond reading Check/Apply, which only act when enabled).
@@ -59,4 +61,3 @@ The `cloudflared` module and `rootfiles tunnel` install the upstream `cloudflare
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): capability validation and distro package manager in `buildRunContext` for `tunnel`.
 - [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `tunnel install` becomes an alias of `tunnel setup`; replace the example address in help and prompts with a TEST-NET address.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated binary path, version parsing, latest-version fetch and `firstNonEmptyCloudflared`.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `# Managed by rootfiles-v2` header.

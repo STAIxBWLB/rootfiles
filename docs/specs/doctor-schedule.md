@@ -40,6 +40,8 @@ paths:
 
 ## Behaviour
 
+- Schedule enable writes only units with real content changes, preserving old headers. It runs daemon-reload only after an actual unit write; existing enable/first-report behavior is unchanged.
+
 - `rootfiles doctor [-o text|json|prometheus] [--strict]`.
 - `rootfiles schedule enable [--on-calendar EXPR]`, `schedule disable` (both in `mutatingCommands`; context from `buildConfigFreeRunContext`). `disable` stops the timer, removes both units and reloads systemd, ignoring systemctl errors.
 - The schedule runs reports only; it never applies changes.
@@ -49,6 +51,8 @@ paths:
 - Ubuntu, DGX OS and Rocky. The firewall check reads UFW only (firewalld is not inspected), so a Rocky host without UFW gets a skip finding. Hints name APT packages (`openssh-server`).
 
 ## Safety
+
+- Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
 
 - SSH inspection never creates `/run/sshd`. If read-only `sshd -T` fails because of configuration, host-key access or missing runtime state, report failure with the operator command to inspect and repair it.
 
@@ -68,4 +72,3 @@ paths:
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `doctor` ignores `--module`; reject it.
 - [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): no `schedule status`; help text says how `check`/`status`/`doctor` differ.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): repeated capability validation and read-only `RunContext` construction across doctor/status/check.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `# Managed by rootfiles-v2` header on the schedule units.

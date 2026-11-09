@@ -91,7 +91,7 @@ func TestGPUModule_CheckWithAllocations(t *testing.T) {
 
 func TestBuildProfileDScript(t *testing.T) {
 	script := buildProfileDScript("alice", []int{0, 1})
-	expected := `# Managed by rootfiles-v2 — do not edit
+	expected := `# Managed by rootfiles — do not edit
 if [ "$(id -un)" = "alice" ]; then
     export CUDA_VISIBLE_DEVICES=0,1
     export NVIDIA_VISIBLE_DEVICES=0,1
@@ -925,7 +925,7 @@ func TestBuildDockerWrapper(t *testing.T) {
 
 	for _, expect := range []string{
 		"#!/bin/bash",
-		"# Managed by rootfiles-v2",
+		"# Managed by rootfiles",
 		dockerRealPath,
 		"python3",
 		"--gpus",

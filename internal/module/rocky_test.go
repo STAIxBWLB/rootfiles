@@ -524,13 +524,6 @@ func (rockyRecordingPackageManager) Installed(names []string) map[string]bool {
 	}
 	return installed
 }
-func (rockyRecordingPackageManager) AddKeyring(context.Context, string, string) error {
-	return nil
-}
-func (rockyRecordingPackageManager) AddSourceList(context.Context, string, string) error {
-	return nil
-}
-
 func appendRockyCall(path, call string) error {
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {

@@ -12,7 +12,7 @@ import (
 )
 
 // TenantModule prepares a host for `rootfiles tenant` containers: the GPU
-// device guard, the daily password sync, fstrim, the operator sudoers rule
+// device guard, the two-minute password sync, fstrim, the operator sudoers rule
 // and the volume mount units of existing tenants.
 type TenantModule struct{}
 
@@ -272,7 +272,7 @@ func (m *TenantModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 
 // tenantGuardScript restores GPU access of running containers whose device
 // filter a systemd daemon-reload rebuilt without their /dev/nvidia* nodes
-// (containers started with --gpus on runc). Verified on dgx02 2026-10-20.
+// (containers started with --gpus on runc).
 const tenantGuardScript = `#!/bin/bash
 # Managed by rootfiles: GPU device guard. Do not edit.
 # Usage: rootfiles-gpu-guard [--dry-run] [container ...]  (no args: all running GPU containers)

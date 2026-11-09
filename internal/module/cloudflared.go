@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -38,7 +39,7 @@ const cloudflaredService = "cloudflared"
 // by systemd, never in the (world-readable) unit file or on a command line.
 // `cloudflared tunnel run` picks it up from TUNNEL_TOKEN.
 func cloudflaredUnit() string {
-	return fmt.Sprintf(`# Managed by rootfiles-v2
+	return fmt.Sprintf(`# Managed by rootfiles
 [Unit]
 Description=cloudflared tunnel
 After=network-online.target
@@ -67,7 +68,7 @@ func vlanIface(cfg config.PrivateNetworkConfig) string {
 }
 
 func vlanNetdev(iface string) string {
-	return fmt.Sprintf(`# Managed by rootfiles-v2 — cloudflared private network
+	return fmt.Sprintf(`# Managed by rootfiles — cloudflared private network
 [NetDev]
 Name=%s
 Kind=dummy
@@ -75,7 +76,7 @@ Kind=dummy
 }
 
 func vlanNetwork(iface, addr string) string {
-	return fmt.Sprintf(`# Managed by rootfiles-v2 — cloudflared private network
+	return fmt.Sprintf(`# Managed by rootfiles — cloudflared private network
 [Match]
 Name=%s
 
@@ -86,7 +87,7 @@ Address=%s
 
 func fileEquals(rc *RunContext, path, want string) bool {
 	data, err := rc.Runner.ReadFile(path)
-	return err == nil && string(data) == want
+	return err == nil && exec.ManagedContentEqual(string(data), want)
 }
 
 // tunnelServiceDrift reports whether the unit or token file differs.
