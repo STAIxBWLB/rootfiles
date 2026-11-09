@@ -168,3 +168,18 @@ func TestSSHFirewallDoesNotWidenExistingRestrictedRule(t *testing.T) {
 		t.Fatalf("restricted policy mutated: %s", data)
 	}
 }
+
+func TestNetworkKnownUnrelatedDenyPolicyRemainsIdempotent(t *testing.T) {
+	fakeFirewallStatus(t, "Status: active\n22/tcp ALLOW IN Anywhere\n22/tcp (v6) ALLOW IN Anywhere (v6)\n8080/tcp DENY IN Anywhere", false)
+	rc := newDryRunRC(t)
+	rc.Config.SSH.Port = 22
+	rc.Config.Modules.Network = config.NetworkConfig{UFW: true}
+	check, err := NewNetworkModule().Check(context.Background(), rc)
+	if err != nil || !check.Satisfied {
+		t.Fatalf("known unrelated policy should remain unchanged: %+v, %v", check, err)
+	}
+	result, err := NewNetworkModule().Apply(context.Background(), rc)
+	if err != nil || result.Changed {
+		t.Fatalf("known unrelated policy should be idempotent: %+v, %v", result, err)
+	}
+}

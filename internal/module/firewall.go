@@ -415,8 +415,5 @@ func networkFirewallState(ctx context.Context, rc *RunContext) (FirewallState, e
 	if st.firewalldActive {
 		return st, fmt.Errorf("firewalld is active; choose one firewall manager and disable modules.network.ufw or stop firewalld through the host firewall change process before applying")
 	}
-	if st.UFWActive && st.hasDenyOrRejectRule() {
-		return st, fmt.Errorf("UFW has incoming DENY or REJECT rules that can override required port allowances; review sudo ufw status and reconcile those rules before enabling or changing UFW")
-	}
 	return st, nil
 }
