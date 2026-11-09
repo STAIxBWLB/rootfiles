@@ -114,7 +114,7 @@ func newGPUCmd() *cobra.Command {
 	})
 	gpuCmd.AddCommand(migCmd)
 
-	return gpuCmd
+	return usesConfigTarget(gpuCmd)
 }
 
 func parseGPUList(s string) ([]int, error) {

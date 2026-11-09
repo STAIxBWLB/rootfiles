@@ -76,8 +76,31 @@ func preflight(cmd *cobra.Command, _ []string) error {
 	return requireRootAndLock(cmd)
 }
 
-// rejectUnusedNativeFlags catches inherited configuration inputs that this
-// command cannot use. Fleet and tenant ops have their own refusal/audit paths.
+const annotReadsRootFlag = "rootfiles/reads-root-flag/"
+
+// usesRootFlags declares inherited inputs beside the command's reader.
+func usesRootFlags(cmd *cobra.Command, names ...string) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	for _, name := range names {
+		cmd.Annotations[annotReadsRootFlag+name] = "true"
+	}
+	return cmd
+}
+
+func usesConfigTarget(cmd *cobra.Command) *cobra.Command {
+	return usesRootFlags(cmd, "profile", "config", "home-base")
+}
+
+// usesConfigInputs accompanies readers of both applyFlagOverrides and
+// applyAccountFlags, keeping check and config inspection aligned with apply.
+func usesConfigInputs(cmd *cobra.Command) *cobra.Command {
+	return usesRootFlags(usesConfigTarget(cmd), "user", "ssh-pubkey", "tunnel-token", "vlan-address")
+}
+
+// rejectUnusedNativeFlags catches inherited configuration inputs without a
+// reader declaration. Fleet and tenant ops have their own refusal/audit paths.
 func rejectUnusedNativeFlags(cmd *cobra.Command) error {
 	command := strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
 	if strings.HasPrefix(command, "fleet ") || command == "tenant ops" {
@@ -85,22 +108,13 @@ func rejectUnusedNativeFlags(cmd *cobra.Command) error {
 	}
 	var refused []string
 	cmd.Flags().Visit(func(flag *pflag.Flag) {
-		allowed := true
 		switch flag.Name {
-		case "profile", "config", "home-base":
-			allowed = false
-			for _, prefix := range []string{"apply", "check", "status", "doctor", "user ", "gpu ", "tunnel ", "schedule ", "backup", "config show", "config validate", "tenant "} {
-				if command == prefix || strings.HasPrefix(command, prefix) {
-					allowed = true
-					break
+		case "profile", "config", "home-base", "user", "ssh-pubkey", "tunnel-token", "vlan-address":
+			for reader := cmd; reader != nil; reader = reader.Parent() {
+				if reader.Annotations[annotReadsRootFlag+flag.Name] == "true" {
+					return
 				}
 			}
-		case "user", "ssh-pubkey":
-			allowed = command == "apply" || command == "config show" || command == "config validate"
-		case "tunnel-token", "vlan-address":
-			allowed = command == "apply" || command == "config show" || command == "config validate" || command == "tunnel setup" || command == "tunnel install"
-		}
-		if !allowed {
 			refused = append(refused, "--"+flag.Name)
 		}
 	})

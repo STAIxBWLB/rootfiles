@@ -24,7 +24,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 	addOutputFlagWithMetrics(cmd)
 	cmd.Flags().Bool("strict", false, "Treat warnings as failures for the exit code")
-	return cmd
+	return usesConfigTarget(cmd)
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {

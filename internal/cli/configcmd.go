@@ -78,7 +78,7 @@ func newConfigShowCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("reveal", false, "Show secrets (tunnel token) instead of masking them")
-	return cmd
+	return usesConfigInputs(cmd)
 }
 
 func maskSecret(s string) string {
@@ -92,7 +92,7 @@ func maskSecret(s string) string {
 }
 
 func newConfigValidateCmd() *cobra.Command {
-	return &cobra.Command{
+	return usesConfigInputs(&cobra.Command{
 		Use:   "validate",
 		Short: "Validate a profile or config file (unknown keys, paths, ports, CIDRs, …)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -103,7 +103,7 @@ func newConfigValidateCmd() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), ui.StyleSuccess.Render(ui.MarkOK+" "+source+" is valid"))
 			return nil
 		},
-	}
+	})
 }
 
 func newConfigInitCmd() *cobra.Command {

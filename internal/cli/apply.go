@@ -26,7 +26,7 @@ func newApplyCmd() *cobra.Command {
 	}
 	cmd.Flags().StringSlice("module", nil, "Run specific modules only")
 	cmd.Flags().Bool("force", false, "Override SSH lockout safety guards")
-	return cmd
+	return usesConfigInputs(cmd)
 }
 
 func runApply(cmd *cobra.Command, _ []string) error {

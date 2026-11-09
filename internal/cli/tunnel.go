@@ -21,7 +21,7 @@ func newTunnelCmd() *cobra.Command {
 		Short: "Manage cloudflared tunnel and VLAN private network",
 	}
 
-	tunnel.AddCommand(&cobra.Command{
+	tunnel.AddCommand(usesRootFlags(&cobra.Command{
 		Use:   "install",
 		Short: "Install cloudflared binary",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -33,9 +33,9 @@ func newTunnelCmd() *cobra.Command {
 			_, err = m.Apply(cmd.Context(), rc)
 			return err
 		},
-	})
+	}, "tunnel-token", "vlan-address"))
 
-	tunnel.AddCommand(&cobra.Command{
+	tunnel.AddCommand(usesRootFlags(&cobra.Command{
 		Use:   "setup [TOKEN]",
 		Short: "Setup tunnel + VLAN private network",
 		Args:  cobra.MaximumNArgs(1),
@@ -60,7 +60,7 @@ func newTunnelCmd() *cobra.Command {
 			}
 			return module.TunnelSetup(cmd.Context(), rc, token, vlanAddr)
 		},
-	})
+	}, "tunnel-token", "vlan-address"))
 
 	tunnel.AddCommand(&cobra.Command{
 		Use:   "status",
@@ -139,7 +139,7 @@ without downloading or restarting anything.`,
 		},
 	})
 
-	return tunnel
+	return usesConfigTarget(tunnel)
 }
 
 // tunnelUpdateCheck prints the installed and upstream cloudflared versions

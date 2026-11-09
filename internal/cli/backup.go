@@ -178,7 +178,7 @@ func newBackupCmd() *cobra.Command {
 	cmd.Flags().StringP("output", "o", "/raid/backup", "Backup output directory")
 	cmd.Flags().Bool("skip-docker", false, "Skip Docker image list")
 	cmd.Flags().Bool("skip-etc", false, "Skip /etc/ config tar")
-	return cmd
+	return usesConfigTarget(cmd)
 }
 
 // backupSystemInfo writes system detection results + hostname.

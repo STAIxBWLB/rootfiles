@@ -249,3 +249,68 @@ func TestRealMutationCapabilityGate(t *testing.T) {
 		})
 	}
 }
+
+func TestConsumedRootFlagContracts(t *testing.T) {
+	inputs := []string{"--user", "flag-contract-user", "--ssh-pubkey", "ssh-ed25519 fixture-key", "--tunnel-token", "fixture-token", "--vlan-address", "192.0.2.1/32"}
+	for _, path := range [][]string{{"apply"}, {"check"}, {"config", "show"}, {"config", "validate"}, {"user", "add"}, {"tunnel", "setup"}, {"tunnel", "install"}} {
+		t.Run(strings.Join(path, " "), func(t *testing.T) {
+			root := NewRootCmd("test", "test")
+			cmd, _, err := root.Find(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			flags := inputs
+			if path[0] == "user" {
+				flags = inputs[:4]
+			}
+			if path[0] == "tunnel" {
+				flags = inputs[4:]
+			}
+			flags = append(append([]string{}, flags...), "--profile", "minimal", "--dry-run")
+			if err := cmd.ParseFlags(flags); err != nil {
+				t.Fatal(err)
+			}
+			if err := preflight(cmd, nil); err != nil {
+				t.Fatalf("reader refused consumed flags: %v", err)
+			}
+			// The preflight must preserve the parsed inputs for the existing readers.
+			if path[0] != "tunnel" {
+				name, _ := cmd.Flags().GetString("user")
+				key, _ := cmd.Flags().GetString("ssh-pubkey")
+				if name != "flag-contract-user" || key != "ssh-ed25519 fixture-key" {
+					t.Fatalf("account inputs lost: %q, %q", name, key)
+				}
+			}
+			if path[0] != "user" {
+				token, _ := cmd.Flags().GetString("tunnel-token")
+				address, _ := cmd.Flags().GetString("vlan-address")
+				if token != "fixture-token" || address != "192.0.2.1/32" {
+					t.Fatalf("tunnel inputs lost: %q, %q", token, address)
+				}
+			}
+		})
+	}
+}
+
+func TestCheckAcceptsApplyAccountAndTunnelOverrides(t *testing.T) {
+	old := detectSystem
+	detectSystem = func() (*config.SystemInfo, error) { return &config.SystemInfo{OS: "ubuntu", Version: "24.04"}, nil }
+	t.Cleanup(func() { detectSystem = old })
+	noHostCommands(t)
+	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
+	root := NewRootCmd("test", "test")
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetArgs([]string{"check", "--profile", "minimal", "--user", "flag-contract-user", "--ssh-pubkey", "ssh-ed25519 fixture-key", "--tunnel-token", "fixture-token", "--vlan-address", "192.0.2.1/32", "-o", "json"})
+	err := root.Execute()
+	if err != nil {
+		exit, ok := err.(*ExitError)
+		if !ok || exit.Code != exitDrift {
+			t.Fatalf("check overrides: %v", err)
+		}
+	}
+	var report checkReport
+	if err := json.Unmarshal(output.Bytes(), &report); err != nil {
+		t.Fatalf("check did not produce a report: %v", err)
+	}
+}

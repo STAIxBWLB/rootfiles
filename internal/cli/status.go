@@ -30,7 +30,7 @@ func newStatusCmd() *cobra.Command {
 	}
 	cmd.Flags().StringSlice("module", nil, "Report specific modules only")
 	addOutputFlag(cmd)
-	return cmd
+	return usesConfigTarget(cmd)
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {

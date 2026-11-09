@@ -38,7 +38,7 @@ func newUserCmd() *cobra.Command {
 		newUserQuotaCmd(),
 	)
 
-	return userCmd
+	return usesConfigTarget(userCmd)
 }
 
 func newUserAddCmd() *cobra.Command {
@@ -87,6 +87,7 @@ func newUserAddCmd() *cobra.Command {
 			return module.AddUser(cmd.Context(), rc, username, pubkeys, groups, noDocker)
 		},
 	}
+	usesRootFlags(cmd, "user", "ssh-pubkey")
 	cmd.Flags().String("pubkey", "", "SSH public key")
 	cmd.Flags().StringSlice("groups", nil, "Additional groups")
 	cmd.Flags().Bool("no-docker", false, "Do not add to docker group")
