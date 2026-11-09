@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
@@ -252,6 +253,36 @@ func TestPreflightReadOnlyFlags(t *testing.T) {
 			if err := preflight(cmd, nil); err == nil || !strings.Contains(err.Error(), "root") {
 				t.Fatalf("%v --check=false bypassed root: %v", path, err)
 			}
+		}
+	}
+}
+
+func TestReadOnlyCommandsRejectVLANAddress(t *testing.T) {
+	oldDetect := detectSystem
+	detectSystem = func() (*config.SystemInfo, error) {
+		t.Fatal("non-reader reached host detection instead of refusing --vlan-address")
+		return nil, nil
+	}
+	t.Cleanup(func() { detectSystem = oldDetect })
+	noHostCommands(t)
+	for _, command := range []string{"doctor", "status"} {
+		for _, flags := range [][]string{{"--vlan-address", "203.0.113.10/32"}, {"--vlan-address=203.0.113.10/32"}} {
+			t.Run(command+"/"+flags[0], func(t *testing.T) {
+				stateDir := t.TempDir()
+				t.Setenv("ROOTFILES_STATE_DIR", stateDir)
+				root := NewRootCmd("test", "test")
+				root.SetOut(io.Discard)
+				root.SetErr(io.Discard)
+				root.SetArgs(append([]string{command}, flags...))
+				err := root.Execute()
+				if err == nil || !strings.Contains(err.Error(), "rootfiles "+command+" does not use --vlan-address") || !strings.Contains(err.Error(), "remove these flags") {
+					t.Fatalf("non-reader refusal lost: %v", err)
+				}
+				entries, err := os.ReadDir(stateDir)
+				if err != nil || len(entries) != 0 {
+					t.Fatalf("refusal touched state: %v, %v", entries, err)
+				}
+			})
 		}
 	}
 }
