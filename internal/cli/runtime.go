@@ -179,7 +179,7 @@ func redactArgs(args []string) []string {
 		case 0:
 			tunnelSetup = arg == "tunnel"
 		case 1:
-			tunnelSetup = tunnelSetup && arg == "setup"
+			tunnelSetup = tunnelSetup && (arg == "setup" || arg == "install")
 		default:
 			if tunnelSetup {
 				out[i] = "***"

@@ -272,7 +272,7 @@ func finishFleetMutation(c *cobra.Command, op string, args []string, results []f
 func newFleetApplyCmd() *cobra.Command {
 	c := &cobra.Command{Use: "apply", Short: "Apply selected hosts' site configs serially", Args: cobra.NoArgs,
 		Example: `  rootfiles fleet apply --host web1,web2 --yes
-  rootfiles fleet apply --group edge --dry-run --yes`,
+  rootfiles fleet apply --group edge --dry-run`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			timeout, err := fleetMutationTimeout(c)
 			if err != nil {
@@ -343,9 +343,9 @@ func newFleetScheduleCmd() *cobra.Command {
 	c := &cobra.Command{Use: "schedule <enable|disable>", Short: "Enable or disable scheduled reports serially", Args: cobra.ExactArgs(1), RunE: func(c *cobra.Command, args []string) error {
 		action := args[0]
 		calendar, _ := c.Flags().GetString("on-calendar")
-		if calendar != "" {
+		if c.Flags().Changed("on-calendar") {
 			if action != "enable" {
-				return fmt.Errorf("--on-calendar applies to `fleet schedule enable`")
+				return fmt.Errorf("--on-calendar applies to fleet schedule enable; remove it from fleet schedule disable")
 			}
 			if err := validateOnCalendar(calendar); err != nil {
 				return err
@@ -368,7 +368,7 @@ func newFleetScheduleCmd() *cobra.Command {
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
-	c.Flags().String("on-calendar", "", "OnCalendar expression for `fleet schedule enable` (default: keep each host's)")
+	c.Flags().String("on-calendar", "", "OnCalendar expression for `fleet schedule enable` (omitted: remote default daily)")
 	c.Flags().StringP("output", "o", "text", "Output format: text or json")
 	return c
 }

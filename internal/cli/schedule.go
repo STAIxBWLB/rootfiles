@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
@@ -59,17 +61,9 @@ WantedBy=timers.target
 `, onCalendar, onCalendar)
 }
 
-// validateOnCalendar keeps the expression out of the unit file and out of the
-// shell command the fleet controller sends: a newline would add a unit
-// directive there, and a quote would end the quoting added around it.
+// validateOnCalendar shares the unit-file boundary with fleet scheduling.
 func validateOnCalendar(expr string) error {
-	if strings.TrimSpace(expr) == "" {
-		return fmt.Errorf("--on-calendar must not be empty")
-	}
-	if strings.ContainsAny(expr, "\n'") {
-		return fmt.Errorf("invalid --on-calendar %q", expr)
-	}
-	return nil
+	return fleet.ValidateScheduleCalendar(expr)
 }
 
 func newScheduleCmd() *cobra.Command {
@@ -155,17 +149,14 @@ check.json and doctor.json are. A report older than 48 hours is marked stale, th
 same horizon the monitoring hub's RootfilesReportStale alert uses. Read-only.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rc, err := buildConfigFreeRunContext(cmd)
-			if err != nil {
-				return err
-			}
-			reportScheduleStatus(cmd, rc)
+			runner := exec.NewRunner(true, newLogger(cmd, true, slog.LevelInfo))
+			reportScheduleStatus(cmd, runner)
 			return nil
 		},
 	}
 
-	cmd.AddCommand(enable, disable, status)
-	return usesConfigTarget(cmd)
+	cmd.AddCommand(usesConfigTarget(enable), usesConfigTarget(disable), status)
+	return cmd
 }
 
 func scheduleTimerReady(ctx context.Context, runner *exec.Runner) bool {
@@ -204,24 +195,31 @@ func writeScheduleUnits(runner *exec.Runner, bin, onCalendar string) (bool, erro
 
 // reportScheduleStatus prints the timer and report state; it never changes
 // anything, so an uninstalled timer is a report, not an error.
-func reportScheduleStatus(cmd *cobra.Command, rc *module.RunContext) {
+func reportScheduleStatus(cmd *cobra.Command, runner *exec.Runner) {
 	ctx, out := cmd.Context(), cmd.OutOrStdout()
 	ui.WriteSection(out, "Scheduled reports")
 
 	timer := filepath.Join(scheduleUnitDir, scheduleName+".timer")
-	if !rc.Runner.FileExists(timer) {
+	if !runner.FileExists(timer) {
 		ui.WriteKV(out, "Timer", "not installed")
 		ui.WriteHint(out, "run `sudo rootfiles schedule enable` to install the daily report timer")
-		return
-	}
-	ui.WriteKV(out, "Timer", "installed")
-	ui.WriteKV(out, "Enabled", systemctlWord(ctx, rc.Runner, "is-enabled", scheduleName+".timer"))
-	ui.WriteKV(out, "Active", systemctlWord(ctx, rc.Runner, "is-active", scheduleName+".timer"))
-	if data, err := rc.Runner.ReadFile(timer); err == nil {
-		if cal := onCalendarLine(string(data)); cal != "" {
-			ui.WriteKV(out, "OnCalendar", cal)
+	} else {
+		ui.WriteKV(out, "Timer", "installed")
+		ui.WriteKV(out, "Enabled", systemctlWord(ctx, runner, "is-enabled", scheduleName+".timer"))
+		ui.WriteKV(out, "Active", systemctlWord(ctx, runner, "is-active", scheduleName+".timer"))
+		calendar := "unknown"
+		if data, err := runner.ReadFile(timer); err == nil {
+			if value := onCalendarLine(string(data)); value != "" {
+				calendar = value
+			}
 		}
+		ui.WriteKV(out, "OnCalendar", calendar)
 	}
+	service := "not installed"
+	if runner.FileExists(filepath.Join(scheduleUnitDir, scheduleName+".service")) {
+		service = "installed"
+	}
+	ui.WriteKV(out, "Service", service)
 	now := time.Now()
 	for _, name := range []string{"check.json", "doctor.json"} {
 		ui.WriteKV(out, name, reportAge(filepath.Join(state.Dir(), name), now))
@@ -234,8 +232,10 @@ func reportScheduleStatus(cmd *cobra.Command, rc *module.RunContext) {
 // shows as unknown.
 func systemctlWord(ctx context.Context, runner *exec.Runner, verb, unit string) string {
 	res, _ := runner.Query(ctx, "systemctl", verb, unit)
-	if word := strings.TrimSpace(res.Stdout); word != "" {
-		return word
+	if res != nil {
+		if word := strings.TrimSpace(res.Stdout); word != "" {
+			return word
+		}
 	}
 	return "unknown"
 }
@@ -258,8 +258,11 @@ const staleReportAge = 48 * time.Hour
 // horizon, that it is stale.
 func reportAge(path string, now time.Time) string {
 	fi, err := os.Stat(path)
-	if err != nil {
+	if os.IsNotExist(err) {
 		return "missing"
+	}
+	if err != nil {
+		return "unavailable: " + err.Error() + "; check the report path and permissions"
 	}
 	age := now.Sub(fi.ModTime())
 	text := fmt.Sprintf("%s (%s old)", fi.ModTime().Format("2006-01-02 15:04"), humanAge(age))

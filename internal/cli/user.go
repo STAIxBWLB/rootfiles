@@ -11,6 +11,11 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
+// Action seams keep CLI argument/alias tests independent of host accounts.
+var addCLIUser = module.AddUser
+var backupCLIUsers = module.BackupUsers
+var setCLIUserPasswords = module.SetPasswords
+
 func newUserCmd() *cobra.Command {
 	userCmd := &cobra.Command{
 		Use:   "user",
@@ -83,7 +88,7 @@ func newUserAddCmd() *cobra.Command {
 			if pubkey != "" {
 				pubkeys = []string{pubkey}
 			}
-			return module.AddUser(cmd.Context(), rc, username, pubkeys, groups, noDocker)
+			return addCLIUser(cmd.Context(), rc, username, pubkeys, groups, noDocker)
 		},
 	}
 	usesRootFlags(cmd, "user", "ssh-pubkey")
@@ -132,7 +137,7 @@ func newUserBackupCmd() *cobra.Command {
 				return err
 			}
 			output := stringFlagOrAlias(cmd, "file", "output")
-			return module.BackupUsers(rc, output)
+			return backupCLIUsers(rc, output)
 		},
 	}
 	cmd.Flags().String("file", "", "Output path for backup file")
@@ -319,7 +324,7 @@ func newUserPasswdCmd() *cobra.Command {
 				return nil
 			}
 
-			return module.SetPasswords(cmd.Context(), rc, entries, suffix, expire)
+			return setCLIUserPasswords(cmd.Context(), rc, entries, suffix, expire)
 		},
 	}
 	cmd.Flags().String("password", "", "Set the same password for all users")

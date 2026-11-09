@@ -41,6 +41,7 @@ paths:
 ## Behaviour
 
 - Schedule enable writes only units with real content changes, preserving old headers. It runs daemon-reload only after an actual unit write; already enabled/active timers skip enable; a necessary enable uses `--no-reload` to prevent an implicit daemon-reload. First-report behavior is unchanged.
+- `rootfiles schedule status` reads the timer file and read-only systemctl state, showing installation, enabled/active status, OnCalendar and report ages (stale after 48 hours). It loads no profile, detects no distro, takes no root lock and refuses ignored profile/config/home-base inputs.
 
 - `rootfiles doctor [-o text|json|prometheus] [--strict]`.
 - `rootfiles schedule enable [--on-calendar EXPR]`, `schedule disable` (both in `mutatingCommands`; context from `buildConfigFreeRunContext`). `disable` stops the timer, removes both units and reloads systemd, ignoring systemctl errors.
@@ -70,5 +71,4 @@ paths:
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `doctor` ignores `--module`; reject it.
-- [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): no `schedule status`; help text says how `check`/`status`/`doctor` differ.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): repeated capability validation and read-only `RunContext` construction across doctor/status/check.

@@ -15,6 +15,12 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
+// applyCloudflaredSetup is shared by setup and its install alias; keeping the
+// module entry point injectable lets CLI tests validate inputs without a host.
+var applyCloudflaredSetup = func(ctx context.Context, rc *module.RunContext) (*module.ApplyResult, error) {
+	return module.NewCloudflaredModule().Apply(ctx, rc)
+}
+
 func newTunnelCmd() *cobra.Command {
 	tunnel := &cobra.Command{
 		Use:   "tunnel",
@@ -26,8 +32,9 @@ func newTunnelCmd() *cobra.Command {
 		Aliases: []string{"install"},
 		Short:   "Set up the tunnel, its VLAN private network and the cloudflared binary",
 		Long: `Sets up the cloudflared binary, the tunnel token and the VLAN private network.
-Without a token only the binary and the VLAN are configured, so "install" is an
-alias: it ran the same cloudflared module with a shorter name.`,
+Configured credentials (including tunnel_token_file) and VLAN settings are used
+unless an explicit token or VLAN address overrides them. Without credentials only
+the binary and any configured VLAN are managed. "install" is an alias of setup.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "cloudflared")
@@ -48,7 +55,26 @@ alias: it ran the same cloudflared module with a shorter name.`,
 			if vlanAddr == "" {
 				vlanAddr = os.Getenv("ROOTFILES_VLAN_ADDRESS")
 			}
-			return module.TunnelSetup(cmd.Context(), rc, token, vlanAddr)
+			if token != "" {
+				rc.Config.Modules.Cloudflared.TunnelToken = token
+			}
+			if vlanAddr != "" {
+				rc.Config.Modules.Cloudflared.PrivateNetwork.Address = vlanAddr
+				rc.Config.Modules.Cloudflared.PrivateNetwork.Enabled = true
+			}
+			result, err := applyCloudflaredSetup(cmd.Context(), rc)
+			if err != nil {
+				return err
+			}
+			for _, warning := range result.Warnings {
+				fmt.Fprintln(cmd.ErrOrStderr(), ui.MarkWarn+" "+warning)
+			}
+			if result.Changed {
+				fmt.Fprintln(cmd.OutOrStdout(), "Cloudflared setup complete.")
+			} else {
+				fmt.Fprintln(cmd.OutOrStdout(), "Cloudflared setup is already current.")
+			}
+			return nil
 		},
 	}, "tunnel-token", "vlan-address"))
 

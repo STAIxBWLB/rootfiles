@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -33,28 +34,47 @@ func minArgs(cmd *cobra.Command) int {
 // CLI surface audit AC3: the Use line is the contract the operator reads, so
 // it must not carry flags and must not show an argument as optional while Args
 // refuses the command without it.
+func commandUseError(cmd *cobra.Command) error {
+	words := strings.Fields(cmd.Use)
+	if len(words) == 0 {
+		return fmt.Errorf("empty Use")
+	}
+	required := 0
+	for _, word := range words[1:] {
+		if strings.HasPrefix(strings.TrimLeft(word, "["), "-") {
+			return fmt.Errorf("Use %q names a flag; put flags in the flag set", cmd.Use)
+		}
+		if !strings.HasPrefix(word, "[") {
+			required++
+		}
+	}
+	if minimum := minArgs(cmd); minimum > required {
+		return fmt.Errorf("Use %q shows %d required args but Args needs %d", cmd.Use, required, minimum)
+	}
+	return nil
+}
+
 func TestCommandTreeUseStrings(t *testing.T) {
 	walkCommands(NewRootCmd("test", "abc"), func(cmd *cobra.Command) {
-		words := strings.Fields(cmd.Use)
-		if len(words) == 0 {
-			t.Errorf("%s: empty Use", cmd.CommandPath())
-			return
-		}
-		required := 0
-		for _, w := range words[1:] {
-			if strings.HasPrefix(w, "-") {
-				t.Errorf("%s: Use %q names a flag; flags belong in the flag set", cmd.CommandPath(), cmd.Use)
-				continue
-			}
-			if !strings.HasPrefix(w, "[") {
-				required++
-			}
-		}
-		if min := minArgs(cmd); min > required {
-			t.Errorf("%s: Use %q shows %d required argument(s), but Args refuses fewer than %d",
-				cmd.CommandPath(), cmd.Use, required, min)
+		if err := commandUseError(cmd); err != nil {
+			t.Errorf("%s: %v", cmd.CommandPath(), err)
 		}
 	})
+}
+
+func TestCommandUseLintRejectsMisleadingSurface(t *testing.T) {
+	for _, command := range []*cobra.Command{
+		{Use: "sample --flag", Args: cobra.NoArgs},
+		{Use: "sample [--flag VALUE]", Args: cobra.NoArgs},
+		{Use: "sample [USER]", Args: cobra.ExactArgs(1)},
+	} {
+		if err := commandUseError(command); err == nil {
+			t.Fatalf("accepted misleading Use %q", command.Use)
+		}
+	}
+	if err := commandUseError(&cobra.Command{Use: "sample USER [OPTIONAL]", Args: cobra.RangeArgs(1, 2)}); err != nil {
+		t.Fatalf("valid arity rejected: %v", err)
+	}
 }
 
 // The commands whose flags an operator has to get right carry an Example, so

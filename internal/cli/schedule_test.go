@@ -45,7 +45,7 @@ func runScheduleStatusCmd(t *testing.T) string {
 	root := NewRootCmd("test", "abc")
 	root.SetOut(&out)
 	root.SetErr(io.Discard)
-	root.SetArgs([]string{"schedule", "status", "--profile", "minimal"})
+	root.SetArgs([]string{"schedule", "status"})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("schedule status: %v", err)
 	}

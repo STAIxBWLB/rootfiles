@@ -86,6 +86,8 @@ Single-port SSH (sshpiper)
 
 ## Behaviour
 
+- `tenant passwd` is the single password command; `reset` resolves as its alias with the same mutation preflight. Help shows one password command and lists positional arguments separately from flags.
+
 - Module Check (`tenantChanges`) lists: managed files that differ (guard script `/usr/local/sbin/rootfiles-gpu-guard`, guard and sync units and timers), timers not enabled (`rootfiles-gpu-guard.timer` every minute, `rootfiles-tenant-sync.timer` every 2 minutes, `fstrim.timer`), missing operator group, sudoers rule content or file mode drift, stale or disabled mount units of existing tenants, and sshpiper changes. Apply does exactly these, reloads systemd once when a unit changed (reload failure is a warning), and reports `Changed=false` in dry-run.
 - The GPU device guard heals running `--gpus` containers on runc whose device filter a reload rebuilt (`systemctl set-property --runtime docker-<id>.scope DeviceAllow=...`); it never touches a container on the nvidia runtime and reports one that lost access.
 - `tenant sync` (the 2-minute timer, `ExecStart=/usr/local/bin/rootfiles tenant sync`) saves hashes, refreshes `piper.pub` and routes for every tenant. It requires root but is not in `mutatingCommands`, so it takes no global lock and cannot fail while an apply runs. It must keep writing only per-tenant derived files.
@@ -114,6 +116,5 @@ Single-port SSH (sshpiper)
 
 ## Open issues
 
-- [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `tenant reset` becomes an alias of `tenant passwd`; `Example` on `tenant create`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): shared `writeIfChanged` and `generatePassword` helpers, output through `internal/ui`.
 - Not tracked: the 2026-10-20 design stored GPU UUIDs and checked OCI `linux.devices`; the code stores indices and verifies with `nvidia-smi -L`.
