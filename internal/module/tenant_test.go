@@ -228,6 +228,18 @@ func TestPiperRemovalReloadFailureWarnsWithoutConvergedReload(t *testing.T) {
 
 func TestLegacyTenantHostFilesNoChurnAndUnsafeSudoersRepair(t *testing.T) {
 	sudoCalls := setFleetSudoTestState(t, "")
+	// The fleet fixture grants synthetic root ownership only to its own
+	// drop-in. Extend that seam to this tenant drop-in alone, retaining its
+	// real mode and symlink state so unsafe metadata still triggers repair.
+	inspect := fleetSudoLstat
+	fleetSudoLstat = func(path string) (os.FileInfo, error) {
+		info, err := inspect(path)
+		if err != nil || filepath.Clean(path) != filepath.Clean(tenantSudoersPath()) || info.Mode()&os.ModeSymlink != 0 {
+			return info, err
+		}
+		return fleetSudoTestFileInfo{name: info.Name(), mode: info.Mode(), uid: 0}, nil
+	}
+	t.Cleanup(func() { fleetSudoLstat = inspect })
 	dir := t.TempDir()
 	oldUnits, oldGuard := tenantUnitDir, tenantGuardPath
 	tenantUnitDir, tenantGuardPath = filepath.Join(dir, "units"), filepath.Join(dir, "guard")
