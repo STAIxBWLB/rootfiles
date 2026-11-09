@@ -34,6 +34,8 @@ paths:
 
 ## Behaviour
 
+- Ordinary policy/jail/automatic-file writes share `ensureFile`. APT mode repair, legacy cleanup and effective-policy validation stay separate; content equality does not claim to repair permissions. Unit enable helpers preserve prior flags and warning policies.
+
 - Check (Ubuntu): missing packages (`unattended-upgrades`, `fail2ban` + `python3-systemd`, the time-sync package); policy file drift, legacy files or unreadable files as one change, else effective-policy findings; jail drift; no NTP change when `timedatectl show -p NTP --value` fails, or both the service-enable and NTP-enable commands when a successful query returns a value other than `yes`. Package installation hints use `packageInstallCommand`.
 - Apply (Ubuntu): `apt update` + install only when packages are missing; writes the two policy files when they differ; chmod, legacy removal; effective-policy verification (skipped in dry-run). Jail write then `systemctl enable` and `restart fail2ban` (failures are warnings). Time sync: `systemctl enable --now <unit>` and `timedatectl set-ntp true` (failures are warnings).
 - `Changed` is true only for a successful write or pending operation. For time sync, each successful service-enable or NTP-enable operation contributes independently; failed commands produce warnings and no success message. When both fail, time sync alone does not set `Changed`.
@@ -60,7 +62,3 @@ paths:
 - `internal/module/rocky_test.go`: Rocky security-only policy, cache-only updateinfo, refresh before writing, coverage gap.
 - CI `module` job: `security` on `ubuntu-22.04` and `ubuntu-24.04` (`tests/integration/run-module.sh` asserts every effective allowed origin ends in `-security`).
 - CI `rocky` job: DNF automatic readback (see [distro-rocky](distro-rocky.md)).
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): hand-written write-if-changed loop to replace with the shared `ensureFile` helper.

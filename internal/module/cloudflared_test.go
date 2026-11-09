@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 // fakeBin puts stub commands (exit 0, append argv to a log) first on PATH
@@ -210,5 +211,73 @@ func TestCloudflared_ExplicitTokenOverridesFile(t *testing.T) {
 	}
 	if env, _ := os.ReadFile(cloudflaredEnvPath); string(env) != "TUNNEL_TOKEN=tok-flag\n" {
 		t.Errorf("env file = %q, want the explicit token", env)
+	}
+}
+
+func TestCloudflaredChangedGroupMemberPreservesMatchingLegacyFile(t *testing.T) {
+	for _, kind := range []string{"token", "VLAN address"} {
+		t.Run(kind, func(t *testing.T) {
+			fakeCloudflaredPaths(t)
+			fakeBin(t, "systemctl", "ip")
+			rc := newRealRC(t)
+			rc.Config.Modules.Cloudflared.Enabled = true
+			var matching, changed string
+			var files map[string]managedHeaderSnapshot
+			if kind == "token" {
+				rc.Config.Modules.Cloudflared.TunnelToken = "new-fixture-token"
+				matching, changed = cloudflaredUnitPath, cloudflaredEnvPath
+				files = seedLegacyManagedFiles(t, map[string]string{matching: cloudflaredUnit(), changed: cloudflaredEnv("old-fixture-token")})
+				if err := os.Chmod(changed, 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				rc.Config.Modules.Cloudflared.PrivateNetwork = config.PrivateNetworkConfig{Enabled: true, Interface: "vlan0", Address: "192.0.2.2/32"}
+				matching, changed = vlanNetdevPath, vlanNetworkPath
+				files = seedLegacyManagedFiles(t, map[string]string{matching: vlanNetdev("vlan0"), changed: vlanNetwork("vlan0", "192.0.2.1/32")})
+			}
+			snapshot := files[matching]
+			rc.Runner.Backup = exec.NewBackup(t.TempDir(), "changed group member")
+			result, err := NewCloudflaredModule().Apply(context.Background(), rc)
+			if err != nil || !result.Changed {
+				t.Fatalf("Apply=%+v err=%v", result, err)
+			}
+			data, err := os.ReadFile(matching)
+			if err != nil || string(data) != string(snapshot.data) {
+				t.Fatalf("matching group member was rewritten: %q err=%v", data, err)
+			}
+			info, err := os.Stat(matching)
+			if err != nil || !os.SameFile(snapshot.info, info) || !snapshot.info.ModTime().Equal(info.ModTime()) {
+				t.Fatalf("matching group member identity changed: %v", err)
+			}
+			manifest, err := exec.LoadBackup(rc.Runner.Backup.Root, rc.Runner.Backup.ID)
+			if err != nil || len(manifest.Entries) != 1 || manifest.Entries[0].Path != changed {
+				t.Fatalf("backup must preserve only changed member: %+v err=%v", manifest, err)
+			}
+			if check, err := NewCloudflaredModule().Check(context.Background(), rc); err != nil || !check.Satisfied {
+				t.Fatalf("Check after Apply=%+v err=%v", check, err)
+			}
+		})
+	}
+}
+
+func TestCloudflaredConvergedSetupHelpersDoNotReload(t *testing.T) {
+	fakeCloudflaredPaths(t)
+	calls := fakeBin(t, "systemctl", "ip")
+	rc := newRealRC(t)
+	rc.Config.Modules.Cloudflared.PrivateNetwork = config.PrivateNetworkConfig{Enabled: true, Interface: "vlan0", Address: "192.0.2.1/32"}
+	files := seedLegacyManagedFiles(t, map[string]string{cloudflaredUnitPath: cloudflaredUnit(), cloudflaredEnvPath: cloudflaredEnv("fixture-token"), vlanNetdevPath: vlanNetdev("vlan0"), vlanNetworkPath: vlanNetwork("vlan0", "192.0.2.1/32")})
+	if err := os.Chmod(cloudflaredEnvPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	rc.Runner.Backup = exec.NewBackup(t.TempDir(), "converged setup helpers")
+	if warnings, err := installTunnelService(context.Background(), rc, "fixture-token"); err != nil || len(warnings) != 0 {
+		t.Fatalf("converged tunnel helper: warnings=%v err=%v", warnings, err)
+	}
+	if warnings, err := NewCloudflaredModule().setupVLAN(context.Background(), rc); err != nil || len(warnings) != 0 {
+		t.Fatalf("converged VLAN helper: warnings=%v err=%v", warnings, err)
+	}
+	assertManagedFilesUnchanged(t, files, rc.Runner.Backup)
+	if data, _ := os.ReadFile(calls); len(data) != 0 {
+		t.Fatalf("converged helpers mutated service state: %s", data)
 	}
 }

@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
-	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -83,11 +82,6 @@ Name=%s
 [Network]
 Address=%s
 `, iface, addr)
-}
-
-func fileEquals(rc *RunContext, path, want string) bool {
-	data, err := rc.Runner.ReadFile(path)
-	return err == nil && exec.ManagedContentEqual(string(data), want)
 }
 
 // tunnelServiceDrift reports whether the unit or token file differs.
@@ -236,20 +230,31 @@ func installTunnelService(ctx context.Context, rc *RunContext, token string) ([]
 	if strings.ContainsAny(token, "\n\r \"'") {
 		return nil, fmt.Errorf("tunnel token contains invalid characters")
 	}
-	if err := rc.Runner.MkdirAll(filepath.Dir(cloudflaredEnvPath), 0700); err != nil {
-		return nil, fmt.Errorf("creating %s: %w", filepath.Dir(cloudflaredEnvPath), err)
+	if !tunnelServiceDrift(rc, token) {
+		return nil, nil
 	}
-	if err := rc.Runner.WriteFile(cloudflaredEnvPath, []byte(cloudflaredEnv(token)), 0600); err != nil {
+	if !fileEquals(rc, cloudflaredEnvPath, cloudflaredEnv(token)) {
+		if err := rc.Runner.MkdirAll(filepath.Dir(cloudflaredEnvPath), 0700); err != nil {
+			return nil, fmt.Errorf("creating %s: %w", filepath.Dir(cloudflaredEnvPath), err)
+		}
+	}
+	envChanged, err := ensureFile(rc, cloudflaredEnvPath, cloudflaredEnv(token), 0600)
+	if err != nil {
 		return nil, fmt.Errorf("writing tunnel token: %w", err)
 	}
-	if err := rc.Runner.WriteFile(cloudflaredUnitPath, []byte(cloudflaredUnit()), 0644); err != nil {
+	unitChanged, err := ensureFile(rc, cloudflaredUnitPath, cloudflaredUnit(), 0644)
+	if err != nil {
 		return nil, fmt.Errorf("writing cloudflared unit: %w", err)
 	}
+	if !envChanged && !unitChanged {
+		return nil, nil
+	}
+
 	var warnings []string
 	if w := systemdReload(ctx, rc); w != "" {
 		return append(warnings, w), nil
 	}
-	if _, err := rc.Runner.Run(ctx, "systemctl", "enable", cloudflaredService); err != nil {
+	if err := enableUnit(ctx, rc, cloudflaredService, false); err != nil {
 		warnings = append(warnings, "enabling cloudflared: "+firstLine(err.Error()))
 	}
 	if _, err := rc.Runner.Run(ctx, "systemctl", "restart", cloudflaredService); err != nil {
@@ -305,14 +310,22 @@ func (m *CloudflaredModule) setupVLAN(ctx context.Context, rc *RunContext) ([]st
 	cfg := rc.Config.Modules.Cloudflared.PrivateNetwork
 	iface := vlanIface(cfg)
 
+	if !vlanDrift(rc, cfg) {
+		return nil, nil
+	}
 	if err := rc.Runner.MkdirAll(filepath.Dir(vlanNetdevPath), 0755); err != nil {
 		return nil, fmt.Errorf("creating systemd-networkd dir: %w", err)
 	}
-	if err := rc.Runner.WriteFile(vlanNetdevPath, []byte(vlanNetdev(iface)), 0644); err != nil {
+	netdevChanged, err := ensureFile(rc, vlanNetdevPath, vlanNetdev(iface), 0644)
+	if err != nil {
 		return nil, fmt.Errorf("writing netdev: %w", err)
 	}
-	if err := rc.Runner.WriteFile(vlanNetworkPath, []byte(vlanNetwork(iface, cfg.Address)), 0644); err != nil {
+	networkChanged, err := ensureFile(rc, vlanNetworkPath, vlanNetwork(iface, cfg.Address), 0644)
+	if err != nil {
 		return nil, fmt.Errorf("writing network: %w", err)
+	}
+	if !netdevChanged && !networkChanged {
+		return nil, nil
 	}
 
 	var warnings []string

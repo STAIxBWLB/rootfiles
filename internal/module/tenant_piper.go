@@ -178,7 +178,7 @@ func piperChanges(ctx context.Context, rc *RunContext) ([]Change, error) {
 	if block := piperBlock(ctx, rc, sp.ListenPort()); block != "" {
 		return append(changes, Change{Description: block, State: ChangeBlocked}), nil
 	}
-	if cur, err := rc.Runner.ReadFile(piperUnitPath()); err != nil || string(cur) != piperUnitContent(rc) {
+	if !fileEquals(rc, piperUnitPath(), piperUnitContent(rc)) {
 		add("Write "+piperUnit, "write "+piperUnitPath())
 	}
 	if !unitOn(ctx, rc, piperUnit) || !piperActive(ctx, rc, piperUnit) {
@@ -187,7 +187,7 @@ func piperChanges(ctx context.Context, rc *RunContext) ([]Change, error) {
 	return changes, nil
 }
 
-func applyPiper(ctx context.Context, rc *RunContext, note func(string)) error {
+func applyPiper(ctx context.Context, rc *RunContext, note, warn func(string)) error {
 	sp := rc.Config.Modules.Tenant.SSHPiper
 	if !sp.Enabled {
 		if rc.Runner.FileExists(piperUnitPath()) {
@@ -195,7 +195,9 @@ func applyPiper(ctx context.Context, rc *RunContext, note func(string)) error {
 			if err := rc.Runner.Remove(piperUnitPath()); err != nil {
 				return err
 			}
-			_ = systemdReload(ctx, rc)
+			if warning := systemdReload(ctx, rc); warning != "" {
+				warn(warning)
+			}
 			note("removed " + piperUnit)
 		}
 		for _, f := range piperRouteFiles() {
@@ -228,19 +230,21 @@ func applyPiper(ctx context.Context, rc *RunContext, note func(string)) error {
 		return fmt.Errorf("%s", block)
 	}
 	restart := false
-	if cur, err := rc.Runner.ReadFile(piperUnitPath()); err != nil || string(cur) != piperUnitContent(rc) {
-		if err := rc.Runner.WriteFile(piperUnitPath(), []byte(piperUnitContent(rc)), 0o644); err != nil {
-			return err
+	_, readErr := rc.Runner.ReadFile(piperUnitPath())
+	written, err := ensureFile(rc, piperUnitPath(), piperUnitContent(rc), 0o644)
+	if err != nil {
+		return err
+	}
+	if written {
+		if warning := systemdReload(ctx, rc); warning != "" {
+			warn(warning)
 		}
-		if w := systemdReload(ctx, rc); w != "" {
-			return fmt.Errorf("%s", w)
-		}
-		restart = err == nil // an existing unit changed
+		restart = readErr == nil // an existing unit changed
 		note("wrote " + piperUnitPath())
 	}
 	switch {
 	case !unitOn(ctx, rc, piperUnit) || !piperActive(ctx, rc, piperUnit):
-		if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", piperUnit); err != nil {
+		if err := enableUnit(ctx, rc, piperUnit, true); err != nil {
 			return err
 		}
 		note(fmt.Sprintf("started %s on port %d", piperUnit, sp.ListenPort()))

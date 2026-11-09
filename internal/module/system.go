@@ -135,37 +135,46 @@ func (m *SystemModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 	}
 
 	if len(cfg.Sysctl) > 0 && !fileEquals(rc, sysctlPath, sysctlContent(cfg.Sysctl)) {
-		if err := rc.Runner.WriteFile(sysctlPath, []byte(sysctlContent(cfg.Sysctl)), 0644); err != nil {
+		wrote, err := ensureFile(rc, sysctlPath, sysctlContent(cfg.Sysctl), 0644)
+		if err != nil {
 			return nil, fmt.Errorf("writing %s: %w", sysctlPath, err)
 		}
-		if _, err := rc.Runner.Run(ctx, "sysctl", "-p", sysctlPath); err != nil {
-			warnings = append(warnings, "sysctl -p: "+firstLine(err.Error()))
+		if wrote {
+			if _, err := rc.Runner.Run(ctx, "sysctl", "-p", sysctlPath); err != nil {
+				warnings = append(warnings, "sysctl -p: "+firstLine(err.Error()))
+			}
+			messages = append(messages, fmt.Sprintf("%d sysctl setting(s) applied", len(cfg.Sysctl)))
+			changed = true
 		}
-		messages = append(messages, fmt.Sprintf("%d sysctl setting(s) applied", len(cfg.Sysctl)))
-		changed = true
 	}
 
 	if cfg.JournaldMaxUse != "" && !fileEquals(rc, journaldConfPath, journaldContent(cfg.JournaldMaxUse)) {
 		if err := rc.Runner.MkdirAll(filepath.Dir(journaldConfPath), 0755); err != nil {
 			return nil, err
 		}
-		if err := rc.Runner.WriteFile(journaldConfPath, []byte(journaldContent(cfg.JournaldMaxUse)), 0644); err != nil {
+		wrote, err := ensureFile(rc, journaldConfPath, journaldContent(cfg.JournaldMaxUse), 0644)
+		if err != nil {
 			return nil, fmt.Errorf("writing %s: %w", journaldConfPath, err)
 		}
-		if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "systemd-journald"); err != nil {
-			warnings = append(warnings, "restarting journald: "+firstLine(err.Error()))
+		if wrote {
+			if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "systemd-journald"); err != nil {
+				warnings = append(warnings, "restarting journald: "+firstLine(err.Error()))
+			}
+			messages = append(messages, "journald capped at "+cfg.JournaldMaxUse)
+			changed = true
 		}
-		messages = append(messages, "journald capped at "+cfg.JournaldMaxUse)
-		changed = true
 	}
 
 	if cfg.AptMirror != "" {
 		for p, content := range mirroredSources(rc, cfg.AptMirror) {
-			if err := rc.Runner.WriteFile(p, []byte(content), 0644); err != nil {
+			wrote, err := ensureFile(rc, p, content, 0644)
+			if err != nil {
 				return nil, fmt.Errorf("writing %s: %w", p, err)
 			}
-			messages = append(messages, "APT mirror set in "+p)
-			changed = true
+			if wrote {
+				messages = append(messages, "APT mirror set in "+p)
+				changed = true
+			}
 		}
 	}
 

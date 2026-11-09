@@ -43,6 +43,8 @@ History: exporters designed in #13 (phase 3) and shipped in #19 (v0.12.0); later
 
 ## Behaviour
 
+- Ordinary defaults/collector/unit writes use `ensureFile`; unit/collector changes retain their distinct restart predicates. A DCGM daemon-reload failure is a warning with manual repair guidance, rather than an immediate error; later service failures retain their prior policy. No reload is added on converged state. Exporter-guard regular-file/owner/mode verification remains a separate safety concern.
+
 - Package-install changes use the distro-aware package command renderer, matching the backend Apply invokes.
 
 - Check converts unknown firewall inspection from preflight/exporter checks into a single blocked change; it omits other pending changes until that blocker is repaired. Other configuration/port-conflict errors retain their existing behavior. Apply and real mutation preflight remain strict before any affected change. The shared model is owned by [ssh-access](ssh-access.md).
@@ -78,7 +80,3 @@ Verification evidence (folded from the 2026-10-03 rollout checklist):
 | Collector syntax | `TestDCGMCollectorsIncludeRequiredHealthFields`; the CI `monitoring-hub` job checks that the default DCGM image is published |
 | Real GPU metrics | Not in CI (no GPU runner); verified on a GPU host after release (unverified by tests) |
 | Exporter firewall guard | CI `exporter-firewall-scenario` |
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `exporterGuardFileCurrent` is one of four write-if-changed helpers; monitoring calls `daemon-reload` directly with failure as error.

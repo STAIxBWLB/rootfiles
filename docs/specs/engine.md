@@ -6,6 +6,7 @@ status: active
 parent: architecture
 paths:
   - internal/module/module.go
+  - internal/module/files.go
   - internal/module/jsondb.go
   - internal/module/preflight.go
   - internal/module/package_commands.go
@@ -36,6 +37,9 @@ The Module interface, the registry and execution order, and the three commands t
 - **check** (`internal/cli/check.go`): always uses a dry-run Runner, `ValidateCapabilities` before `CheckAll`, exit 2 (`ExitError{Code: exitDrift}`, silent) when any module is unsatisfied, 1 on error, 0 otherwise. Formats: text, json (`checkReport` with `applied_config_sha256` when provenance holds), prometheus (`rootfiles_module_satisfied`, `rootfiles_module_pending_changes`, `rootfiles_check_timestamp_seconds`). These metric names and the JSON fields are consumed by the schedule timer, fleet and hub alert rules; renaming one is a contract change.
 - **status** (`internal/cli/status.go`): read-only overview that always exits 0. A config load error falls back to `config.Fallback` and is reported (`config_error`, `home_base_ambiguous`), not returned. JSON comes from `collectStatus` (modules, last apply, GPU ledger, tunnel, users, provenance); capability errors become `module_check_error`. Without a known home base it skips the user and GPU databases rather than reading `/home`.
 - check, status and config inspection resolve their target with `resolveTarget` and report `reportedTarget`; see [cli-runtime](cli-runtime.md).
+
+- **Ordinary managed files** (`internal/module/files.go`): `ensureFile` compares through `ManagedContentEqual` before writing via Runner, reports whether content changed, and propagates non-ENOENT read errors with repair guidance. It does not create parent directories or claim to fix matching-file metadata; callers retain directory modes, ownership checks, atomic/transactional replacement and special whitespace policies.
+- **Systemd primitives**: `systemdReload` reports a warning with a manual repair command. It does not promise a future automatic retry: a file write may consume drift so a later converged Check skips Apply. Callers keep their existing pending-work guards. `enableUnit` only constructs the previous enable/start command; it adds no hidden query, explicit reload or Changed accounting. The underlying enable keeps its existing implicit reload semantics; specialized no-reload sequences stay at their caller. Service reload/rollback and SSH socket ordering remain caller-specific.
 
 ## Behaviour
 

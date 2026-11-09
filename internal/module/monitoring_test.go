@@ -386,3 +386,36 @@ func withDockerWants(t *testing.T, units ...string) {
 		}
 	}
 }
+
+func TestDCGMDaemonReloadFailureWarnsWithoutConvergedReload(t *testing.T) {
+	dir := t.TempDir()
+	oldUnit, oldCollectors := dcgmUnitPath, dcgmCollectorsPath
+	dcgmUnitPath, dcgmCollectorsPath = filepath.Join(dir, "exporter.service"), filepath.Join(dir, "collectors.csv")
+	t.Cleanup(func() { dcgmUnitPath, dcgmCollectorsPath = oldUnit, oldCollectors })
+	calls := filepath.Join(dir, "calls")
+	fakeMonitoringCommand(t, "docker", "#!/bin/sh\necho '{\"nvidia\":{}}'\n")
+	fakeMonitoringCommand(t, "nvidia-smi", "#!/bin/sh\necho 'GPU 0: Test GPU'\n")
+	fakeMonitoringCommand(t, "ufw", "#!/bin/sh\necho 'Status: inactive'\n")
+	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '"+calls+"'\ncase $1 in daemon-reload) echo 'systemd unavailable' >&2; exit 1;; is-active) echo active;; is-enabled) echo enabled;; esac\n")
+	withDockerWants(t, dcgmExporterUnit)
+	rc := newRealRC(t)
+	rc.Config.Modules.Monitoring.DCGMExporter = true
+	result, err := applyMonitoringExporters(context.Background(), rc)
+	if err != nil || result == nil || !result.Changed {
+		t.Fatalf("DCGM unit write should survive daemon-reload failure: result=%+v error=%v", result, err)
+	}
+	warnings := strings.Join(result.Warnings, "\n")
+	if !strings.Contains(warnings, "daemon-reload failed") || !strings.Contains(warnings, "run sudo systemctl daemon-reload") {
+		t.Fatalf("reload warning lacks cause/manual repair: %q", warnings)
+	}
+	if changes, err := checkMonitoringExporters(context.Background(), rc); err != nil || len(changes) != 0 {
+		t.Fatalf("written files should converge: changes=%+v error=%v", changes, err)
+	}
+	result, err = applyMonitoringExporters(context.Background(), rc)
+	if err != nil || result.Changed || len(result.Warnings) != 0 {
+		t.Fatalf("converged apply should not retry daemon-reload: result=%+v error=%v", result, err)
+	}
+	if log := readCalls(t, calls); strings.Count(log, "daemon-reload\n") != 1 {
+		t.Fatalf("converged apply performed a hidden reload: %s", log)
+	}
+}

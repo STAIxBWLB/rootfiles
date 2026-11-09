@@ -56,8 +56,7 @@ func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, er
 			if err != nil {
 				return nil, err
 			}
-			got, readErr := rc.Runner.ReadFile(nodeExporterDefaults)
-			if readErr != nil || string(got) != want {
+			if !fileEquals(rc, nodeExporterDefaults, want) {
 				if cfg.ListenAddress != "" || cfg.NodeExporterPort != 0 {
 					changes = append(changes, Change{Description: "Configure node exporter listen address and port", Command: "write " + nodeExporterDefaults})
 				}
@@ -68,12 +67,11 @@ func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, er
 		}
 	}
 	if cfg.DCGMExporter && !dcgmBlocked {
-		if got, err := rc.Runner.ReadFile(dcgmCollectorsPath); err != nil || string(got) != dcgmExporterCollectorsCSV {
+		if !fileEquals(rc, dcgmCollectorsPath, dcgmExporterCollectorsCSV) {
 			changes = append(changes, Change{Description: "Install DCGM exporter collectors including ECC telemetry", Command: "write " + dcgmCollectorsPath})
 		}
 		want := renderDCGMUnit(cfg)
-		got, err := rc.Runner.ReadFile(dcgmUnitPath)
-		if err != nil || string(got) != want {
+		if !fileEquals(rc, dcgmUnitPath, want) {
 			changes = append(changes, Change{Description: "Install or update DCGM exporter systemd unit", Command: "write " + dcgmUnitPath})
 		} else if !rc.Runner.FileExists(dockerWantsLink(dcgmExporterUnit)) {
 			changes = append(changes, Change{Description: "Start the DCGM exporter whenever Docker starts", Command: "systemctl reenable " + dcgmExporterUnit})
@@ -133,11 +131,11 @@ func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult
 			if err != nil {
 				return nil, err
 			}
-			got, readErr := rc.Runner.ReadFile(nodeExporterDefaults)
-			if readErr != nil || string(got) != want {
-				if err := rc.Runner.WriteFile(nodeExporterDefaults, []byte(want), 0644); err != nil {
-					return nil, err
-				}
+			defaultsChanged, err := ensureFile(rc, nodeExporterDefaults, want, 0644)
+			if err != nil {
+				return nil, err
+			}
+			if defaultsChanged {
 				out.Changed = true
 				if _, err := rc.Runner.Run(ctx, "systemctl", "restart", nodeExporterUnit); err != nil {
 					out.Warnings = append(out.Warnings, "restarting node exporter: "+firstLine(err.Error()))
@@ -145,7 +143,7 @@ func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult
 			}
 		}
 		if !serviceActive(ctx, rc, nodeExporterUnit) || !serviceEnabled(ctx, rc, nodeExporterUnit) {
-			if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", nodeExporterUnit); err != nil {
+			if err := enableUnit(ctx, rc, nodeExporterUnit, true); err != nil {
 				out.Warnings = append(out.Warnings, "enabling node exporter: "+firstLine(err.Error()))
 			} else {
 				out.Changed = true
@@ -157,29 +155,32 @@ func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult
 	}
 	if cfg.DCGMExporter && dcgmErr == nil {
 		collectorsChanged := false
-		if got, err := rc.Runner.ReadFile(dcgmCollectorsPath); err != nil || string(got) != dcgmExporterCollectorsCSV {
+		if !fileEquals(rc, dcgmCollectorsPath, dcgmExporterCollectorsCSV) {
 			if err := rc.Runner.MkdirAll(filepath.Dir(dcgmCollectorsPath), 0755); err != nil {
 				return nil, fmt.Errorf("creating DCGM collectors directory: %w", err)
 			}
-			if err := rc.Runner.WriteFile(dcgmCollectorsPath, []byte(dcgmExporterCollectorsCSV), 0644); err != nil {
+			var err error
+			collectorsChanged, err = ensureFile(rc, dcgmCollectorsPath, dcgmExporterCollectorsCSV, 0644)
+			if err != nil {
 				return nil, fmt.Errorf("writing DCGM collectors: %w", err)
 			}
-			out.Changed = true
-			collectorsChanged = true
+			out.Changed = out.Changed || collectorsChanged
 		}
 		want := renderDCGMUnit(cfg)
-		got, err := rc.Runner.ReadFile(dcgmUnitPath)
-		unitChanged := err != nil || string(got) != want
-		if unitChanged {
+		unitChanged := false
+		if !fileEquals(rc, dcgmUnitPath, want) {
 			if err := rc.Runner.MkdirAll(filepath.Dir(dcgmUnitPath), 0755); err != nil {
 				return nil, err
 			}
-			if err := rc.Runner.WriteFile(dcgmUnitPath, []byte(want), 0644); err != nil {
+			unitChanged, err = ensureFile(rc, dcgmUnitPath, want, 0644)
+			if err != nil {
 				return nil, err
 			}
-			out.Changed = true
-			if _, err := rc.Runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
-				return nil, err
+			out.Changed = out.Changed || unitChanged
+			if unitChanged {
+				if warning := systemdReload(ctx, rc); warning != "" {
+					out.Warnings = append(out.Warnings, warning)
+				}
 			}
 		}
 		if unitChanged || !rc.Runner.FileExists(dockerWantsLink(dcgmExporterUnit)) {
@@ -189,12 +190,14 @@ func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult
 			out.Changed = true
 		}
 		if !serviceActive(ctx, rc, dcgmExporterUnit) || !serviceEnabled(ctx, rc, dcgmExporterUnit) || unitChanged || collectorsChanged {
-			args := []string{"enable", "--now", dcgmExporterUnit}
+			var startErr error
 			if serviceActive(ctx, rc, dcgmExporterUnit) && (unitChanged || collectorsChanged) {
-				args = []string{"restart", dcgmExporterUnit}
+				_, startErr = rc.Runner.Run(ctx, "systemctl", "restart", dcgmExporterUnit)
+			} else {
+				startErr = enableUnit(ctx, rc, dcgmExporterUnit, true)
 			}
-			if _, err := rc.Runner.Run(ctx, "systemctl", args...); err != nil {
-				return nil, fmt.Errorf("starting DCGM exporter: %w", err)
+			if startErr != nil {
+				return nil, fmt.Errorf("starting DCGM exporter: %w", startErr)
 			}
 			out.Changed = true
 		}

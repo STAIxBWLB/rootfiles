@@ -132,7 +132,7 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 			expected := buildProfileDScript(alloc.Username, alloc.GPUs)
 			data, _ := rc.Runner.ReadFile(scriptPath)
 			if !exec.ManagedContentEqual(string(data), expected) {
-				if err := rc.Runner.WriteFile(scriptPath, []byte(expected), 0644); err != nil {
+				if _, err := ensureFile(rc, scriptPath, expected, 0644); err != nil {
 					return nil, fmt.Errorf("writing profile.d script for %s: %w", alloc.Username, err)
 				}
 				messages = append(messages, fmt.Sprintf("GPU env script for %s (GPUs: %s)", alloc.Username, gpuListStr(alloc.GPUs)))
@@ -154,7 +154,7 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 				if err := rc.Runner.MkdirAll(sliceDir, 0755); err != nil {
 					return nil, fmt.Errorf("creating slice dir for %s: %w", alloc.Username, err)
 				}
-				if err := rc.Runner.WriteFile(slicePath, []byte(expected), 0644); err != nil {
+				if _, err := ensureFile(rc, slicePath, expected, 0644); err != nil {
 					return nil, fmt.Errorf("writing cgroup conf for %s: %w", alloc.Username, err)
 				}
 				if w := systemdReload(ctx, rc); w != "" {
@@ -170,7 +170,7 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	expectedWrapper := buildDockerWrapper(gpuDBPath(rc))
 	wrapperData, _ := rc.Runner.ReadFile(dockerWrapperPath)
 	if !exec.ManagedContentEqual(string(wrapperData), expectedWrapper) {
-		if err := rc.Runner.WriteFile(dockerWrapperPath, []byte(expectedWrapper), 0755); err != nil {
+		if _, err := ensureFile(rc, dockerWrapperPath, expectedWrapper, 0755); err != nil {
 			return nil, fmt.Errorf("writing docker wrapper: %w", err)
 		}
 		messages = append(messages, "Docker GPU enforcement wrapper installed")
@@ -178,15 +178,6 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	}
 
 	return &ApplyResult{Changed: changed, Messages: messages, Warnings: warnings}, nil
-}
-
-// systemdReload runs daemon-reload and returns a warning (not an error):
-// hosts without systemd as PID 1 still get the files, applied on boot.
-func systemdReload(ctx context.Context, rc *RunContext) string {
-	if _, err := rc.Runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
-		return "systemctl daemon-reload failed: " + firstLine(err.Error())
-	}
-	return ""
 }
 
 // AssignGPUs assigns GPUs to a user and applies immediately.
@@ -582,7 +573,8 @@ func installDockerWrapper(rc *RunContext) error {
 		fmt.Printf("[dry-run] would write %s\n", dockerWrapperPath)
 		return nil
 	}
-	return rc.Runner.WriteFile(dockerWrapperPath, []byte(expected), 0755)
+	_, err := ensureFile(rc, dockerWrapperPath, expected, 0755)
+	return err
 }
 
 // removeDockerWrapper removes the Docker wrapper script if it exists.
