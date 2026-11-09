@@ -121,7 +121,7 @@ jobs:
           go-version-file: go.mod
       - name: Run unit tests
         run: ROOTFILES_MONITORING_SCENARIO_DIR="$PWD/hub-fixtures" go test ./... -race -count=1 -coverprofile=coverage.out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: monitoring-hub-fixtures
           path: hub-fixtures
@@ -134,7 +134,7 @@ jobs:
           total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}')
           echo "Total coverage: $total"
           echo "### Coverage: $total" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.out
@@ -142,7 +142,7 @@ jobs:
         run: CGO_ENABLED=0 go build -o bin/rootfiles ./cmd/rootfiles/
       - name: Verify CLI help
         run: ./bin/rootfiles --help
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rootfiles-binary
           path: bin/rootfiles
