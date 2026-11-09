@@ -69,10 +69,7 @@ func newUserAddCmd() *cobra.Command {
 				}
 			}
 
-			pubkey, _ := cmd.Flags().GetString("pubkey")
-			if pubkey == "" {
-				pubkey, _ = cmd.Flags().GetString("ssh-pubkey")
-			}
+			pubkey := stringFlagOrAlias(cmd, "ssh-pubkey", "pubkey")
 			if pubkey == "" {
 				pubkey = os.Getenv("ROOTFILES_SSH_PUBKEY")
 			}
@@ -88,7 +85,8 @@ func newUserAddCmd() *cobra.Command {
 		},
 	}
 	usesRootFlags(cmd, "user", "ssh-pubkey")
-	cmd.Flags().String("pubkey", "", "SSH public key")
+	cmd.Flags().String("pubkey", "", "Deprecated alias for --ssh-pubkey")
+	_ = cmd.Flags().MarkDeprecated("pubkey", "use --ssh-pubkey instead")
 	cmd.Flags().StringSlice("groups", nil, "Additional groups")
 	cmd.Flags().Bool("no-docker", false, "Do not add to docker group")
 	return cmd
@@ -323,7 +321,8 @@ func newUserPasswdCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().String("password", "", "Set the same password for all users")
-	cmd.Flags().String("suffix", "", "Legacy scheme: password = username+suffix (default: random password, printed once)")
+	cmd.Flags().String("suffix", "", "Deprecated: password = username+suffix")
+	_ = cmd.Flags().MarkDeprecated("suffix", "use --password or --file instead; predictable passwords are removed next minor")
 	cmd.Flags().Bool("expire", false, "Force a password change at next login (chage -d 0)")
 	cmd.Flags().StringP("file", "f", "", "File with usernames (or username,password per line)")
 	cmd.Flags().Bool("all", false, "Set passwords for all system users")

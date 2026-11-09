@@ -22,23 +22,13 @@ func newTunnelCmd() *cobra.Command {
 	}
 
 	tunnel.AddCommand(usesRootFlags(&cobra.Command{
-		Use:   "install",
-		Short: "Install cloudflared binary",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd, "cloudflared")
-			if err != nil {
-				return err
-			}
-			m := module.NewCloudflaredModule()
-			_, err = m.Apply(cmd.Context(), rc)
-			return err
-		},
-	}, "tunnel-token", "vlan-address"))
-
-	tunnel.AddCommand(usesRootFlags(&cobra.Command{
-		Use:   "setup [TOKEN]",
-		Short: "Setup tunnel + VLAN private network",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "setup [TOKEN]",
+		Aliases: []string{"install"},
+		Short:   "Set up the tunnel, its VLAN private network and the cloudflared binary",
+		Long: `Sets up the cloudflared binary, the tunnel token and the VLAN private network.
+Without a token only the binary and the VLAN are configured, so "install" is an
+alias: it ran the same cloudflared module with a shorter name.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "cloudflared")
 			if err != nil {

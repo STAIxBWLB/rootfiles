@@ -43,6 +43,30 @@ func TestUserBackupFlagAlias(t *testing.T) {
 	}
 }
 
+// The duplicate flags are deprecated with the name of what replaces them, so
+// the notice cobra prints is the migration step.
+func TestUserFlagDeprecations(t *testing.T) {
+	for _, tc := range []struct {
+		args        []string
+		flag        string
+		replacement string
+	}{
+		{[]string{"user", "add"}, "pubkey", "--ssh-pubkey"},
+		{[]string{"user", "passwd"}, "suffix", "--password"},
+	} {
+		t.Run(tc.flag, func(t *testing.T) {
+			sub, _, err := NewRootCmd("test", "abc").Find(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f := sub.Flags().Lookup(tc.flag)
+			if f == nil || !strings.Contains(f.Deprecated, tc.replacement) {
+				t.Fatalf("%v --%s is not deprecated in favour of %s: %+v", tc.args, tc.flag, tc.replacement, f)
+			}
+		})
+	}
+}
+
 func TestUserGroupAddCmd_RequiresGroupsFlag(t *testing.T) {
 	// Find the group-add subcommand via NewRootCmd so persistent flags are present.
 	root := NewRootCmd("test", "abc")

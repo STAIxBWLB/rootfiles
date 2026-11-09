@@ -25,7 +25,7 @@ host keys survive image changes. Specs live in <home_base>/.rootfiles/tenants.`,
 	}
 	cmd.AddCommand(
 		newTenantListCmd(), newTenantStatusCmd(), newTenantCreateCmd(), newTenantApplyCmd(),
-		newTenantUserCmd(), newTenantPasswdCmd("passwd"), newTenantPasswdCmd("reset"),
+		newTenantUserCmd(), newTenantPasswdCmd(),
 		newTenantGPUCmd(), newTenantImageCmd(), newTenantPortCmd(), newTenantVolumeCmd(),
 		newTenantRestartCmd(), newTenantLogsCmd(), newTenantImportCmd(), newTenantOpsCmd(),
 		newTenantSyncCmd(),
@@ -328,14 +328,17 @@ func newTenantUserCmd() *cobra.Command {
 	return userCmd
 }
 
-func newTenantPasswdCmd(use string) *cobra.Command {
+func newTenantPasswdCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   use + " TENANT USER",
-		Short: "Issue a temporary password that must be changed at first login",
-		Args:  cobra.ExactArgs(2),
+		Use:     "passwd TENANT USER",
+		Aliases: []string{"reset"},
+		Short:   "Issue a temporary password that must be changed at first login",
+		Long: `Issues a temporary password that the tenant user must change at first login.
+"reset" is an alias: it was a second copy of this command.`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, user := args[0], args[1]
-			return tenantDo(cmd, t, use+" "+user, func(ctx context.Context, _ *module.RunContext, m *tenant.Manager) error {
+			return tenantDo(cmd, t, cmd.CalledAs()+" "+user, func(ctx context.Context, _ *module.RunContext, m *tenant.Manager) error {
 				s, err := m.Load(t)
 				if err != nil {
 					return err
