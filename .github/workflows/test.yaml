@@ -31,7 +31,7 @@ jobs:
     outputs:
       run_full: ${{ steps.decide.outputs.run_full }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: decide
         env:
           GH_TOKEN: ${{ github.token }}
@@ -50,7 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Release notes checker self-test
         run: bash scripts/check-release-notes.sh --self-test
       - name: Release notes format (AGENTS.md)
@@ -62,8 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: CI decision path classification
@@ -100,8 +100,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Install govulncheck
@@ -115,13 +115,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - name: Run unit tests
         run: ROOTFILES_MONITORING_SCENARIO_DIR="$PWD/hub-fixtures" go test ./... -race -count=1 -coverprofile=coverage.out
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: monitoring-hub-fixtures
           path: hub-fixtures
@@ -134,7 +134,7 @@ jobs:
           total=$(go tool cover -func=coverage.out | awk '/^total:/ {print $3}')
           echo "Total coverage: $total"
           echo "### Coverage: $total" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage-report
           path: coverage.out
@@ -142,7 +142,7 @@ jobs:
         run: CGO_ENABLED=0 go build -o bin/rootfiles ./cmd/rootfiles/
       - name: Verify CLI help
         run: ./bin/rootfiles --help
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rootfiles-binary
           path: bin/rootfiles
@@ -182,8 +182,8 @@ jobs:
           - os: dgx-22.04
             profile: full
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -222,8 +222,8 @@ jobs:
           - module: gpu
             os: dgx-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -264,8 +264,8 @@ jobs:
           - user-lifecycle
           - user-quota
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -295,8 +295,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -310,8 +310,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -325,8 +325,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -345,8 +345,8 @@ jobs:
       matrix:
         os: [rocky-8.9, rocky-8.10, rocky-9]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -362,12 +362,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: monitoring-hub-fixtures
           path: hub-fixtures
@@ -384,7 +384,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Aggregate gate self-test
         run: bash scripts/ci-ok.sh --self-test
       - name: Require successful gating jobs or intentional skips
