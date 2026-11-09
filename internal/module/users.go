@@ -117,6 +117,9 @@ func requireTrustedMetadata(rc *RunContext) error {
 	if err := rootOnlyTree(meta, homeBaseOwner); err != nil {
 		return fmt.Errorf("refusing rootfiles metadata in %s: %w", meta, err)
 	}
+	if info, err := os.Lstat(meta); err == nil && !info.IsDir() {
+		return legacyMetadataError(meta)
+	}
 	return nil
 }
 

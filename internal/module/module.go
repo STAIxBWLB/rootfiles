@@ -244,9 +244,13 @@ func ensureMetaDir(runner *exec.Runner, homeBase string) error {
 		return fmt.Errorf("cannot inspect metadata path %s: %w; repair its permissions before retrying", metaDir, err)
 	}
 	if err == nil && !info.IsDir() {
-		return fmt.Errorf("metadata path %s is not a directory; move the legacy file to a safe location, create %s as a directory, then place the file at %s before retrying", metaDir, metaDir, filepath.Join(metaDir, "users.json"))
+		return legacyMetadataError(metaDir)
 	}
 	return runner.MkdirAll(metaDir, 0755)
+}
+
+func legacyMetadataError(metaDir string) error {
+	return fmt.Errorf("metadata path %s is not a directory; move the legacy file to a safe location, create %s as a directory, then place the file at %s before retrying", metaDir, metaDir, filepath.Join(metaDir, "users.json"))
 }
 
 // CheckAll runs Check on each module and returns results.

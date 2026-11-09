@@ -22,6 +22,9 @@ func TestLegacyMetadataDryRunDoesNotMigrate(t *testing.T) {
 	if err := os.WriteFile(legacy, []byte(content), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := NewUsersModule().Check(context.Background(), rc); err == nil || !strings.Contains(err.Error(), legacy) {
+		t.Fatalf("Check accepted legacy layout: %v", err)
+	}
 	_, err := NewUsersModule().Apply(context.Background(), rc)
 	if err == nil || !strings.Contains(err.Error(), legacy) || !strings.Contains(err.Error(), "users.json") || !strings.Contains(err.Error(), "move") {
 		t.Fatalf("missing migration guidance: %v", err)
