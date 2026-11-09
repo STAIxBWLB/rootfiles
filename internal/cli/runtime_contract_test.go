@@ -213,3 +213,39 @@ func TestStatusModuleFilter(t *testing.T) {
 		t.Fatalf("text filter ignored: %s", text.String())
 	}
 }
+
+// Exercise the real mutation path as well as --dry-run: only lock/audit
+// preflight may run before the unsupported capability is refused.
+func TestRealMutationCapabilityGate(t *testing.T) {
+	oldSystem, oldEUID, oldOS, oldLock, oldAudit := detectSystem, geteuid, nativeHostOS, heldLock, auditLogger
+	detectSystem = func() (*config.SystemInfo, error) { return &config.SystemInfo{OS: "rocky", Version: "9.4"}, nil }
+	geteuid = func() int { return 0 }
+	nativeHostOS = "linux"
+	t.Cleanup(func() {
+		detectSystem, geteuid, nativeHostOS, heldLock, auditLogger = oldSystem, oldEUID, oldOS, oldLock, oldAudit
+	})
+	for _, args := range [][]string{{"gpu", "assign", "alice", "--gpus", "0"}, {"tunnel", "setup", "secret"}} {
+		t.Run(args[0], func(t *testing.T) {
+			noHostCommands(t)
+			stateDir := t.TempDir()
+			t.Setenv("ROOTFILES_STATE_DIR", stateDir)
+			t.Setenv("ROOTFILES_LOCK_FILE", filepath.Join(t.TempDir(), "lock"))
+			heldLock = nil
+			var audit bytes.Buffer
+			auditLogger = slog.New(slog.NewJSONHandler(&audit, nil))
+			t.Cleanup(func() { heldLock.Release(); heldLock = nil })
+			root := NewRootCmd("test", "test")
+			root.SetArgs(append(args, "--profile", "rocky"))
+			err := root.Execute()
+			if err == nil || !strings.Contains(err.Error(), "unsupported") {
+				t.Fatalf("capability refusal: %v", err)
+			}
+			if heldLock == nil || audit.Len() == 0 {
+				t.Fatal("real mutation skipped native preflight")
+			}
+			if entries, err := os.ReadDir(stateDir); err != nil || len(entries) != 0 {
+				t.Fatalf("refused mutation changed state: %v, %v", entries, err)
+			}
+		})
+	}
+}
