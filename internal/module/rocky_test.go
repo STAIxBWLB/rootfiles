@@ -26,7 +26,7 @@ func TestAddRockySSHDIncludeAtTopBeforeMatch(t *testing.T) {
 	if err != nil || changed || string(got) != wantPrefix+string(main) {
 		t.Fatalf("existing global include changed=%t err=%v", changed, err)
 	}
-	if _, _, err := addRockySSHDInclude([]byte("Match User deploy\nInclude /etc/ssh/sshd_config.d/*.conf\n")); err == nil {
+	if _, _, err := addRockySSHDInclude([]byte("Match User deploy\n" + wantPrefix)); err == nil {
 		t.Fatal("include scoped to Match must be rejected")
 	}
 }
