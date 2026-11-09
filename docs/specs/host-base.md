@@ -24,7 +24,7 @@ paths:
 
 - All writes go through `rc.Runner` (`WriteFile`, `MkdirAll`, `Remove`, `Symlink`, `Run`) so dry-run and backups apply. Path variables (`defaultLocalePath`, `hostnamePath`, `sysctlPath`, ...) are package vars only so tests can redirect them.
 - Locale sets only `LANG` (`setLocaleConfig`): it rewrites the distro locale file with `LANG=` first, keeps other lines and drops a stale `LC_ALL`. Forcing `LC_ALL` system-wide would override every per-user choice.
-- Locale file: `/etc/default/locale` on Ubuntu/DGX OS, `/etc/locale.conf` on Rocky (`localeConfigPath`).
+- Locale file: `/etc/default/locale` on Ubuntu/DGX OS, `/etc/locale.conf` on Rocky (`localeConfigPath`). Check reports the actual `write` to that path. On Ubuntu it separately reports `locale-gen` and, when that command is absent, installation of `locales` via `packageInstallCommand`; it never claims Apply runs `update-locale`.
 - Current timezone comes from the `/etc/localtime` symlink, falling back to `/etc/timezone` (`currentTimezone`). Apply refuses an unknown zone (not under `/usr/share/zoneinfo`, after installing `tzdata` when missing).
 - Rocky locale (`rockyLocaleLanguagePack`): a locale must already be listed by `localectl list-locales` or map to a safe `glibc-langpack-<lang>` name; `C`/`POSIX` variants never install a package. Apply installs the pack, re-lists and refuses to write the config when the locale is still unavailable. An installed pack that does not provide the locale is an error.
 - System:
@@ -51,10 +51,10 @@ paths:
 
 - Never delete or overwrite operator data to place a symlink or swapfile; refuse with a message that says what to move.
 - Keep `requireTrustedMetadata` before any metadata directory work.
-- Known gap: `ensureMetaDir` (`internal/module/module.go`, owned by [engine](engine.md)) still migrates a pre-v0.1 flat `.rootfiles` file with `os.Rename`, outside the Runner and also during dry-run (#93).
 
 ## Tests that pin it
 
+- `internal/module/agreement_test.go`: Ubuntu/Rocky locale plans name the actual file write, Apply preserves other settings and removes `LC_ALL`, and a second Check/Apply reports no locale work.
 - `internal/module/locale_test.go`: empty config satisfied, Rocky native paths, missing langpack reported, install-then-recheck, unknown Rocky locale not written, langpack mapping, built-in aliases, timezone from symlink, apply without systemd, unknown timezone, `LC_ALL` dropped.
 - `internal/module/system_test.go`: full converge (second Check satisfied) and existing swap untouched.
 - `internal/module/storage_test.go`: missing data dir, default home base satisfied, dry-run, `isSymlinkTo`, refusal for non-empty directory, replacing empty dir and stale symlink.
@@ -64,6 +64,5 @@ paths:
 
 ## Open issues
 
-- [#93](https://github.com/STAIxBWLB/rootfiles/issues/93): remove the legacy `ensureMetaDir` migration; locale Check shows `locale-gen && update-locale` while Apply writes the file.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): hand-written write-if-changed in `system.go`; repeated `homeBase` default.
 - [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): dead `setDefaultLocale` (test-only); `# Managed by rootfiles-v2` header in sysctl and journald files.

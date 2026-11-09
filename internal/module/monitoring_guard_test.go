@@ -32,6 +32,7 @@ func fakeGuardHost(t *testing.T, active bool) (string, string) {
 	if active {
 		state = "active"
 	}
+	fakeMonitoringCommand(t, "firewall-cmd", "#!/bin/sh\nexit 1\n")
 	fakeMonitoringCommand(t, "iptables", "#!/bin/sh\nexit 0\n")
 	fakeMonitoringCommand(t, "iptables-save", "#!/bin/sh\nexit 0\n")
 	fakeMonitoringCommand(t, "python3", "#!/bin/sh\nexit 0\n")
@@ -247,7 +248,7 @@ func TestEmbeddedExporterGuardHelper(t *testing.T) {
 	if strings.Contains(s, "Requires=") {
 		t.Error("helper must not write Requires= dependencies")
 	}
-	if exporterGuardHelperPath != "/usr/local/sbin/rootfiles-exporter-firewall" || exporterGuardConfPath != "/etc/rootfiles/exporter-firewall.conf" {
+	if !strings.HasSuffix(exporterGuardHelperPath, "/usr/local/sbin/rootfiles-exporter-firewall") || !strings.HasSuffix(exporterGuardConfPath, "/etc/rootfiles/exporter-firewall.conf") {
 		t.Error("Go paths must match the helper's")
 	}
 }

@@ -66,7 +66,7 @@ func TestDCGMCollectorsIncludeRequiredHealthFields(t *testing.T) {
 }
 
 func TestMonitoringPreflightRejectsUnmanagedListener(t *testing.T) {
-	fakeCommandOutput(t, map[string]string{"ss": `LISTEN 0 128 0.0.0.0:9400 0.0.0.0:* users:(("dcgm-exporter",pid=44,fd=3))
+	fakeCommandOutput(t, map[string]string{"systemctl": "", "ss": `LISTEN 0 128 0.0.0.0:9400 0.0.0.0:* users:(("dcgm-exporter",pid=44,fd=3))
 `})
 	rc := newRealRC(t)
 	rc.Config.Modules.Monitoring.DCGMExporter = true

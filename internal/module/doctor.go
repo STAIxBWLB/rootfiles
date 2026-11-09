@@ -132,13 +132,10 @@ func doctorSSH(ctx context.Context, rc *RunContext) []Finding {
 	if bin == "" {
 		return []Finding{{Check: "ssh", Level: LevelWarn, Detail: "sshd is not installed", Hint: "apt-get install openssh-server"}}
 	}
-	// sshd -T refuses to run without its privilege separation dir, which
-	// only exists while sshd is running. Creating it is harmless.
-	_ = os.MkdirAll("/run/sshd", 0755)
 	res, err := rc.Runner.Query(ctx, bin, "-T")
 	if err != nil {
 		return []Finding{{Check: "ssh config", Level: LevelFail, Detail: "sshd -T failed: " + firstLine(err.Error()),
-			Hint: "fix sshd_config before the next sshd restart"}}
+			Hint: "run sudo sshd -T to inspect configuration, host-key access or missing /run/sshd; repair the reported cause before restarting sshd"}}
 	}
 	eff := map[string]string{}
 	for _, line := range strings.Split(res.Stdout, "\n") {

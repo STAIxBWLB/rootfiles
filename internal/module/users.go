@@ -55,18 +55,16 @@ func LoadUsersDB(rc *RunContext) (*UsersDB, error) {
 		homeBase = "/home"
 	}
 	var db UsersDB
-	data, err := rc.Runner.ReadFile(filepath.Join(homeBase, ".rootfiles", "users.json"))
-	if err != nil {
-		return &db, nil
-	}
-	if err := json.Unmarshal(data, &db); err != nil {
-		return &db, fmt.Errorf("parsing users DB: %w", err)
+	if _, err := readJSONDB(filepath.Join(homeBase, ".rootfiles", "users.json"), &db); err != nil {
+		return &db, err
 	}
 	return &db, nil
 }
 
 // useraddDefaultsFile holds useradd's default HOME; tests redirect it.
 var useraddDefaultsFile = "/etc/default/useradd"
+var groupPath = "/etc/group"
+var lookupAccount = user.Lookup
 
 // homeBaseRoot is where the ownership walk of a custom home base starts and
 // homeBaseOwner the uid that must own it; tests stub both.
@@ -119,6 +117,9 @@ func requireTrustedMetadata(rc *RunContext) error {
 	if err := rootOnlyTree(meta, homeBaseOwner); err != nil {
 		return fmt.Errorf("refusing rootfiles metadata in %s: %w", meta, err)
 	}
+	if info, err := os.Lstat(meta); err == nil && !info.IsDir() {
+		return legacyMetadataError(meta)
+	}
 	return nil
 }
 
@@ -159,7 +160,7 @@ func WarnUntrustedMetadata(rc *RunContext) {
 // refuseSymlink stops a database write that would follow a symlink.
 func refuseSymlink(path string) error {
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to write %s: it is a symlink", path)
+		return fmt.Errorf("refusing to write %s: it is a symlink; replace it with a trusted regular database file before retrying", path)
 	}
 	return nil
 }
@@ -319,7 +320,7 @@ func accountDrift(ctx context.Context, rc *RunContext, a config.AccountConfig) (
 	if err := requireNativeAdminGroup(rc.Config.System, groups); err != nil {
 		return nil, err
 	}
-	u, err := user.Lookup(a.Name)
+	u, err := lookupAccount(a.Name)
 	if err != nil {
 		return []accountChange{{fmt.Sprintf("Create user %s", a.Name), "useradd " + a.Name}}, nil
 	}
@@ -339,7 +340,7 @@ func convergeAccount(ctx context.Context, rc *RunContext, a config.AccountConfig
 	if err := requireNativeAdminGroup(rc.Config.System, groups); err != nil {
 		return nil, err
 	}
-	u, err := user.Lookup(a.Name)
+	u, err := lookupAccount(a.Name)
 	if err != nil {
 		if err := AddUser(ctx, rc, a.Name, a.SSHPubkeys, a.Groups, false); err != nil {
 			return nil, err
@@ -454,7 +455,7 @@ func AddUser(ctx context.Context, rc *RunContext, username string, pubkeys []str
 	}
 
 	// Check if user exists
-	if _, err := user.Lookup(username); err == nil {
+	if _, err := lookupAccount(username); err == nil {
 		return fmt.Errorf("user %s already exists", username)
 	}
 
@@ -580,7 +581,7 @@ func ScanSystemUsersExported(ctx context.Context, rc *RunContext) ([]UserMeta, e
 
 // scanSystemUsers reads /etc/passwd and collects metadata for regular users (UID 1000-65533).
 func scanSystemUsers(ctx context.Context, rc *RunContext) ([]UserMeta, error) {
-	data, err := rc.Runner.ReadFile("/etc/passwd")
+	data, err := rc.Runner.ReadFile(passwdPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading /etc/passwd: %w", err)
 	}
@@ -692,7 +693,7 @@ func RestoreUsers(ctx context.Context, rc *RunContext, backupPath string) error 
 			continue
 		}
 		// Check if user already exists
-		if _, err := user.Lookup(u.Name); err == nil {
+		if _, err := lookupAccount(u.Name); err == nil {
 			fmt.Printf("  User %s already exists, skipping\n", u.Name)
 			continue
 		}
@@ -792,7 +793,7 @@ func RehomeUser(ctx context.Context, rc *RunContext, username string, removeOld 
 		return err
 	}
 
-	u, err := user.Lookup(username)
+	u, err := lookupAccount(username)
 	if err != nil {
 		return fmt.Errorf("user %s not found: %w", username, err)
 	}
@@ -947,7 +948,7 @@ func ListSystemUserNames(ctx context.Context, rc *RunContext) error {
 
 // ShowUserID displays UID/GID/groups for a user via the `id` command.
 func ShowUserID(ctx context.Context, rc *RunContext, username string) error {
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 	result, err := rc.Runner.Query(ctx, "id", username)
@@ -960,7 +961,7 @@ func ShowUserID(ctx context.Context, rc *RunContext, username string) error {
 
 // ListGroups displays all groups from /etc/group in a table.
 func ListGroups(ctx context.Context, rc *RunContext) error {
-	data, err := rc.Runner.ReadFile("/etc/group")
+	data, err := rc.Runner.ReadFile(groupPath)
 	if err != nil {
 		return fmt.Errorf("reading /etc/group: %w", err)
 	}
@@ -986,7 +987,7 @@ func ListGroups(ctx context.Context, rc *RunContext) error {
 
 // ListUserGroups displays groups for a specific user.
 func ListUserGroups(ctx context.Context, rc *RunContext, username string) error {
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 	result, err := rc.Runner.Query(ctx, "id", username)
@@ -999,7 +1000,7 @@ func ListUserGroups(ctx context.Context, rc *RunContext, username string) error 
 
 // AddUserToGroups adds a user to the specified groups.
 func AddUserToGroups(ctx context.Context, rc *RunContext, username string, groups []string) error {
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 	groups = accountGroupsForSystem(rc.Config.System, groups)
@@ -1018,7 +1019,7 @@ func AddUserToGroups(ctx context.Context, rc *RunContext, username string, group
 
 // RemoveUserFromGroups removes a user from the specified groups.
 func RemoveUserFromGroups(ctx context.Context, rc *RunContext, username string, groups []string) error {
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 	groups = accountGroupsForSystem(rc.Config.System, groups)
@@ -1133,11 +1134,10 @@ func saveUserMeta(rc *RunContext, username, home, shell string, groups []string,
 	dbPath := filepath.Join(homeBase, ".rootfiles", "users.json")
 	var db UsersDB
 
-	if data, err := rc.Runner.ReadFile(dbPath); err == nil {
-		if err := json.Unmarshal(data, &db); err != nil {
-			return fmt.Errorf("parsing %s: %w", dbPath, err)
-		}
+	if _, err := readJSONDB(dbPath, &db); err != nil {
+		return err
 	}
+
 	if db.Version == 0 {
 		db.Version = 1
 		db.HomeBase = homeBase
@@ -1153,7 +1153,7 @@ func saveUserMeta(rc *RunContext, username, home, shell string, groups []string,
 		Home:         home,
 	}
 	// The account does not exist in dry-run; record what we can.
-	if u, err := user.Lookup(username); err == nil {
+	if u, err := lookupAccount(username); err == nil {
 		meta.UID, _ = strconv.Atoi(u.Uid)
 		meta.GID, _ = strconv.Atoi(u.Gid)
 	} else if !rc.DryRun {
@@ -1174,12 +1174,5 @@ func saveUserMeta(rc *RunContext, username, home, shell string, groups []string,
 		db.Users = append(db.Users, meta)
 	}
 
-	data, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := refuseSymlink(dbPath); err != nil {
-		return err
-	}
-	return rc.Runner.WriteFile(dbPath, data, 0600)
+	return writeJSONDB(rc, dbPath, &db, 0600)
 }

@@ -11,6 +11,10 @@ type DockerModule struct{}
 func NewDockerModule() *DockerModule { return &DockerModule{} }
 func (m *DockerModule) Name() string { return "docker" }
 
+var dockerComposePath = "/usr/local/bin/docker-compose"
+
+var dockerPackages = []string{"docker-ce", "docker-ce-cli", "containerd.io", "docker-buildx-plugin", "docker-compose-plugin"}
+
 var composePluginPaths = []string{
 	"/usr/libexec/docker/cli-plugins/docker-compose",
 	"/usr/lib/docker/cli-plugins/docker-compose",
@@ -36,19 +40,25 @@ func (m *DockerModule) daemonUpdates(cfg map[string]any, storageDir string) map[
 
 func (m *DockerModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, error) {
 	var changes []Change
+	restart := false
 
 	if !rc.Runner.CommandExists("docker") {
 		changes = append(changes, Change{
 			Description: "Install Docker CE",
-			Command:     "apt-get install docker-ce docker-ce-cli containerd.io",
+			Command:     packageInstallCommand(rc, dockerPackages),
 		})
 	}
 
-	if !rc.Runner.FileExists("/usr/local/bin/docker-compose") {
-		changes = append(changes, Change{
-			Description: "Create docker-compose compatibility symlink",
-			Command:     "ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose",
-		})
+	if !rc.Runner.FileExists(dockerComposePath) {
+		for _, source := range composePluginPaths {
+			if rc.Runner.FileExists(source) {
+				changes = append(changes, Change{
+					Description: "Create docker-compose compatibility symlink",
+					Command:     "ln -sf " + source + " " + dockerComposePath,
+				})
+				break
+			}
+		}
 	}
 
 	cfg := rc.Config.Modules.Docker
@@ -58,11 +68,19 @@ func (m *DockerModule) Check(ctx context.Context, rc *RunContext) (*CheckResult,
 			return nil, err
 		}
 		for key, val := range m.daemonUpdates(daemon, cfg.StorageDir) {
+			restart = true
 			changes = append(changes, Change{
 				Description: fmt.Sprintf("Set Docker daemon %s = %v", key, val),
 				Command:     "merge into " + dockerDaemonJSONPath,
 			})
 		}
+	}
+
+	if !serviceActive(ctx, rc, "docker") || !serviceEnabled(ctx, rc, "docker") {
+		changes = append(changes, Change{Description: "Enable and start Docker service", Command: "systemctl enable --now docker"})
+	}
+	if restart {
+		changes = append(changes, Change{Description: "Restart Docker after daemon configuration changes", Command: "systemctl restart docker"})
 	}
 
 	return &CheckResult{
@@ -98,9 +116,7 @@ func (m *DockerModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 			return nil, fmt.Errorf("apt update: %w", err)
 		}
 
-		pkgs := []string{"docker-ce", "docker-ce-cli", "containerd.io",
-			"docker-buildx-plugin", "docker-compose-plugin"}
-		if err := rc.APT.Install(ctx, pkgs); err != nil {
+		if err := rc.APT.Install(ctx, dockerPackages); err != nil {
 			return nil, fmt.Errorf("installing docker: %w", err)
 		}
 		messages = append(messages, "Docker CE installed")
@@ -142,16 +158,16 @@ func (m *DockerModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 	}
 
 	// docker-compose v1 compatibility symlink
-	if !rc.Runner.FileExists("/usr/local/bin/docker-compose") {
+	if !rc.Runner.FileExists(dockerComposePath) {
 		for _, src := range composePluginPaths {
 			if rc.Runner.FileExists(src) {
 				// A dangling symlink fails FileExists but blocks Symlink.
-				if fi, err := os.Lstat("/usr/local/bin/docker-compose"); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-					if err := rc.Runner.Remove("/usr/local/bin/docker-compose"); err != nil {
+				if fi, err := os.Lstat(dockerComposePath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+					if err := rc.Runner.Remove(dockerComposePath); err != nil {
 						return nil, fmt.Errorf("removing stale docker-compose symlink: %w", err)
 					}
 				}
-				if err := rc.Runner.Symlink(src, "/usr/local/bin/docker-compose"); err != nil {
+				if err := rc.Runner.Symlink(src, dockerComposePath); err != nil {
 					return nil, fmt.Errorf("creating docker-compose symlink: %w", err)
 				}
 				messages = append(messages, "docker-compose compatibility symlink created")
@@ -161,9 +177,17 @@ func (m *DockerModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 		}
 	}
 
-	if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", "docker"); err != nil {
-		warnings = append(warnings, fmt.Sprintf("enabling docker service: %s", firstLine(err.Error())))
-	} else if restart {
+	enableOK := true
+	if !serviceActive(ctx, rc, "docker") || !serviceEnabled(ctx, rc, "docker") {
+		if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", "docker"); err != nil {
+			warnings = append(warnings, fmt.Sprintf("enabling docker service: %s", firstLine(err.Error())))
+			enableOK = false
+		} else {
+			messages = append(messages, "Docker service enabled and started")
+			changed = true
+		}
+	}
+	if restart && enableOK {
 		if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "docker"); err != nil {
 			warnings = append(warnings, fmt.Sprintf("restarting docker: %s", firstLine(err.Error())))
 		}

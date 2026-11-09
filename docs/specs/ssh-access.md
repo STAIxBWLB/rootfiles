@@ -49,6 +49,8 @@ paths:
 
 ## Safety
 
+- Read-only port discovery never creates `/run/sshd`; a failed effective-port query uses existing config/default fallback. Module fixtures redirect native config paths and reject Query executables outside the private fixture tree.
+
 - Any change that can alter SSH reachability (port, password auth, firewall enable) must keep the lockout guard and the rules-before-enable order.
 - Do not change a port before the firewall admits it, and do not treat an unknown firewall state as inactive in new code.
 - `access.go` reads `/etc/passwd`, `/etc/shadow` and `authorized_keys` directly (`passwdPath`, `shadowPath` are test overrides); keep these read-only.
@@ -67,6 +69,5 @@ paths:
 
 ## Open issues
 
-- [#93](https://github.com/STAIxBWLB/rootfiles/issues/93): `sshPorts` creates `/run/sshd` with `os.MkdirAll` on a read path; `network` Check hard-codes `apt-get install ufw`; module tests still run real `ufw`, `sshd -t`, `systemctl`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `ssh.go` prints the `--force` warning to stdout directly; daemon-reload failure policy to unify.
 - [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `# Managed by rootfiles-v2` header in the drop-in.

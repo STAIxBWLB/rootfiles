@@ -1,7 +1,7 @@
 #!/bin/bash
 # Verify dry-run mode makes zero actual changes for all profiles
 set -euo pipefail
-source /tests/assert.sh
+source "${ROOTFILES_TEST_ASSERT:-/tests/assert.sh}"
 
 echo "=== Scenario: dry-run-all-profiles ==="
 
@@ -13,12 +13,13 @@ for profile in base minimal dgx gpu-server full; do
     md5_sshd=$(md5sum /etc/ssh/sshd_config.d/00-rootfiles.conf 2>/dev/null || echo "none")
 
     # Run dry-run
-    output=$(rootfiles apply --profile "$profile" --dry-run --yes 2>&1)
-    exit_code=$?
+    exit_code=0
+    output=$(rootfiles apply --profile "$profile" --dry-run --yes 2>&1) || exit_code=$?
 
     if [ $exit_code -eq 0 ]; then
         pass "dry-run $profile: exit 0"
     else
+        printf '%s\n' "$output"
         fail "dry-run $profile: exit $exit_code"
     fi
 

@@ -3,7 +3,6 @@ package module
 import (
 	"context"
 	"fmt"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -180,7 +179,7 @@ func reapplyQuota(ctx context.Context, rc *RunContext, m UserMeta) {
 	if m.Quota == "" {
 		return
 	}
-	if _, err := user.Lookup(m.Name); err != nil {
+	if _, err := lookupAccount(m.Name); err != nil {
 		return
 	}
 	if err := SetQuota(ctx, rc, m.Name, m.Quota); err != nil {

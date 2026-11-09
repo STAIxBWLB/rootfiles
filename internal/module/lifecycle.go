@@ -2,7 +2,6 @@ package module
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
@@ -28,13 +27,13 @@ func usersDBPath(rc *RunContext) string {
 // false to delete the entry. Missing DB or entry is not an error.
 func updateUserMeta(rc *RunContext, name string, fn func(*UserMeta) bool) error {
 	path := usersDBPath(rc)
-	data, err := rc.Runner.ReadFile(path)
-	if err != nil {
-		return nil
-	}
 	var db UsersDB
-	if err := json.Unmarshal(data, &db); err != nil {
-		return fmt.Errorf("parsing %s: %w", path, err)
+	found, err := readJSONDB(path, &db)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
 	}
 	var kept []UserMeta
 	for i := range db.Users {
@@ -45,14 +44,7 @@ func updateUserMeta(rc *RunContext, name string, fn func(*UserMeta) bool) error 
 		kept = append(kept, u)
 	}
 	db.Users = kept
-	out, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := refuseSymlink(path); err != nil {
-		return err
-	}
-	return rc.Runner.WriteFile(path, out, 0600)
+	return writeJSONDB(rc, path, &db, 0600)
 }
 
 // lookupManaged returns the account, refusing system accounts.
@@ -60,7 +52,7 @@ func lookupManaged(name string) (*user.User, error) {
 	if err := checkUsername(name); err != nil {
 		return nil, err
 	}
-	u, err := user.Lookup(name)
+	u, err := lookupAccount(name)
 	if err != nil {
 		return nil, fmt.Errorf("user %s not found", name)
 	}
