@@ -36,7 +36,9 @@ paths:
 ## Behaviour
 
 - `ssh` Check: on Rocky, pending main-config include, firewall and SELinux checks (owned by [distro-rocky](distro-rocky.md)); on every distro, a drop-in diff against `buildConfig`.
-- Ubuntu SSH compares an explicit target port with the managed drop-in Port (22 when absent). An unchanged port leaves UFW alone. For a change, Check reports `ufw allow <port>/tcp` only for a missing unrestricted rule under known state; existing restricted/family-limited rules or any DENY/REJECT need operator reconciliation. Apply repeats verification, adds the planned rule, confirms it, then writes sshd. Unknown inspection or a policy refusal produces `ChangeBlocked` in Check and an error before writes in Apply. Effective main-config port discovery is tracked by #104.
+- Ubuntu and Rocky share `managedSSHPortChanges`: trust an active managed Port, otherwise query `sshd -T -f sshd_config` read-only and resolve main/Include configuration when that probe fails. Relative patterns are rooted at the SSH config directory; each glob is read in lexical order, the first Port is used, and no declared Port means 22. Unreadable paths, invalid globs and Include cycles name the repair target; discovery never creates `/run/sshd`.
+- When Rocky must add the managed Include, existing drop-in bytes are not active input to current-port discovery. A 22-to-custom activation therefore receives firewall verification before Include/drop-in writes, labels or reload. An already-current main port permits an Include-only repair without an unnecessary firewall query.
+- Both distributions leave firewall policy alone when the port is unchanged; Rocky still verifies/adds the SELinux label for an unchanged custom port. For a changed Ubuntu port, Check reports `ufw allow <port>/tcp` only for a missing unrestricted rule under known state; restricted/family-limited rules and DENY/REJECT need operator reconciliation. Apply repeats verification, adds and confirms the planned allowance, then writes sshd. Firewall refusal is blocked Check data and a pre-write Apply error.
 - Reload (`SSHModule.reload`): on socket-activated systems (`ssh.socket` active) a port change runs `systemctl daemon-reload` and restarts `ssh.socket`, then `try-reload-or-restart ssh.service`; otherwise `systemctl reload` of `ssh`/`sshd` (`sshd` first on Rocky). A reload failure is an Apply warning ("restart sshd manually"), not an error, because the validated config is already in place.
 - `network` Check: under known state, report install UFW if missing, one change per missing required port, and enable if inactive; unknown state or another active manager yields a blocked change. Apply refuses those blockers before package/rule changes, otherwise installs UFW, allows missing ports and enables last. With `ufw: false` both are no-ops.
 
@@ -65,7 +67,6 @@ paths:
 
 ## Open issues
 
-- [#104](https://github.com/STAIxBWLB/rootfiles/issues/104): Rocky firewall verification in `SSHModule.Check`/`Apply` should run only when the effective port changes.
 - [#93](https://github.com/STAIxBWLB/rootfiles/issues/93): `sshPorts` creates `/run/sshd` with `os.MkdirAll` on a read path; `network` Check hard-codes `apt-get install ufw`; module tests still run real `ufw`, `sshd -t`, `systemctl`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `ssh.go` prints the `--force` warning to stdout directly; daemon-reload failure policy to unify.
 - [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `# Managed by rootfiles-v2` header in the drop-in.

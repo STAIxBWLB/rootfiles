@@ -713,9 +713,7 @@ esac`)
 				rc.Config.SSH = config.SSHConfig{Port: tc.target}
 				check, err := module.Check(context.Background(), rc)
 				if tc.blocked {
-					if err == nil {
-						t.Fatal("changed port accepted restricted firewall")
-					}
+					requireBlockedFirewallCheck(t, check, err)
 				} else if err != nil || check.Satisfied == tc.missingLabel {
 					t.Fatalf("unchanged port check: %+v, %v", check, err)
 				}
@@ -775,8 +773,10 @@ func TestSSHPortChangeUsesMainOrEffectivePort(t *testing.T) {
 				rc.Config.System = &config.SystemInfo{OS: distro, Version: "9.4"}
 				rc.Config.SSH = config.SSHConfig{Port: 22}
 				module := NewSSHModule()
-				if _, err := module.Check(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "UFW") {
-					t.Fatalf("main/effective 2222 ->22 skipped firewall: %v", err)
+				check, err := module.Check(context.Background(), rc)
+				requireBlockedFirewallCheck(t, check, err)
+				if !strings.Contains(check.Changes[0].Description, "UFW") {
+					t.Fatalf("missing UFW blocker: %+v", check)
 				}
 				if _, err := module.Apply(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "UFW") {
 					t.Fatalf("main/effective 2222 ->22 Apply skipped firewall: %v", err)
@@ -943,8 +943,9 @@ func TestRockySSHInactiveDropInChecksFirewallBeforeInclude(t *testing.T) {
 			rc.Force = true
 			check, err := module.Check(context.Background(), rc)
 			if tc.blocked {
-				if err == nil || !strings.Contains(err.Error(), "does not allow SSH port 2222") {
-					t.Fatalf("inactive port escaped Check firewall verification: %+v, %v", check, err)
+				requireBlockedFirewallCheck(t, check, err)
+				if !strings.Contains(check.Changes[0].Description, "does not allow SSH port 2222") {
+					t.Fatalf("missing inactive-port blocker: %+v", check)
 				}
 			} else if err != nil || check.Satisfied {
 				t.Fatalf("Include-only change should be pending: %+v, %v", check, err)
