@@ -387,8 +387,8 @@ func (m *SSHModule) reload(ctx context.Context, rc *RunContext, portChanged bool
 	if res, err := rc.Runner.Query(ctx, "systemctl", "is-active", "ssh.socket"); err == nil && strings.TrimSpace(res.Stdout) == "active" {
 		msg := "ssh reloaded"
 		if portChanged {
-			if _, err := rc.Runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
-				return "", fmt.Errorf("systemctl daemon-reload: %w", err)
+			if warning := systemdReload(ctx, rc); warning != "" {
+				return "", fmt.Errorf("%s", warning)
 			}
 			if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "ssh.socket"); err != nil {
 				return "", fmt.Errorf("restarting ssh.socket: %w", err)

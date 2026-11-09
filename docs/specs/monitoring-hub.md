@@ -38,6 +38,8 @@ History: designed in #13 (phase 4) and shipped in #19 (v0.12.0); alert annotatio
 
 ## Behaviour
 
+- Only ordinary systemd-unit writing uses `ensureFile`. Hub configuration transactions keep previous-byte restoration and fatal runtime service-reload failure semantics; create-only secrets/targets retain their own validation. Unit daemon-reload failure is a warning with manual repair, and converged applies add no retry/reload. The header-free unit still compares exact bytes.
+
 - Check: config and filesystem validation; one change for any drift in generated files or unit; missing password file, data directories (`prometheus`, `alertmanager`, `grafana` under `data_dir`, root-owned real directories) and targets file; each Compose service not running; unit not active.
 - Apply: creates directories, an empty `[]` targets file when absent, the Grafana password when needed, writes changed files and the unit. Dry-run stops after the Runner-gated writes. Otherwise it reloads systemd for a changed unit, reenables, runs `compose up -d` plus reloads when active, or `systemctl enable --now` when inactive, and fails when any service does not reach running state (`verifyMonitoringHubServices`).
 - Scrape config: one static `prometheus` job and a `fleet` `file_sd` job refreshed every 30s; labels come from the targets file (`host`, `exporter`, `group_*`).
@@ -65,7 +67,3 @@ Verification evidence (folded from the 2026-10-03 rollout checklist):
 | Hub configs, readiness, target push, alerting | `tests/scenarios/monitoring-hub.sh` in CI `monitoring-hub`: real Prometheus, Alertmanager and Grafana from generated configs, promtool and amtool validation, a `file_sd` target becoming healthy with labels, `fleet targets --push` through a real SSH fixture without a Prometheus container restart, and `FleetTargetDown` firing after a simulated five-minute outage |
 | Root-owned 0600 secrets, loopback web ports | `TestMonitoringHubRejectsUnsafeSecretFilesWithoutEchoingContents`, `TestRenderMonitoringHubFilesPinsImagesAndLoopbackPorts`; the scenario asserts loopback-only bindings |
 | Cloudflare Access policy and live receiver delivery | Operator-side, not in CI (unverified by tests) |
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): the hub has its own write-if-changed loop and calls `daemon-reload` directly with failure as error.

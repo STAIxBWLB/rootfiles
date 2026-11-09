@@ -32,7 +32,7 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
   - `both`: the two above.
 - **Docker wrapper.** While any user allocation exists, `/usr/local/bin/docker` is a managed bash wrapper (`buildDockerWrapper`) in front of `/usr/bin/docker`: root bypasses it; for a user with an allocation, `run`/`create` drop any `--gpus` argument and inject `NVIDIA_VISIBLE_DEVICES`/`CUDA_VISIBLE_DEVICES`, and `compose` gets them exported. Without allocations the wrapper is removed (module Apply, `RevokeGPUs`).
 - **Check and Apply agree** on each user's env script, cgroup drop-in and the wrapper content; file content is compared exactly except for the shared legacy management marker. A missing account skips its cgroup drop-in (warning in Apply).
-- **daemon-reload is a warning.** `systemdReload` returns a warning instead of failing: the drop-in is written and takes effect on the next login or boot.
+- **daemon-reload is a warning.** `systemdReload` is shared from `module/files.go`; it warns with the manual daemon-reload command instead of failing. Existing drift gates remain, so a converged later apply does not perform an invented retry.
 - **Revoke removes only rootfiles files:** the env script, the `gpu-access.conf` drop-in, and the slice directory only when empty.
 - **MIG is read-only.** `MIGStatus` reads `nvidia-smi` mode and `nvidia-smi -L` instances; repartitioning is left to the operator because it destroys running instances.
 
@@ -65,4 +65,4 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `gpu assign`/`revoke` skip capability validation and always build an APT backend.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `systemdReload` shared helper, home-base defaulting, output through `ui`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining home-base defaulting and output through `ui`; shared ordinary-file/systemd helpers are in place.

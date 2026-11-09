@@ -195,10 +195,11 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 			if err := rc.Runner.MkdirAll(filepath.Dir(path), 0755); err != nil {
 				return nil, err
 			}
-			if err := rc.Runner.WriteFile(path, []byte(content), 0644); err != nil {
+			fileChanged, err := ensureFile(rc, path, content, 0644)
+			if err != nil {
 				return nil, fmt.Errorf("writing %s: %w", path, err)
 			}
-			wrote = true
+			wrote = wrote || fileChanged
 		}
 		// Non-root apt reads apt.conf.d too; v0.15.0 fleet applies left 0600.
 		for _, path := range unreadableAptConf() {
@@ -233,16 +234,19 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 			if err := rc.Runner.MkdirAll(filepath.Dir(fail2banJailPath), 0755); err != nil {
 				return nil, err
 			}
-			if err := rc.Runner.WriteFile(fail2banJailPath, []byte(jail), 0644); err != nil {
+			wrote, err := ensureFile(rc, fail2banJailPath, jail, 0644)
+			if err != nil {
 				return nil, fmt.Errorf("writing %s: %w", fail2banJailPath, err)
 			}
-			if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "fail2ban"); err != nil {
-				warnings = append(warnings, "enabling fail2ban: "+firstLine(err.Error()))
-			} else if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "fail2ban"); err != nil {
-				warnings = append(warnings, "restarting fail2ban: "+firstLine(err.Error()))
+			if wrote {
+				if err := enableUnit(ctx, rc, "fail2ban", false); err != nil {
+					warnings = append(warnings, "enabling fail2ban: "+firstLine(err.Error()))
+				} else if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "fail2ban"); err != nil {
+					warnings = append(warnings, "restarting fail2ban: "+firstLine(err.Error()))
+				}
+				messages = append(messages, "fail2ban sshd jail configured")
+				changed = true
 			}
-			messages = append(messages, "fail2ban sshd jail configured")
-			changed = true
 		}
 	}
 
@@ -252,7 +256,7 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 			warnings = append(warnings, "cannot determine NTP time sync: "+firstLine(err.Error())+"; run timedatectl show -p NTP --value and repair the time-sync service")
 		} else if strings.TrimSpace(res.Stdout) != "yes" {
 			_, unit := timeSyncPackage(rc)
-			if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", unit); err != nil {
+			if err := enableUnit(ctx, rc, unit, true); err != nil {
 				warnings = append(warnings, "enabling "+unit+": "+firstLine(err.Error()))
 			} else {
 				messages = append(messages, unit+" time-sync service enabled")

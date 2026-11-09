@@ -99,8 +99,7 @@ func checkMonitoringHub(ctx context.Context, rc *RunContext) ([]Change, error) {
 			break
 		}
 	}
-	unit, err := rc.Runner.ReadFile(monitoringHubUnitPath)
-	if err != nil || string(unit) != monitoringHubSystemdUnit(monitoringHubCompose) || !rc.Runner.FileExists(dockerWantsLink(monitoringHubUnit)) {
+	if !fileEquals(rc, monitoringHubUnitPath, monitoringHubSystemdUnit(monitoringHubCompose)) || !rc.Runner.FileExists(dockerWantsLink(monitoringHubUnit)) {
 		configDrift = true
 	}
 	if configDrift {
@@ -238,20 +237,18 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		return err
 	}
 	unit := monitoringHubSystemdUnit(monitoringHubCompose)
-	currentUnit, unitErr := rc.Runner.ReadFile(monitoringHubUnitPath)
-	unitChanged := unitErr != nil || string(currentUnit) != unit
-	if unitChanged {
-		if err := rc.Runner.WriteFile(monitoringHubUnitPath, []byte(unit), 0644); err != nil {
-			return nil, fmt.Errorf("writing monitoring hub systemd unit: %w", err)
-		}
-		changed = true
+	unitChanged, err := ensureFile(rc, monitoringHubUnitPath, unit, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("writing monitoring hub systemd unit: %w", err)
 	}
+	changed = changed || unitChanged
 	if rc.DryRun {
 		return &ApplyResult{Changed: changed, Messages: []string{"monitoring hub configuration rendered (dry run)"}}, nil
 	}
+	var warnings []string
 	if unitChanged {
-		if _, err := rc.Runner.Run(ctx, "systemctl", "daemon-reload"); err != nil {
-			return nil, fmt.Errorf("reloading systemd: %w", err)
+		if warning := systemdReload(ctx, rc); warning != "" {
+			warnings = append(warnings, warning)
 		}
 	}
 	if unitChanged || !rc.Runner.FileExists(dockerWantsLink(monitoringHubUnit)) {
@@ -275,7 +272,7 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		}
 	}
 	if !active {
-		if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", monitoringHubUnit); err != nil {
+		if err := enableUnit(ctx, rc, monitoringHubUnit, true); err != nil {
 			return nil, fmt.Errorf("enabling monitoring hub unit: %w", err)
 		}
 		changed = true
@@ -287,7 +284,7 @@ func applyMonitoringHub(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 	if changed {
 		messages = append(messages, "monitoring hub configured and started")
 	}
-	return &ApplyResult{Changed: changed, Messages: messages}, nil
+	return &ApplyResult{Changed: changed, Messages: messages, Warnings: warnings}, nil
 }
 
 func validateMonitoringDataDir(path string) (bool, error) {

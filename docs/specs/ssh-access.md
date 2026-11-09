@@ -49,6 +49,8 @@ paths:
 
 ## Safety
 
+- SSH retains its special trimmed drop-in comparison and rollback/validation writer. Socket-activated port changes use the common daemon-reload warning text but preserve reload-before-socket-restart ordering and stop the sequence on failure.
+
 - Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
 
 - Read-only port discovery never creates `/run/sshd`; a failed effective-port query uses existing config/default fallback. Module fixtures redirect native config paths and reject Query executables outside the private fixture tree.

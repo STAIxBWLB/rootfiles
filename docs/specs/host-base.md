@@ -66,4 +66,4 @@ paths:
 
 ## Open issues
 
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): hand-written write-if-changed in `system.go`; repeated `homeBase` default.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining repeated home-base defaults and output routing; ordinary sysctl/journald/APT-mirror writes already use the shared helper.

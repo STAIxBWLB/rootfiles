@@ -31,6 +31,8 @@ paths:
 
 ## Behaviour
 
+- Rocky automatic-file writes and service enables use the shared ordinary-file/systemd primitives without changing RPM package selection, metadata queries, file bytes or service predicates.
+
 - SSH main config (`rockySSHDMainState`, `addRockySSHDInclude`): when `/etc/ssh/sshd_config` lacks an `Include /etc/ssh/sshd_config.d/*.conf` (or `/*`), Apply prepends one and keeps the file mode. A managed include inside a `Match` block is refused; a non-regular main config is refused. Check reports the pending include (marked blocked when the lockout guard would refuse).
 - SSH port on Rocky (`ssh.port > 0`), in `SSHModule.Check` and `Apply` (`internal/module/ssh.go`), using shared current-port discovery owned by [ssh-access](ssh-access.md):
   - Only an effective port change calls `rockyFirewallAllowsSSH`; unchanged ports retain their existing restrictive policy. A pending managed Include excludes the inactive drop-in from current-port input, so activating its custom port cannot skip verification. For a change, `rockyFirewallAllowsSSH` must return true. UFW, when installed and active, must show no DENY/REJECT rule and an unrestricted `ALLOW` for `<port>/tcp` from `Anywhere` in both IPv4 and IPv6. firewalld, when running, must have no rich rules in any active zone (default zone if none active) and must allow the port (or service `ssh` for port 22) in every one. Shared inspection in `internal/module/firewall.go` treats query failure or unrecognised output as unknown; Check reports it as a blocked change and Apply refuses before writes. `not running` with exit 252 counts as no firewalld. The parsed model is owned by [ssh-access](ssh-access.md).

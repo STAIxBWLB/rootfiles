@@ -102,6 +102,8 @@ Single-port SSH (sshpiper)
 
 ## Safety
 
+- Host helper/unit files share legacy-marker-aware equality; sudoers still require the existing metadata predicate and transactional visudo installer (the metadata lookup uses the shared test seam, whose production default remains os.Lstat). Host/piper daemon-reload failures surface as warnings, including removal; no new converged retry is added. Tenant runtime atomic route/key/volume writers remain unchanged.
+
 - Never discard tenant data: no recreate while `-prev` exists, rollback on failed verification, import keeps the old container, shrink only offline on ext4 with `e2fsck` first.
 - Temporary passwords appear only in the command's own output: not in the audit log, `/var/log/rootfiles.log`, process arguments or the spec.
 - Operator sudo is limited to `tenant ops` with no flags and a scrubbed environment.
@@ -116,5 +118,5 @@ Single-port SSH (sshpiper)
 
 ## Open issues
 
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): shared `writeIfChanged` and `generatePassword` helpers, output through `internal/ui`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining password helper and output routing. Host prep uses shared ordinary-file/systemd helpers; tenant runtime atomic writeIfChanged remains a distinct concern.
 - Not tracked: the 2026-10-20 design stored GPU UUIDs and checked OCI `linux.devices`; the code stores indices and verifies with `nvidia-smi -L`.
