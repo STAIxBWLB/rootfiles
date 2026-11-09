@@ -189,15 +189,26 @@ func unsatisfiedModules(remote json.RawMessage) []string {
 	return names
 }
 
-func Schedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, action string, dry bool) ([]Result, error) {
+// Schedule enables or disables the report timer on each host. A calendar sets
+// the OnCalendar expression on enable; empty leaves each host's own.
+func Schedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, action, calendar string, dry bool) ([]Result, error) {
 	if action != "enable" && action != "disable" {
 		return nil, fmt.Errorf("schedule action must be enable or disable")
 	}
+	if calendar != "" && action != "enable" {
+		return nil, fmt.Errorf("a schedule calendar applies to enable only")
+	}
+	command := "schedule " + action
+	reason := "dry-run: would " + action + " scheduled reports"
+	if calendar != "" {
+		command += " --on-calendar " + shellQuote(calendar)
+		reason += " on " + calendar
+	}
 	return serial(ctx, runner, hosts, "schedule "+action, func(h NamedHost) Result {
 		if dry {
-			return Result{Host: h.Name, Command: "schedule", State: "ok", Reason: "dry-run: would " + action + " scheduled reports"}
+			return Result{Host: h.Name, Command: "schedule", State: "ok", Reason: reason}
 		}
-		return runner.runMutation(ctx, h, "schedule", privileged(h.Sudo, remoteBinary+" schedule "+action), nil)
+		return runner.runMutation(ctx, h, "schedule", privileged(h.Sudo, remoteBinary+" "+command), nil)
 	}), nil
 }
 

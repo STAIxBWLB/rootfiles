@@ -165,7 +165,7 @@ func tunnelUpdateCheck(ctx context.Context, rc *module.RunContext) error {
 
 	switch {
 	case current == "":
-		ui.WriteHint(os.Stdout, "run `sudo rootfiles tunnel install` to install.")
+		ui.WriteHint(os.Stdout, "run `sudo rootfiles tunnel setup` to install.")
 		return &ExitError{Code: exitDrift}
 	case normalizeVersion(current) == normalizeVersion(latest):
 		fmt.Println("  " + ui.StyleSuccess.Render(ui.MarkOK+" up to date."))
