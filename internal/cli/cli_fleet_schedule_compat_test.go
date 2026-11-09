@@ -82,8 +82,8 @@ func TestFleetTargetsExplicitEmptySelectionDoesNotRenderAll(t *testing.T) {
 		root.SetOut(&out)
 		root.SetErr(io.Discard)
 		root.SetArgs(append([]string{"fleet", "targets", "--inventory", inventory}, selection...))
-		if err := root.Execute(); err == nil || out.Len() != 0 {
-			t.Fatalf("selection %v fell back to all hosts: error=%v output=%s", selection, err, out.String())
+		if err := root.Execute(); err == nil || out.Len() != 0 || !strings.Contains(err.Error(), "from the inventory, or use --all") {
+			t.Fatalf("selection %v lacks safe refusal/remedy: error=%v output=%s", selection, err, out.String())
 		}
 	}
 }

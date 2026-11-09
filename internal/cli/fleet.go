@@ -518,7 +518,7 @@ func selectedFleetHosts(c *cobra.Command, inv *fleet.Inventory) (*fleet.Inventor
 	all, _ := c.Flags().GetBool("all")
 	picked, err := inv.Select(hosts, groups, all)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot render selected fleet targets: %w; choose --host or --group from the inventory, or use --all", err)
 	}
 	narrowed := &fleet.Inventory{
 		Defaults: inv.Defaults,
