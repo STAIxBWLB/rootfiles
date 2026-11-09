@@ -48,6 +48,8 @@ The Module interface, the registry and execution order, and the three commands t
 
 ## Safety
 
+- Upgrade stability (#115): converged v0.18.1 state must stay clean without new managed-file writes or service restarts. `TestUpgradeFromV0181ConvergedModulesStayClean` seeds the previous Docker daemon/compose link, enabled NTP and current locale directly, including missing locale tools, then asserts clean checks and mutation-free Apply. Native/live rollout proof is separate from these isolated fixtures.
+
 - Check must stay side-effect free: no writes, no installs, no metadata refresh; Runner writes are dry-run gated but `Runner.Query` is not, so a Check must only query.
 - `ensureMetaDir` refuses a legacy `<home_base>/.rootfiles` file without moving it, including in dry run, and names the manual relocation to `.rootfiles/users.json`. Shared JSON ledger reads distinguish absence from corruption; atomic sibling writes and destination replacement go through Runner so dry-run and backups apply.
 - Status lines in `RunAll` are printed to stdout with literal glyphs, not through `internal/ui` (see #94).

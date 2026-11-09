@@ -383,3 +383,80 @@ func TestAgreementDockerConfigRestartAndComposeSource(t *testing.T) {
 		t.Fatalf("Check after Apply=%+v err=%v", after, err)
 	}
 }
+
+// Seed the state checked by v0.18.1 directly, without running the new Apply:
+// Docker and its compatibility link exist, daemon keys match, NTP is enabled,
+// and LANG already matches even when locale generation tools are absent.
+func TestUpgradeFromV0181ConvergedModulesStayClean(t *testing.T) {
+	rc := newRealRC(t)
+	dir := fakeDockerAgreementPaths(t)
+	fakeLocaleFS(t)
+	t.Setenv("PATH", dir)
+	actions := filepath.Join(dir, "unexpected-mutations")
+	agreementCommand(t, dir, "docker", "exit 0")
+	agreementCommand(t, dir, "systemctl", "case \"$1 $2\" in 'is-active docker') echo active;; 'is-enabled docker') echo enabled;; *) printf '%s\\n' \"$*\" >> "+agreementQuote(actions)+"; exit 1;; esac")
+	agreementCommand(t, dir, "timedatectl", "case $1 in show) echo yes;; *) printf '%s\\n' \"$*\" >> "+agreementQuote(actions)+"; exit 1;; esac")
+	rc.Config.System = &config.SystemInfo{OS: "ubuntu", Version: "22.04"}
+	rc.Config.Locale = "en_US.UTF-8"
+	rc.Config.Modules.Docker.StorageDir = filepath.Join(dir, "docker-data")
+	rc.Config.Modules.Security.TimeSync = true
+	pm := &agreementPackageManager{installed: map[string]bool{"chrony": true}}
+	rc.APT = pm
+	if err := os.WriteFile(composePluginPaths[0], []byte("installed compose plugin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(composePluginPaths[0], dockerComposePath); err != nil {
+		t.Fatal(err)
+	}
+	daemon := []byte("{\n  \"data-root\": " + strconv.Quote(rc.Config.Modules.Docker.StorageDir) + ",\n  \"log-driver\": \"json-file\",\n  \"log-opts\": {\"max-size\":\"10m\",\"max-file\":\"3\"}\n}\n")
+	locale := []byte("# existing operator configuration\nLANG=en_US.UTF-8\nKEEP=1\n")
+	files := map[string][]byte{dockerDaemonJSONPath: daemon, defaultLocalePath: locale}
+	before := map[string]os.FileInfo{}
+	for name, data := range files {
+		if err := os.WriteFile(name, data, 0644); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		before[name] = info
+	}
+	linkBefore, err := os.Lstat(dockerComposePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rc.Runner.CommandExists("locale-gen") {
+		t.Fatal("fixture must omit locale generation tools")
+	}
+	for _, module := range []Module{NewDockerModule(), NewSecurityModule(), NewLocaleModule()} {
+		check, err := module.Check(context.Background(), rc)
+		if err != nil || !check.Satisfied || len(check.Changes) != 0 {
+			t.Fatalf("%s adds upgrade-only drift: %+v, %v", module.Name(), check, err)
+		}
+		result, err := module.Apply(context.Background(), rc)
+		if err != nil || result.Changed || len(result.Warnings) != 0 {
+			t.Fatalf("%s mutates converged host: %+v, %v", module.Name(), result, err)
+		}
+	}
+	for name, want := range files {
+		data, err := os.ReadFile(name)
+		if err != nil || string(data) != string(want) {
+			t.Fatalf("rewrote %s: %q, %v", name, data, err)
+		}
+		info, err := os.Stat(name)
+		if err != nil || !os.SameFile(before[name], info) || !before[name].ModTime().Equal(info.ModTime()) {
+			t.Fatalf("replaced/touched %s", name)
+		}
+	}
+	linkAfter, err := os.Lstat(dockerComposePath)
+	if err != nil || !os.SameFile(linkBefore, linkAfter) {
+		t.Fatalf("replaced existing compose link: %v", err)
+	}
+	if len(pm.installs) != 0 {
+		t.Fatalf("installed packages on converged host: %v", pm.installs)
+	}
+	if _, err := os.Stat(actions); !os.IsNotExist(err) {
+		t.Fatalf("ran upgrade-only mutations: %v", err)
+	}
+}
