@@ -131,11 +131,14 @@ func newUserBackupCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			output, _ := cmd.Flags().GetString("output")
+			output := stringFlagOrAlias(cmd, "file", "output")
 			return module.BackupUsers(rc, output)
 		},
 	}
-	cmd.Flags().StringP("output", "o", "", "Output path for backup file")
+	cmd.Flags().String("file", "", "Output path for backup file")
+	cmd.Flags().StringP("output", "o", "", "Deprecated alias for --file")
+	_ = cmd.Flags().MarkDeprecated("output", "use --file instead")
+	_ = cmd.Flags().MarkShorthandDeprecated("output", "use --file instead")
 	return cmd
 }
 

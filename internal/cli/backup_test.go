@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
 func TestNewBackupCmd_Basics(t *testing.T) {
@@ -28,7 +28,8 @@ func TestBackupCmd_Flags(t *testing.T) {
 		name       string
 		defaultVal string
 	}{
-		{"output", "/raid/backup"},
+		{"dir", filepath.Join(state.Dir(), "system-backup")},
+		{"output", ""},
 		{"skip-docker", "false"},
 		{"skip-etc", "false"},
 	} {
@@ -46,6 +47,15 @@ func TestBackupCmd_Flags(t *testing.T) {
 // runBackup executes `backup` with stdout and stderr parked in temp files so
 // the progress report and the runner log stay out of the test output.
 func runBackup(t *testing.T, args ...string) error {
+	t.Helper()
+	_, err := runBackupCaptured(t, args...)
+	return err
+}
+
+// runBackupCaptured is runBackup for the tests that read what the command
+// printed, such as the notice for a deprecated flag, which pflag writes to its
+// own output rather than to the command's.
+func runBackupCaptured(t *testing.T, args ...string) (string, error) {
 	t.Helper()
 	oldEUID, oldOS, oldLock, oldAudit := geteuid, nativeHostOS, heldLock, auditLogger
 	geteuid = func() int { return 0 }
@@ -72,13 +82,18 @@ func runBackup(t *testing.T, args ...string) error {
 	t.Cleanup(func() { os.Stdout, os.Stderr = oldOut, oldErr })
 	root := NewRootCmd("test", "abc")
 	root.SetArgs(append([]string{"backup"}, args...))
-	root.SetOut(io.Discard)
-	root.SetErr(io.Discard)
+	root.SetOut(stdout)
+	root.SetErr(stderr)
 	err = root.Execute()
 	os.Stdout, os.Stderr = oldOut, oldErr
 	stdout.Close()
 	stderr.Close()
-	return err
+	printed, readErr := os.ReadFile(filepath.Join(dir, "stdout"))
+	quoted, quoteErr := os.ReadFile(filepath.Join(dir, "stderr"))
+	if readErr != nil || quoteErr != nil {
+		t.Fatalf("reading backup output: %v, %v", readErr, quoteErr)
+	}
+	return string(printed) + string(quoted), err
 }
 
 // backupStubs puts tar, crontab and docker stubs first on PATH. The tar stub
@@ -148,11 +163,33 @@ func TestBackupCmd_DryRunWritesNothing(t *testing.T) {
 	noHostCommands(t)
 	stubSnapshot(t, "secret-token")
 	out := filepath.Join(t.TempDir(), "backups")
-	if err := runBackup(t, "--output", out, "--dry-run"); err != nil {
+	if err := runBackup(t, "--dir", out, "--dry-run"); err != nil {
 		t.Fatalf("backup --dry-run: %v", err)
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Errorf("dry run created %s", out)
+	}
+}
+
+// CLI surface audit AC1: -o/--output still selects the directory for one
+// release and prints a notice naming --dir.
+func TestBackupOutputFlagStillWorksAndWarns(t *testing.T) {
+	for _, flag := range []string{"--output", "-o"} {
+		t.Run(flag, func(t *testing.T) {
+			noHostCommands(t)
+			stubSnapshot(t, "")
+			out := filepath.Join(t.TempDir(), "backups")
+			printed, err := runBackupCaptured(t, flag, out, "--dry-run")
+			if err != nil {
+				t.Fatalf("backup %s: %v", flag, err)
+			}
+			if !strings.Contains(printed, "deprecated") || !strings.Contains(printed, "--dir") {
+				t.Fatalf("%s printed no deprecation notice naming --dir: %q", flag, printed)
+			}
+			if !strings.Contains(printed, out) {
+				t.Fatalf("%s did not select the backup directory: %q", flag, printed)
+			}
+		})
 	}
 }
 
@@ -163,7 +200,7 @@ func TestBackupCmd_RealRunIsRootOnly(t *testing.T) {
 	backupFixtures(t)
 	stubSnapshot(t, "secret-token-123")
 	out := filepath.Join(t.TempDir(), "backups")
-	if err := runBackup(t, "--output", out); err != nil {
+	if err := runBackup(t, "--dir", out); err != nil {
 		t.Fatalf("backup: %v", err)
 	}
 	entries, err := os.ReadDir(out)
@@ -206,7 +243,7 @@ func TestBackupCmd_RefusesUntrustedOutputDir(t *testing.T) {
 	if err := os.Chmod(out, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	err := runBackup(t, "--output", out)
+	err := runBackup(t, "--dir", out)
 	if err == nil || !strings.Contains(err.Error(), "writable by group or others") {
 		t.Fatalf("backup err = %v, want a group/other-writable refusal", err)
 	}
@@ -233,7 +270,7 @@ func TestBackupCmd_RerunHardensExistingDir(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if err := runBackup(t, "--output", out); err != nil {
+	if err := runBackup(t, "--dir", out); err != nil {
 		t.Fatalf("backup: %v", err)
 	}
 	if fi, err := os.Stat(backupDir); err != nil || fi.Mode().Perm() != 0o700 {
@@ -254,7 +291,7 @@ func TestBackupCmd_RerunHardensExistingDir(t *testing.T) {
 	}
 }
 
-// A relative --output is resolved to an absolute path before the ownership
+// A relative --dir is resolved to an absolute path before the ownership
 // walk, so it is accepted like any other root-only destination.
 func TestBackupCmd_RelativeOutputDir(t *testing.T) {
 	backupStubs(t)
@@ -280,8 +317,8 @@ func TestBackupCmd_RelativeOutputDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chdir(oldWd) })
-	if err := runBackup(t, "--output", "backups"); err != nil {
-		t.Fatalf("backup with relative --output: %v", err)
+	if err := runBackup(t, "--dir", "backups"); err != nil {
+		t.Fatalf("backup with relative --dir: %v", err)
 	}
 	entries, err := os.ReadDir(filepath.Join(work, "backups"))
 	if err != nil || len(entries) != 1 {

@@ -13,6 +13,7 @@ import (
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
 // What `backup` archives and where the config snapshot comes from; tests
@@ -40,7 +41,7 @@ func newBackupCmd() *cobra.Command {
 		Short: "Full system backup for OS upgrade / restore",
 		Long:  "Captures system info, user metadata, config files, and a rootfiles-compatible config snapshot.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			outputBase, _ := cmd.Flags().GetString("output")
+			outputBase := stringFlagOrAlias(cmd, "dir", "output")
 			skipDocker, _ := cmd.Flags().GetBool("skip-docker")
 			skipEtc, _ := cmd.Flags().GetBool("skip-etc")
 
@@ -175,10 +176,19 @@ func newBackupCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringP("output", "o", "/raid/backup", "Backup output directory")
+	cmd.Flags().String("dir", defaultBackupDir(), "Backup directory (the archive goes in a rootfiles-backup-* subdirectory)")
+	cmd.Flags().StringP("output", "o", "", "Deprecated alias for --dir")
+	_ = cmd.Flags().MarkDeprecated("output", "use --dir instead")
+	_ = cmd.Flags().MarkShorthandDeprecated("output", "use --dir instead")
 	cmd.Flags().Bool("skip-docker", false, "Skip Docker image list")
 	cmd.Flags().Bool("skip-etc", false, "Skip /etc/ config tar")
 	return usesConfigTarget(cmd)
+}
+
+// defaultBackupDir keeps a full system backup beside rootfiles' own state; an
+// operator with a data disk passes --dir.
+func defaultBackupDir() string {
+	return filepath.Join(state.Dir(), "system-backup")
 }
 
 // backupSystemInfo writes system detection results + hostname.

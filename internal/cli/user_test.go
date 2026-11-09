@@ -1,6 +1,9 @@
 package cli
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNewUserCmd_Subcommands(t *testing.T) {
 	cmd := newUserCmd()
@@ -21,6 +24,22 @@ func TestNewUserCmd_Subcommands(t *testing.T) {
 		if !have[name] {
 			t.Errorf("user cmd missing subcommand %q", name)
 		}
+	}
+}
+
+// user backup names its destination --file; -o/--output keeps working for one
+// release and says so.
+func TestUserBackupFlagAlias(t *testing.T) {
+	cmd := newUserBackupCmd()
+	if f := cmd.Flags().Lookup("file"); f == nil {
+		t.Fatal("user backup has no --file flag")
+	}
+	alias := cmd.Flags().Lookup("output")
+	if alias == nil || alias.Deprecated == "" || !strings.Contains(alias.Deprecated, "--file") {
+		t.Fatalf("--output is not deprecated in favour of --file: %+v", alias)
+	}
+	if alias.ShorthandDeprecated == "" {
+		t.Fatal("-o is not marked deprecated, so its use prints no notice")
 	}
 }
 
