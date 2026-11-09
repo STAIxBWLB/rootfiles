@@ -14,7 +14,7 @@ import (
 
 func TestAddRockySSHDIncludeAtTopBeforeMatch(t *testing.T) {
 	main := []byte("# Rocky sshd config\nPort 22\nMatch User deploy\nAllowTcpForwarding yes\n")
-	wantPrefix := "Include /etc/ssh/sshd_config.d/*.conf\n"
+	wantPrefix := "Include " + sshdConfigDir + "/*.conf\n"
 	got, changed, err := addRockySSHDInclude(main)
 	if err != nil || !changed {
 		t.Fatalf("addRockySSHDInclude changed=%t err=%v", changed, err)

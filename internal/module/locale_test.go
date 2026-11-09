@@ -258,11 +258,12 @@ func TestLocaleModule_ApplyWithoutSystemd(t *testing.T) {
 func TestLocaleModule_UnknownTimezone(t *testing.T) {
 	fakeLocaleFS(t)
 	rc := newRealRC(t)
-	// Never install packages on the test host.
-	rc.APT = exec.NewAPT(newDryRunRC(t).Runner)
+	// tzdata is already present in the fixture; an unknown zone must be
+	// rejected without querying or installing packages on the host.
+	rc.APT = &agreementPackageManager{installed: map[string]bool{"tzdata": true}}
 	rc.Config.Timezone = "Mars/Olympus"
-	if _, err := NewLocaleModule().Apply(context.Background(), rc); err == nil {
-		t.Error("Apply should reject an unknown timezone")
+	if _, err := NewLocaleModule().Apply(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "unknown timezone") {
+		t.Errorf("Apply should reject an unknown timezone, got %v", err)
 	}
 }
 

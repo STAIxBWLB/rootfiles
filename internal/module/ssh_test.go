@@ -198,6 +198,7 @@ func TestSSHModule_LockoutGuard(t *testing.T) {
 }
 
 func TestSSHModule_ApplyRefusesLockoutWithoutForce(t *testing.T) {
+	fakeBin(t, "systemctl")
 	fakePasswd(t)
 	dropIn := filepath.Join(t.TempDir(), "00-rootfiles.conf")
 	old := sshdDropInPath
