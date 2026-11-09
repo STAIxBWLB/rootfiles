@@ -8,11 +8,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
-	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
+
+// doctorChecks keeps command-format fixtures independent of host files.
+var doctorChecks = module.Doctor
 
 func newDoctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -46,17 +48,12 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		cfg = config.Fallback(sys, homeBaseFlag(cmd))
 	}
 
-	runner := exec.NewRunner(true, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	rc := &module.RunContext{Config: cfg, Runner: runner, APT: statusPackageManager(runner, sys), DryRun: true, Yes: true}
-	findings := module.Doctor(cmd.Context(), rc)
+	rc := readOnlyRunContext(cfg, sys, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	findings := doctorChecks(cmd.Context(), rc)
 	if loadErr != nil {
 		findings = append(findings, module.Finding{Check: "configuration", Level: module.LevelFail, Detail: loadErr.Error()})
 	}
-	names := []string{}
-	for _, m := range module.NewRegistry().Resolve(cfg, nil) {
-		names = append(names, m.Name())
-	}
-	if err := config.ValidateCapabilities(cfg, sys, names); err != nil {
+	if err := validateModules(cfg, sys, module.NewRegistry().Resolve(cfg, nil)); err != nil {
 		findings = append(findings, module.Finding{Check: "capabilities", Level: module.LevelSkip, Detail: err.Error()})
 	}
 

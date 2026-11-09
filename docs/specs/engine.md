@@ -35,7 +35,7 @@ The Module interface, the registry and execution order, and the three commands t
 - After a real (non-dry-run) apply, failed or not: `state.Record` writes the run with `ConfigSHA256`, profile, absolute config path, backup id and module outcomes; then the resolved config (`cfg.Effective()`, no `extends`, no inline token) is kept as the applied copy. If saving the copy fails it is removed, so a stale copy never outlives its run. A dry run records nothing.
 - The interactive review flags settings weaker than the profile (`securityDowngrades`) and then defaults the confirmation to "no".
 - **check** (`internal/cli/check.go`): always uses a dry-run Runner, `ValidateCapabilities` before `CheckAll`, exit 2 (`ExitError{Code: exitDrift}`, silent) when any module is unsatisfied, 1 on error, 0 otherwise. Formats: text, json (`checkReport` with `applied_config_sha256` when provenance holds), prometheus (`rootfiles_module_satisfied`, `rootfiles_module_pending_changes`, `rootfiles_check_timestamp_seconds`). These metric names and the JSON fields are consumed by the schedule timer, fleet and hub alert rules; renaming one is a contract change.
-- **status** (`internal/cli/status.go`): read-only overview that always exits 0. A config load error falls back to `config.Fallback` and is reported (`config_error`, `home_base_ambiguous`), not returned. JSON comes from `collectStatus` (modules, last apply, GPU ledger, tunnel, users, provenance); capability errors become `module_check_error`. Without a known home base it skips the user and GPU databases rather than reading `/home`.
+- **status** (`internal/cli/status.go`): read-only overview that always exits 0. A config load error falls back to `config.Fallback` and is reported (`config_error`, `home_base_ambiguous`), not returned. Text and JSON come from one `collectStatus` snapshot (modules, last apply, GPU ledger, tunnel, users, provenance); text renderers never query again. Capability errors remain `module_check_error` in JSON and now appear in text before unsupported module checks. Text-only captured details retain existing missing-binary/query-failure, database-error and scan-error display behavior without extending the JSON schema. Without a known home base it skips the user and GPU databases rather than reading `/home`.
 - check, status and config inspection resolve their target with `resolveTarget` and report `reportedTarget`; see [cli-runtime](cli-runtime.md).
 
 - **Ordinary managed files** (`internal/module/files.go`): `ensureFile` compares through `ManagedContentEqual` before writing via Runner, reports whether content changed, and propagates non-ENOENT read errors with repair guidance. It does not create parent directories or claim to fix matching-file metadata; callers retain directory modes, ownership checks, atomic/transactional replacement and special whitespace policies.
@@ -62,6 +62,10 @@ The Module interface, the registry and execution order, and the three commands t
 
 ## Tests that pin it
 
+- `internal/cli/report_machine_contract_test.go` pins pre-refactor check/doctor JSON and Prometheus bytes, field/metric ordering, HTML/quote/newline escaping, empty check modules as null, and exit codes. A test clock and synthetic doctor findings keep captures deterministic without host reads.
+
+- `internal/cli/status_collector_contract_test.go` pins eleven JSON and ten text baselines captured before the refactor; only fixture-root/hostname are normalized. It covers raw version/HTML escaping, omitted/empty fields, filters, fallback, unknown home and failed probes. `status_snapshot_test.go` changes fixture files after collection and proves text displays the snapshot without more queries. Unsupported capability text is the named reconciliation with existing JSON behavior.
+
 - `internal/module/module_test.go`: `TestRegistryDefaultOrderSync`, `TestRegistry_ResolveAll`, `TestRegistry_ResolveFiltered`, `TestRegistry_ResolveDisabledSkipped`.
 - `internal/module/ssh_test.go`: `TestRunAllTracksModuleOutcomes`.
 - `internal/module/monitoring_test.go`: `TestDryRunFailsOnBlockedChange`, `TestMonitoringPreflight*`.
@@ -73,4 +77,4 @@ The Module interface, the registry and execution order, and the three commands t
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `status` honours `--module`; `ROOTFILES_YES` read in one helper.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): single status collector for text and JSON (text skips `ValidateCapabilities` today), module output through `internal/ui` and `rc.Out`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining module output through `internal/ui` and `rc.Out`; status text/JSON already share one collector.

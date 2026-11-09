@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +18,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 )
 
 const (
@@ -26,10 +27,6 @@ const (
 	repoName  = "rootfiles"
 	githubAPI = "https://api.github.com"
 )
-
-type releaseInfo struct {
-	TagName string `json:"tag_name"`
-}
 
 func newUpgradeCmd(currentVersion string) *cobra.Command {
 	cmd := &cobra.Command{
@@ -158,31 +155,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 
 // fetchLatestVersion queries GitHub API for the latest release tag.
 func fetchLatestVersion(ctx context.Context) (string, error) {
-	url := fmt.Sprintf("%s/repos/%s/%s/releases/latest", githubAPI, repoOwner, repoName)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned %d", resp.StatusCode)
-	}
-
-	var info releaseInfo
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return "", err
-	}
-	if info.TagName == "" {
-		return "", fmt.Errorf("no tag_name in release response")
-	}
-	return info.TagName, nil
+	return module.FetchLatestGitHubTag(ctx, http.DefaultClient, githubAPI, repoOwner, repoName)
 }
 
 // downloadRelease downloads the release archive to destDir.

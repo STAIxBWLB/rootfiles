@@ -1,0 +1,39 @@
+{
+  "version": "status-contract",
+  "system": {
+    "os": "ubuntu",
+    "version": "24.04",
+    "codename": "noble",
+    "arch": "amd64",
+    "is_dgx": false,
+    "has_nvidia_gpu": false,
+    "gpu_count": 0,
+    "gpu_model": "",
+    "cpu_cores": 8,
+    "memory_gb": 32,
+    "storage_layout": []
+  },
+  "hostname": "<hostname>",
+  "config_path": "<fixture>/site.yaml",
+  "last_apply": null,
+  "modules": [
+    {
+      "name": "packages",
+      "satisfied": false,
+      "changes": [
+        {
+          "description": "Install 1 packages: [fixture-package]",
+          "command": "apt-get install -y fixture-package"
+        }
+      ]
+    }
+  ],
+  "tunnel": {
+    "service": ""
+  },
+  "users": {
+    "home_base": "",
+    "managed": 0,
+    "system": 0
+  }
+}

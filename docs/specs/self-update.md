@@ -26,6 +26,7 @@ Release artifacts (`.goreleaser.yaml`)
 - Archive name `rootfiles_<version without v>_<os>_<arch>.tar.gz`, checksums in `checksums.txt`, `scripts/install.sh` attached to the release. The updater and installer build these names themselves: changing a template breaks every deployed updater.
 
 `rootfiles update` (`internal/cli/upgrade.go`)
+- Latest-tag HTTP plumbing is shared with cloudflared through `module.FetchLatestGitHubTag`; rootfiles retains `http.DefaultClient`, caller cancellation, raw tags and legacy error strings. The cloudflared wrapper retains its separate 15-second client.
 - Target is `--version` or the GitHub `releases/latest` tag of `STAIxBWLB/rootfiles`. Versions are compared for equality only (`normalizeVersion` strips `v` and anything after a space); an equal version is a no-op, any other `--version` is installed, downgrades included.
 - Linux only. The archive is downloaded to a temp dir and its SHA-256 must match the line for that exact archive name in the release's `checksums.txt`; a missing line or mismatch aborts before anything is replaced.
 - `replaceBinary` stages the new binary as a sibling temp file in the target directory, chmods 0755, and `os.Rename`s it over the resolved (`EvalSymlinks`) current binary. Never write over the running executable (ETXTBSY) or stage on another filesystem (rename must be atomic). The staging file is removed on any failure.
@@ -81,4 +82,4 @@ Release notes (`scripts/check-release-notes.sh`)
 ## Open issues
 
 - [#87](https://github.com/STAIxBWLB/rootfiles/issues/87): Go toolchain and action pinning, required checks (workflows use `go-version: stable` and `govulncheck@latest`).
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `fetchLatestVersion` duplicates the cloudflared latest-release lookup (planned shared `githubLatestTag(owner, repo)`), version parsing is duplicated, and `upgrade.go` prints with raw `fmt` instead of the `ui` helpers and `cmd.OutOrStdout()`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining `upgrade.go` output through `ui` and `cmd.OutOrStdout()`; latest-tag lookup and version parsing/observation are shared without changing comparisons.

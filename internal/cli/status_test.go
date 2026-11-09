@@ -7,11 +7,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/charmbracelet/lipgloss"
 )
 
 func init() {
-	// Force plain output so assertions can grep substrings without ANSI noise.
+	// Fix the profile so status golden bytes do not depend on the terminal.
 	lipgloss.SetColorProfile(0)
 }
 
@@ -37,11 +38,12 @@ func TestStatusCmd_RegisteredOnRoot(t *testing.T) {
 }
 
 func TestStatusCmd_RendersAllSections(t *testing.T) {
+	_, site, _ := statusContractFixture(t, "populated")
 	root := NewRootCmd("test", "abc")
 	var buf bytes.Buffer
 	root.SetOut(&buf)
 	root.SetErr(&buf)
-	root.SetArgs([]string{"status", "--profile", "minimal"})
+	root.SetArgs([]string{"status", "--config", site})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("status execute: %v", err)
@@ -70,6 +72,9 @@ func TestStatusCmd_RendersAllSections(t *testing.T) {
 // while config_path stays the recorded one (empty for a profile apply) and
 // the copy path never leaks into the report.
 func TestStatus_UsesAppliedCopy(t *testing.T) {
+	oldDetect := detectSystem
+	detectSystem = func() (*config.SystemInfo, error) { return &config.SystemInfo{OS: "ubuntu", Version: "24.04"}, nil }
+	t.Cleanup(func() { detectSystem = oldDetect })
 	noHostCommands(t)
 	base := t.TempDir()
 	fingerprint := recordProfileApply(t, base)

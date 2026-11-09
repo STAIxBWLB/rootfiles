@@ -1,0 +1,11 @@
+# HELP rootfiles_module_satisfied 1 when the module has no pending changes.
+# TYPE rootfiles_module_satisfied gauge
+rootfiles_module_satisfied{module="system"} 1
+rootfiles_module_satisfied{module="packages"} 0
+# HELP rootfiles_module_pending_changes Number of pending changes per module.
+# TYPE rootfiles_module_pending_changes gauge
+rootfiles_module_pending_changes{module="system"} 0
+rootfiles_module_pending_changes{module="packages"} 1
+# HELP rootfiles_check_timestamp_seconds When the check ran.
+# TYPE rootfiles_check_timestamp_seconds gauge
+rootfiles_check_timestamp_seconds 1700000000

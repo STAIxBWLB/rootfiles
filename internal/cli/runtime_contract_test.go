@@ -208,7 +208,7 @@ func TestStatusModuleFilter(t *testing.T) {
 		t.Fatalf("filtered modules: %+v (%s)", report.Modules, report.ModuleCheckError)
 	}
 	var text bytes.Buffer
-	renderModulesSection(context.Background(), &text, rc, "locale")
+	renderModulesSection(&text, report)
 	if strings.Contains(text.String(), "packages") {
 		t.Fatalf("text filter ignored: %s", text.String())
 	}

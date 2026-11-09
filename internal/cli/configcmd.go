@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -43,13 +44,7 @@ func loadForInspection(cmd *cobra.Command) (*config.Config, string, error) {
 		return cfg, source, err
 	}
 	if sys.OS == "rocky" {
-		names := []string{}
-		for _, name := range config.ModuleNames() {
-			if cfg.IsModuleEnabled(name) {
-				names = append(names, name)
-			}
-		}
-		if err := config.ValidateCapabilities(cfg, sys, names); err != nil {
+		if err := validateModules(cfg, sys, module.NewRegistry().Resolve(cfg, nil)); err != nil {
 			return cfg, source, err
 		}
 	}
@@ -79,16 +74,6 @@ func newConfigShowCmd() *cobra.Command {
 	}
 	cmd.Flags().Bool("reveal", false, "Show secrets (tunnel token) instead of masking them")
 	return usesConfigInputs(cmd)
-}
-
-func maskSecret(s string) string {
-	if s == "" {
-		return ""
-	}
-	if len(s) <= 8 {
-		return "****"
-	}
-	return s[:4] + "…" + "(masked)"
 }
 
 func newConfigValidateCmd() *cobra.Command {

@@ -8,6 +8,7 @@ paths:
   - internal/cli/root.go
   - internal/cli/runtime.go
   - internal/cli/output.go
+  - internal/cli/report_helpers.go
   - internal/cli/provenance.go
   - internal/cli/native_system.go
 ---
@@ -31,6 +32,9 @@ Shared plumbing every native `rootfiles` command runs through: the cobra root an
 - **Target resolution for root-mutating subcommands** (`resolveRunTarget`, used by user, gpu, tunnel, schedule, tenant and backup through `buildRunContext`/`buildConfigFreeRunContext` in `internal/cli/tunnel.go`; the config-free variant falls back to `config.Fallback` on a load error): flags/env first; then the applied copy under the same two checks; otherwise `minimal` with home-base detection. They never re-read a recorded path, re-resolve a recorded profile or take the detected suggestion. A dry run of a mutating command that cannot reuse the copy warns. This is the AGENTS.md rule; `buildRunContext` lives in the [cloudflared](cloudflared.md) spec's file but the contract is owned here.
 - **Reported target** (`reportedTarget`): when the applied copy was used, reports name the recorded run's profile and path, never the copy's path.
 - **Provenance** (`appliedFingerprint` in `internal/cli/provenance.go`): `applied_config_sha256` is reported only when the last run succeeded, carries a digest, targets the same profile and absolute config path (`recordedConfigPath`), and the digest equals the current config's `Fingerprint()`. Legacy, failed or unrelated runs report nothing, never a guess.
+- `validateModules` extracts the caller-selected module names without loading a target or broadening selection. Apply/check return capability failures, status collects them, doctor adds a skip finding, and config inspection keeps its Rocky-only validation.
+- `readOnlyRunContext` shares the dry-run Runner, caller logger, report backend and unattended flag, without audit, backups, target resolution or home-base defaults. Check retains its strict `NewPackageManager` guard; overview/doctor retain their backend fallback.
+- `maskSecret` shares the config-show policy (empty stays empty, up to eight bytes fully masked, longer values show four leading bytes). Interactive apply summaries use this same safer policy; token-file labels and machine outputs are unchanged.
 - `statusPackageManager` picks a package backend for reports even on unsupported systems; capability errors become report findings, never package mutations.
 - `detectSystem` (`internal/cli/native_system.go`) is a package variable so tests never depend on the host distro.
 
@@ -65,4 +69,4 @@ Shared plumbing every native `rootfiles` command runs through: the cobra root an
 
 ## Open issues
 
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): shared CLI helpers (`validateModules`, `readOnlyRunContext`, `maskSecret`) and output through `internal/ui`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining output through `internal/ui` and injected writers. Capability/context/masking helpers are shared.
