@@ -301,7 +301,7 @@ func TestCheckAcceptsApplyAccountAndTunnelOverrides(t *testing.T) {
 	root := NewRootCmd("test", "test")
 	var output bytes.Buffer
 	root.SetOut(&output)
-	root.SetArgs([]string{"check", "--profile", "minimal", "--user", "flag-contract-user", "--ssh-pubkey", "ssh-ed25519 fixture-key", "--tunnel-token", "fixture-token", "--vlan-address", "192.0.2.1/32", "-o", "json"})
+	root.SetArgs([]string{"check", "--profile", "minimal", "--module", "locale", "--user", "flag-contract-user", "--ssh-pubkey", "ssh-ed25519 fixture-key", "--tunnel-token", "fixture-token", "--vlan-address", "192.0.2.1/32", "-o", "json"})
 	err := root.Execute()
 	if err != nil {
 		exit, ok := err.(*ExitError)
