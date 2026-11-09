@@ -15,6 +15,9 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
+// checkNow preserves the live clock while metric fixtures pin one instant.
+var checkNow = time.Now
+
 func newCheckCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check",
@@ -60,28 +63,17 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
 		Level: slog.LevelWarn,
 	}))
-	runner := exec.NewRunner(true, logger) // always dry-run for check
-	apt, err := exec.NewPackageManager(runner, sysInfo)
+	rc := readOnlyRunContext(cfg, sysInfo, logger)
+	// Check is a strict evaluator, unlike overview reports which retain a
+	// backend for diagnostic output on unsupported operating systems.
+	rc.APT, err = exec.NewPackageManager(rc.Runner, sysInfo)
 	if err != nil {
 		return err
 	}
-
 	registry := module.NewRegistry()
 	modules := registry.Resolve(cfg, moduleFilter)
-	names := make([]string, 0, len(modules))
-	for _, m := range modules {
-		names = append(names, m.Name())
-	}
-	if err := config.ValidateCapabilities(cfg, sysInfo, names); err != nil {
+	if err := validateModules(cfg, sysInfo, modules); err != nil {
 		return err
-	}
-
-	rc := &module.RunContext{
-		Config: cfg,
-		Runner: runner,
-		APT:    apt,
-		DryRun: true,
-		Yes:    true,
 	}
 
 	results, err := module.CheckAll(ctx, modules, rc)
@@ -121,7 +113,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		}
 		fmt.Fprintln(out, "# HELP rootfiles_check_timestamp_seconds When the check ran.")
 		fmt.Fprintln(out, "# TYPE rootfiles_check_timestamp_seconds gauge")
-		fmt.Fprintf(out, "rootfiles_check_timestamp_seconds %d\n", time.Now().Unix())
+		fmt.Fprintf(out, "rootfiles_check_timestamp_seconds %d\n", checkNow().Unix())
 	} else if format == "json" {
 		report := checkReport{Profile: reportProfile, ConfigPath: reportPath, Satisfied: allOK}
 		report.Version = buildVersion

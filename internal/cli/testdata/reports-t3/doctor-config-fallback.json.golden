@@ -1,0 +1,23 @@
+{
+  "applied_config_sha256": "",
+  "failed": 1,
+  "findings": [
+    {
+      "check": "fixture <&> \"ok\"\nsecond",
+      "level": "ok",
+      "detail": "healthy <&> \"quoted\"\nnext line"
+    },
+    {
+      "check": "fixture <&> \"warn\"\nsecond",
+      "level": "warn",
+      "detail": "warning <&> \"quoted\"\nnext line",
+      "hint": "inspect fixture <&> \"target\"\nthen retry"
+    },
+    {
+      "check": "configuration",
+      "level": "fail",
+      "detail": "parsing config <fixture>/site.yaml: yaml: line 1: did not find expected ',' or ']'"
+    }
+  ],
+  "version": "report-contract"
+}

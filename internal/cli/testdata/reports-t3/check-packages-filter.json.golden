@@ -1,0 +1,17 @@
+{
+  "version": "report-contract",
+  "config_path": "<fixture>/site.yaml",
+  "satisfied": false,
+  "modules": [
+    {
+      "name": "packages",
+      "satisfied": false,
+      "changes": [
+        {
+          "description": "Install 1 packages: [fixture-package]",
+          "command": "apt-get install -y fixture-package"
+        }
+      ]
+    }
+  ]
+}

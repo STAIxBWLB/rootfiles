@@ -2,7 +2,6 @@ package module
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -355,9 +355,10 @@ func TunnelStatus(ctx context.Context, rc *RunContext) error {
 	ui.WriteSection(os.Stdout, "Tunnel")
 
 	// Binary version
-	if rc.Runner.FileExists(cloudflaredBinary) {
-		if res, err := rc.Runner.Query(ctx, cloudflaredBinary, "--version"); err == nil {
-			ui.WriteKV(os.Stdout, "Binary", strings.TrimSpace(res.Stdout))
+	observation := InspectCloudflared(ctx, rc.Runner, "")
+	if observation.Installed {
+		if observation.QueryError == nil {
+			ui.WriteKV(os.Stdout, "Binary", strings.TrimSpace(observation.RawOutput))
 		} else {
 			ui.WriteKV(os.Stdout, "Binary", ui.StyleHint.Render("installed (version unknown)"))
 		}
@@ -423,8 +424,8 @@ func TunnelUpdate(ctx context.Context, rc *RunContext, version string) error {
 	}
 
 	ui.WriteSection(os.Stdout, "Cloudflared update")
-	ui.WriteKV(os.Stdout, "Current", firstNonEmptyCloudflared(current, "(not installed)"))
-	ui.WriteKV(os.Stdout, "Target", firstNonEmptyCloudflared(target, "latest"))
+	ui.WriteKV(os.Stdout, "Current", ui.FirstNonEmpty(current, "(not installed)"))
+	ui.WriteKV(os.Stdout, "Target", ui.FirstNonEmpty(target, "latest"))
 
 	if target != "" && current == target {
 		ui.WriteHint(os.Stdout, "already on target version — nothing to do.")
@@ -432,7 +433,7 @@ func TunnelUpdate(ctx context.Context, rc *RunContext, version string) error {
 	}
 
 	fmt.Println()
-	fmt.Printf("Downloading cloudflared %s ...\n", firstNonEmptyCloudflared(target, "latest"))
+	fmt.Printf("Downloading cloudflared %s ...\n", ui.FirstNonEmpty(target, "latest"))
 	if err := m.installBinaryVersion(ctx, rc, target); err != nil {
 		return err
 	}
@@ -452,66 +453,66 @@ func TunnelUpdate(ctx context.Context, rc *RunContext, version string) error {
 }
 
 // FetchLatestCloudflaredVersion queries GitHub's release API for the current
-// upstream tag of cloudflared/cloudflare. Surfaced publicly so the cli can
+// upstream tag of cloudflare/cloudflared. Surfaced publicly so the cli can
 // call it for `--check` without duplicating the HTTP plumbing.
 func FetchLatestCloudflaredVersion(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"https://api.github.com/repos/cloudflare/cloudflared/releases/latest", nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
+	tag, err := FetchLatestGitHubTag(ctx, client, "https://api.github.com", "cloudflare", "cloudflared")
+	var status *GitHubStatusError
+	switch {
+	case errors.As(err, &status):
+		return "", fmt.Errorf("github API returned %d", status.StatusCode)
+	case errors.Is(err, ErrGitHubTagMissing):
+		return "", errors.New("no tag_name in response")
+	default:
+		return tag, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("github API returned %d", resp.StatusCode)
-	}
-
-	var info struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return "", err
-	}
-	if info.TagName == "" {
-		return "", fmt.Errorf("no tag_name in response")
-	}
-	return info.TagName, nil
 }
 
-// currentCloudflaredVersion parses `cloudflared --version` output. Returns
-// the empty string when the binary is missing or the output cannot be parsed.
-// Example output: "cloudflared version 2024.9.1 (built 2024-09-13-10:42 UTC)".
-func currentCloudflaredVersion(ctx context.Context, rc *RunContext) string {
-	if !rc.Runner.FileExists(cloudflaredBinary) {
-		return ""
+// CloudflaredObservation keeps executable presence, command output and parsed
+// version separate so each report can preserve its existing display policy.
+type CloudflaredObservation struct {
+	Path       string
+	Installed  bool
+	RawOutput  string
+	Version    string
+	QueryError error
+}
+
+// InspectCloudflared only reads the selected binary and queries --version.
+// Empty binaryOverride uses the module's installed path; tests may point it at
+// a private fixture without changing where native installation writes files.
+func InspectCloudflared(ctx context.Context, runner *exec.Runner, binaryOverride string) CloudflaredObservation {
+	binary := binaryOverride
+	if binary == "" {
+		binary = cloudflaredBinary
 	}
-	res, err := rc.Runner.Query(ctx, cloudflaredBinary, "--version")
+	observation := CloudflaredObservation{Path: binary, Installed: runner.FileExists(binary)}
+	if !observation.Installed {
+		return observation
+	}
+	result, err := runner.Query(ctx, binary, "--version")
+	observation.QueryError = err
+	if result != nil {
+		observation.RawOutput = result.Stdout
+	}
 	if err != nil {
-		return ""
+		return observation
 	}
-	for _, token := range strings.Fields(res.Stdout) {
-		// Versions look like "YYYY.M.P" — leading digit followed by a dot.
+	for _, token := range strings.Fields(observation.RawOutput) {
+		// Preserve the existing first numeric, dotted token heuristic.
 		if len(token) > 3 && token[0] >= '0' && token[0] <= '9' && strings.Contains(token, ".") {
-			return token
+			observation.Version = token
+			break
 		}
 	}
-	return ""
+	return observation
 }
 
-func firstNonEmptyCloudflared(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
+// currentCloudflaredVersion retains the native update's parsed-version policy:
+// missing binaries, failed queries and unparseable output all mean unknown.
+func currentCloudflaredVersion(ctx context.Context, rc *RunContext) string {
+	return InspectCloudflared(ctx, rc.Runner, "").Version
 }
 
 // TunnelUninstall removes tunnel service, VLAN, and binary.

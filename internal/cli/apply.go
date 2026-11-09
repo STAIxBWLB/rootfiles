@@ -113,11 +113,7 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	names := make([]string, 0, len(modules))
-	for _, m := range modules {
-		names = append(names, m.Name())
-	}
-	if err := config.ValidateCapabilities(cfg, sysInfo, names); err != nil {
+	if err := validateModules(cfg, sysInfo, modules); err != nil {
 		return err
 	}
 	fingerprint, err := cfg.Fingerprint()
@@ -369,38 +365,7 @@ func configureInteractive(cfg *config.Config, yes, dryRun bool) error {
 	}
 
 	// --- Summary & confirm ---
-	fmt.Println("\n=== Summary ===")
-	fmt.Printf("  Timezone: %s\n", cfg.Timezone)
-	if cfg.IsModuleEnabled("ssh") {
-		fmt.Printf("  SSH: root_login=%v, password_auth=%v, port=%d\n",
-			!cfg.SSH.DisableRootLogin, !cfg.SSH.DisablePasswordAuth, cfg.SSH.Port)
-	}
-	if cfg.IsModuleEnabled("users") && cfg.Users.HomeBase != "" {
-		fmt.Printf("  Users: home_base=%s, sudo_nopasswd=%v\n", cfg.Users.HomeBase, cfg.Users.SudoNopasswd)
-	}
-	if cfg.IsModuleEnabled("docker") && cfg.Modules.Docker.StorageDir != "" {
-		fmt.Printf("  Docker: storage=%s\n", cfg.Modules.Docker.StorageDir)
-	}
-	if cfg.IsModuleEnabled("cloudflared") {
-		token := cfg.Modules.Cloudflared.TunnelToken
-		if token != "" && len(token) > 8 {
-			token = token[:8] + "..."
-		}
-		if token == "" && cfg.Modules.Cloudflared.TunnelTokenFile != "" {
-			token = "file:" + cfg.Modules.Cloudflared.TunnelTokenFile
-		}
-		fmt.Printf("  Cloudflared: token=%s, vlan=%v", token, cfg.Modules.Cloudflared.PrivateNetwork.Enabled)
-		if cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
-			fmt.Printf(" (%s)", cfg.Modules.Cloudflared.PrivateNetwork.Address)
-		}
-		fmt.Println()
-	}
-	if cfg.IsModuleEnabled("network") {
-		fmt.Printf("  Network: ufw=%v, ports=%v\n", cfg.Modules.Network.UFW, cfg.Modules.Network.AllowedPorts)
-	}
-	if cfg.IsModuleEnabled("storage") && cfg.Modules.Storage.DataDir != "" {
-		fmt.Printf("  Storage: data_dir=%s\n", cfg.Modules.Storage.DataDir)
-	}
+	printApplySummary(cfg)
 
 	downgrades := securityDowngrades(&profile, cfg)
 	for _, d := range downgrades {
@@ -438,4 +403,38 @@ func securityDowngrades(before, after *config.Config) []string {
 		out = append(out, "passwordless sudo enabled")
 	}
 	return out
+}
+
+// printApplySummary is kept separate from prompts so its secret handling can
+// be checked without an interactive terminal.
+func printApplySummary(cfg *config.Config) {
+	fmt.Println("\n=== Summary ===")
+	fmt.Printf("  Timezone: %s\n", cfg.Timezone)
+	if cfg.IsModuleEnabled("ssh") {
+		fmt.Printf("  SSH: root_login=%v, password_auth=%v, port=%d\n",
+			!cfg.SSH.DisableRootLogin, !cfg.SSH.DisablePasswordAuth, cfg.SSH.Port)
+	}
+	if cfg.IsModuleEnabled("users") && cfg.Users.HomeBase != "" {
+		fmt.Printf("  Users: home_base=%s, sudo_nopasswd=%v\n", cfg.Users.HomeBase, cfg.Users.SudoNopasswd)
+	}
+	if cfg.IsModuleEnabled("docker") && cfg.Modules.Docker.StorageDir != "" {
+		fmt.Printf("  Docker: storage=%s\n", cfg.Modules.Docker.StorageDir)
+	}
+	if cfg.IsModuleEnabled("cloudflared") {
+		token := maskSecret(cfg.Modules.Cloudflared.TunnelToken)
+		if token == "" && cfg.Modules.Cloudflared.TunnelTokenFile != "" {
+			token = "file:" + cfg.Modules.Cloudflared.TunnelTokenFile
+		}
+		fmt.Printf("  Cloudflared: token=%s, vlan=%v", token, cfg.Modules.Cloudflared.PrivateNetwork.Enabled)
+		if cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
+			fmt.Printf(" (%s)", cfg.Modules.Cloudflared.PrivateNetwork.Address)
+		}
+		fmt.Println()
+	}
+	if cfg.IsModuleEnabled("network") {
+		fmt.Printf("  Network: ufw=%v, ports=%v\n", cfg.Modules.Network.UFW, cfg.Modules.Network.AllowedPorts)
+	}
+	if cfg.IsModuleEnabled("storage") && cfg.Modules.Storage.DataDir != "" {
+		fmt.Printf("  Storage: data_dir=%s\n", cfg.Modules.Storage.DataDir)
+	}
 }

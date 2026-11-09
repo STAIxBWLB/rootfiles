@@ -8,6 +8,7 @@ depends-on:
   - engine
 paths:
   - internal/module/cloudflared.go
+  - internal/module/github.go
   - internal/cli/tunnel.go
 ---
 
@@ -30,6 +31,9 @@ The `cloudflared` module and `rootfiles tunnel` install the upstream `cloudflare
 - All writes and removals go through `rc.Runner`.
 
 ## Behaviour
+
+- `InspectCloudflared` owns the production binary path and performs one read-only version query. It returns presence, raw stdout, parsed version and query error separately; status keeps raw output while update comparisons keep their existing parsed/normalized policies. CLI path variables are test overrides only.
+- Rootfiles and cloudflared latest-tag lookups share `FetchLatestGitHubTag`; wrappers keep their existing clients, deadlines, raw tag strings and error wording. Cloudflared retains its 15-second timeout. `ui.FirstNonEmpty` shares display fallback without trimming.
 
 - Ordinary unit/token/VLAN writes use `ensureFile`, preserving current sibling files when only another group member changes. Token directory/file modes stay 0700/0600, and unit/network files stay 0644. Already-current direct setup helpers do not rewrite files or run service commands.
 
@@ -58,4 +62,4 @@ The `cloudflared` module and `rootfiles tunnel` install the upstream `cloudflare
 
 ## Open issues
 
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated binary path, version parsing, latest-version fetch and `firstNonEmptyCloudflared`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining output through `ui` and injected writers; path/version observation, latest-tag lookup and display fallback are shared.

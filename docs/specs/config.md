@@ -52,6 +52,7 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 
 ## Safety
 
+- Secrets: config show and interactive apply summaries share `maskSecret` (short values fully hidden, long values reveal at most four leading bytes).
 - Secrets: the inline `tunnel_token` never enters the fingerprint, the applied copy or `config show` output (masked); prefer `tunnel_token_file`.
 - Detection reads the host; tests redirect `useraddDefaultsPath`, `hostRoot` and `rootUID` instead of reading `/etc`.
 - `config init --file` writes with `os.WriteFile` directly; it is an operator file, not a managed host file.
@@ -65,7 +66,3 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 - `internal/config/docs_test.go`: `TestDocsConfigurationCoversEveryKey` (every YAML key path of `Config` appears in `docs/configuration.md`).
 - `internal/config/snapshot_test.go`; `internal/cli/configcmd_test.go`: `TestConfigTemplateIsValidForEveryProfile`, `TestConfigShowMasksToken`, `TestConfigValidateFailsOnBadConfig`.
 - `tests/scenarios/dry-run-all-profiles.sh` (CI job `scenario`) and `tests/integration/run-profile.sh` (CI job `integration`) apply each profile.
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining CLI helper work: one `maskSecret`. Module-name metadata and home-base defaulting are shared.

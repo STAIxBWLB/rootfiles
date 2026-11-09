@@ -1,0 +1,10 @@
+# HELP rootfiles_doctor_findings Doctor findings by level.
+# TYPE rootfiles_doctor_findings gauge
+rootfiles_doctor_findings{level="ok"} 1
+rootfiles_doctor_findings{level="warn"} 1
+rootfiles_doctor_findings{level="fail"} 0
+rootfiles_doctor_findings{level="skip"} 0
+# HELP rootfiles_doctor_check_ok 1 when a doctor check is ok or skipped.
+# TYPE rootfiles_doctor_check_ok gauge
+rootfiles_doctor_check_ok{check="fixture <&> \"ok\"\nsecond"} 1
+rootfiles_doctor_check_ok{check="fixture <&> \"warn\"\nsecond"} 0

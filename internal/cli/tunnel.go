@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -169,19 +168,7 @@ func tunnelUpdateCheck(ctx context.Context, rc *module.RunContext) error {
 
 	ui.WriteSection(os.Stdout, "Cloudflared update check")
 
-	// currentCloudflaredVersion is package-private in module; derive from
-	// `cloudflared --version` here using the same logic.
-	current := ""
-	if rc.Runner.FileExists(cloudflaredPath) {
-		if res, err := rc.Runner.Query(ctx, cloudflaredPath, "--version"); err == nil {
-			for _, tok := range strings.Fields(res.Stdout) {
-				if len(tok) > 3 && tok[0] >= '0' && tok[0] <= '9' && strings.Contains(tok, ".") {
-					current = tok
-					break
-				}
-			}
-		}
-	}
+	current := module.InspectCloudflared(ctx, rc.Runner, cloudflaredPath).Version
 	if current == "" {
 		ui.WriteKV(os.Stdout, "Current", ui.StyleHint.Render("(not installed)"))
 	} else {
@@ -202,11 +189,9 @@ func tunnelUpdateCheck(ctx context.Context, rc *module.RunContext) error {
 	return nil
 }
 
-// cloudflaredPath is overridable in tests and mirrors internal/module/cloudflared.go's cloudflaredBinary
-// constant. Duplicated here rather than exported to keep the module surface
-// minimal; if it ever drifts, the `tunnel status` / `tunnel update --check`
-// pair will report inconsistent paths, which scenario tests will catch.
-var cloudflaredPath = "/usr/local/bin/cloudflared"
+// cloudflaredPath is an optional read-only inspection override for tests.
+// Empty uses the module's installed binary path.
+var cloudflaredPath string
 
 // buildRunContext loads the profile config and returns any load error. A
 // zero config would read and write user and GPU state under /home, skipping

@@ -45,3 +45,13 @@ func WriteHint(w io.Writer, msg string) {
 func WriteBullet(w io.Writer, marker, text string) {
 	fmt.Fprintf(w, "  %s  %s\n", marker, text)
 }
+
+// FirstNonEmpty returns the first nonempty display value without trimming it.
+func FirstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}

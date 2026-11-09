@@ -20,7 +20,8 @@ paths:
 
 ## Contracts and invariants
 
-- **Doctor never changes the system.** `runDoctor` builds its own `RunContext` with a dry-run `exec.Runner` and needs no root or lock (not in `mutatingCommands`). `doctorSSH` reports an unavailable effective-config query with repair guidance and never creates runtime directories.
+- **Doctor never changes the system.** `runDoctor` uses shared `readOnlyRunContext` with its discard logger and report-backend fallback, preserving a dry-run `exec.Runner` and needs no root or lock (not in `mutatingCommands`). `doctorSSH` reports an unavailable effective-config query with repair guidance and never creates runtime directories.
+- Command-format tests replace the `doctorChecks` discovery seam; its production default remains `module.Doctor`. No findings or native probe policy change. JSON/Prometheus bytes are pinned against the previous command implementation.
 - **Finding shape is an output contract.** `module.Finding{check, level, detail, hint}` with `level` in `ok|warn|fail|skip` (`LevelOK`...`LevelSkip`). JSON output is `{findings, failed, applied_config_sha256, version}`; `fleet doctor` reads the exit code and `applied_config_sha256` and embeds the rest verbatim, and the schedule writes it to `doctor.json` for other readers. Renaming fields or levels is a breaking output change.
 - **Exit code.** 0 when no finding is `fail`; 2 (`exitDrift`, `internal/cli/output.go`) when at least one is `fail`, or `warn` with `--strict`. Load errors are not fatal: doctor falls back to `config.Fallback` and adds a `configuration` fail finding.
 - **Report target.** Doctor reports against the same config `status`/`check` use (`resolveTarget`, `reportedTarget`, `appliedFingerprint`; owned by [cli-runtime](cli-runtime.md)). Capability errors become a `capabilities` skip finding; a failed last apply (`state.Last`) is a warn.
@@ -71,4 +72,4 @@ paths:
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `doctor` ignores `--module`; reject it.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): repeated capability validation and read-only `RunContext` construction across doctor/status/check.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining UI/writer routing; capability validation and read-only context construction are shared without changing report findings or schedule command bytes.

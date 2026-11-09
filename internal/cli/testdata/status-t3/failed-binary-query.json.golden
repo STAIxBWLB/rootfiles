@@ -1,0 +1,68 @@
+{
+  "version": "status-contract",
+  "system": {
+    "os": "ubuntu",
+    "version": "24.04",
+    "codename": "noble",
+    "arch": "amd64",
+    "is_dgx": false,
+    "has_nvidia_gpu": false,
+    "gpu_count": 0,
+    "gpu_model": "",
+    "cpu_cores": 8,
+    "memory_gb": 32,
+    "storage_layout": []
+  },
+  "hostname": "<hostname>",
+  "config_path": "<fixture>/site.yaml",
+  "last_apply": null,
+  "modules": [
+    {
+      "name": "system",
+      "satisfied": true,
+      "changes": []
+    },
+    {
+      "name": "packages",
+      "satisfied": false,
+      "changes": [
+        {
+          "description": "Install 1 packages: [fixture-package]",
+          "command": "apt-get install -y fixture-package"
+        }
+      ]
+    }
+  ],
+  "gpu": {
+    "version": 1,
+    "total_gpus": 2,
+    "gpu_model": "fixture GPU",
+    "allocations": [
+      {
+        "username": "bob",
+        "gpus": [
+          1
+        ],
+        "method": "env",
+        "updated_at": ""
+      },
+      {
+        "username": "alice",
+        "gpus": [
+          0
+        ],
+        "method": "env",
+        "updated_at": ""
+      }
+    ]
+  },
+  "tunnel": {
+    "service": "active",
+    "vlan": "203.0.113.7/32"
+  },
+  "users": {
+    "home_base": "<fixture>/home",
+    "managed": 2,
+    "system": 2
+  }
+}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -52,10 +53,17 @@ func TestNewTunnelCmd_Subcommands(t *testing.T) {
 	}
 }
 
-// noHostCommands empties PATH so system detection in buildRunContext cannot
-// run host binaries such as nvidia-smi.
+// noHostCommands isolates PATH and status discovery, including absolute
+// cloudflared probes that an empty PATH would not block.
 func noHostCommands(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	oldBinary, oldScan, oldWarn := cloudflaredStatusBinary, scanStatusUsers, warnStatusMetadata
+	cloudflaredStatusBinary = filepath.Join(dir, "absent-cloudflared")
+	scanStatusUsers = func(context.Context, *module.RunContext) ([]module.UserMeta, error) { return nil, nil }
+	warnStatusMetadata = func(*module.RunContext) {}
+	t.Cleanup(func() { cloudflaredStatusBinary, scanStatusUsers, warnStatusMetadata = oldBinary, oldScan, oldWarn })
 }
 
 func TestBuildRunContext_LoadsWithoutFlags(t *testing.T) {
@@ -341,6 +349,9 @@ func TestBuildConfigFreeRunContext_FallbackKeepsOverrides(t *testing.T) {
 // #36 AC2, AC3: status after a config load error reads the user and GPU
 // databases only under a home base it was given.
 func TestStatus_ConfigLoadErrorHomeBase(t *testing.T) {
+	oldDetect := detectSystem
+	detectSystem = func() (*config.SystemInfo, error) { return &config.SystemInfo{OS: "ubuntu", Version: "24.04"}, nil }
+	t.Cleanup(func() { detectSystem = oldDetect })
 	noHostCommands(t)
 	t.Setenv("ROOTFILES_HOME_BASE", "")
 	base := t.TempDir()
