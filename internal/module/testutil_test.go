@@ -15,6 +15,7 @@ import (
 // directory where the ownership walk starts, and umask 022 keeps the
 // directories tests create from being group-writable.
 func TestMain(m *testing.M) {
+	sshdSystemBinary = "" // tests provide sshd on their fixture PATH
 	syscall.Umask(0o022)
 	dir, err := os.MkdirTemp("", "rootfiles-module-test")
 	if err != nil {

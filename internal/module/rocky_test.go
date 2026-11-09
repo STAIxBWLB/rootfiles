@@ -656,3 +656,152 @@ func TestRockyProfileAvoidsUbuntuAndUnsupportedModules(t *testing.T) {
 		}
 	}
 }
+
+func TestRockySSHFirewallGuardOnlyOnPortChange(t *testing.T) {
+	for _, backend := range []string{"ufw", "firewalld"} {
+		for _, tc := range []struct {
+			name                  string
+			current, target       int
+			blocked, missingLabel bool
+		}{
+			{"same default", 22, 22, false, false},
+			{"same custom", 2222, 2222, false, false},
+			{"same custom missing label", 2222, 2222, false, true},
+			{"changed", 22, 2222, true, false},
+		} {
+			t.Run(backend+"/"+tc.name, func(t *testing.T) {
+				dir := rockySSHTestPaths(t)
+				calls := filepath.Join(dir, "calls")
+				write := func(name, body string) {
+					t.Helper()
+					script := "#!/bin/sh\nprintf '%s\\n' '" + name + " '\"$*\" >> '" + calls + "'\n" + body + "\n"
+					if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if backend == "ufw" {
+					write("ufw", "printf 'Status: active\\n22/tcp ALLOW IN 192.0.2.0/24\\n2222/tcp ALLOW IN 192.0.2.0/24\\n'")
+				} else {
+					write("firewall-cmd", `case "$1" in
+--state) echo running ;;
+--get-active-zones) echo public ;;
+--zone) echo 'rule family=ipv4 source address=192.0.2.0/24 accept' ;;
+*) exit 1 ;;
+esac`)
+				}
+				labels := "22, 2222"
+				if tc.missingLabel {
+					labels = "22"
+				}
+				write("semanage", "if [ \"$1:$2\" = 'port:-l' ]; then printf 'ssh_port_t tcp "+labels+"\\n'; fi")
+				t.Setenv("PATH", dir)
+				if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				main := []byte("Include " + sshdConfigDir + "/*.conf\nPort 22\n")
+				if err := os.WriteFile(sshdConfigPath, main, 0644); err != nil {
+					t.Fatal(err)
+				}
+				module := NewSSHModule()
+				before := []byte(module.buildConfig(config.SSHConfig{Port: tc.current}))
+				if err := os.WriteFile(sshdDropInPath, before, 0644); err != nil {
+					t.Fatal(err)
+				}
+				rc := newRealRC(t)
+				rc.Config.System = &config.SystemInfo{OS: "rocky", Version: "9.4"}
+				rc.Config.SSH = config.SSHConfig{Port: tc.target}
+				check, err := module.Check(context.Background(), rc)
+				if tc.blocked {
+					if err == nil {
+						t.Fatal("changed port accepted restricted firewall")
+					}
+				} else if err != nil || check.Satisfied == tc.missingLabel {
+					t.Fatalf("unchanged port check: %+v, %v", check, err)
+				}
+				result, err := module.Apply(context.Background(), rc)
+				if tc.blocked {
+					if err == nil {
+						t.Fatal("changed port apply accepted restricted firewall")
+					}
+				} else if err != nil || result.Changed != tc.missingLabel {
+					t.Fatalf("unchanged port apply: %+v, %v", result, err)
+				}
+				for file, want := range map[string][]byte{sshdConfigPath: main, sshdDropInPath: before} {
+					got, err := os.ReadFile(file)
+					if err != nil || string(got) != string(want) {
+						t.Fatalf("modified %s: %q, %v", file, got, err)
+					}
+				}
+				data, _ := os.ReadFile(calls)
+				if !tc.blocked && (strings.Contains(string(data), "ufw ") || strings.Contains(string(data), "firewall-cmd ")) {
+					t.Fatalf("unchanged port queried firewall: %s", data)
+				}
+				if tc.missingLabel && !strings.Contains(string(data), "semanage port -a -t ssh_port_t -p tcp 2222") {
+					t.Fatalf("unchanged custom port lost SELinux labeling: %s", data)
+				}
+			})
+		}
+	}
+}
+
+func TestSSHPortChangeUsesMainOrEffectivePort(t *testing.T) {
+	for _, distro := range []string{"ubuntu", "rocky"} {
+		for _, effective := range []bool{false, true} {
+			name := distro + "/main"
+			if effective {
+				name = distro + "/effective"
+			}
+			t.Run(name, func(t *testing.T) {
+				dir := rockySSHTestPaths(t)
+				calls := filepath.Join(dir, "calls")
+				main := "Include " + sshdConfigDir + "/*.conf\nPort 2222\n"
+				sshdBody := "exit 1"
+				if effective {
+					main = "Include " + sshdConfigDir + "/*.conf\n"
+					sshdBody = "printf 'port 2222\\n'"
+				}
+				if err := os.WriteFile(sshdConfigPath, []byte(main), 0644); err != nil {
+					t.Fatal(err)
+				}
+				for name, body := range map[string]string{"sshd": sshdBody, "ufw": "printf 'unavailable\\n'\nexit 1"} {
+					script := "#!/bin/sh\nprintf '%s\\n' '" + name + " '\"$*\" >> '" + calls + "'\n" + body + "\n"
+					if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				t.Setenv("PATH", dir)
+				rc := newRealRC(t)
+				rc.Config.System = &config.SystemInfo{OS: distro, Version: "9.4"}
+				rc.Config.SSH = config.SSHConfig{Port: 22}
+				module := NewSSHModule()
+				if _, err := module.Check(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "UFW") {
+					t.Fatalf("main/effective 2222 ->22 skipped firewall: %v", err)
+				}
+				if _, err := module.Apply(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "UFW") {
+					t.Fatalf("main/effective 2222 ->22 Apply skipped firewall: %v", err)
+				}
+				if after, err := os.ReadFile(sshdConfigPath); err != nil || string(after) != main {
+					t.Fatalf("main changed before firewall proof: %q %v", after, err)
+				}
+				if _, err := os.Stat(sshdDropInPath); !os.IsNotExist(err) {
+					t.Fatalf("drop-in written before firewall proof: %v", err)
+				}
+				if _, err := os.Stat(sshdPrivilegeSeparationDir); !os.IsNotExist(err) {
+					t.Fatalf("read-only probe created privilege-separation directory: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestSSHPortChangeUnknownIncludedConfigRefuses(t *testing.T) {
+	dir := rockySSHTestPaths(t)
+	t.Setenv("PATH", dir)
+	if err := os.WriteFile(sshdConfigPath, []byte("Include "+sshdConfigDir+"/*.conf\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), nil, 22)
+	if err == nil || changed || !strings.Contains(err.Error(), "sshd -T") {
+		t.Fatalf("unknown included port guessed as22: changed=%v err=%v", changed, err)
+	}
+}

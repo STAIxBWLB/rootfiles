@@ -23,6 +23,14 @@ var sshdPrivilegeSeparationDir = "/run/sshd"
 func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, error) {
 	var changes []Change
 	cfg := rc.Config.SSH
+	existing, readErr := rc.Runner.ReadFile(sshdDropInPath)
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("reading sshd drop-in %s: %w; repair its permissions before retrying", sshdDropInPath, readErr)
+	}
+	portChanges, err := managedSSHPortChanges(ctx, rc, existing, cfg.Port)
+	if err != nil {
+		return nil, err
+	}
 	if config.IsRocky(rc.Config.System) {
 		_, _, _, includeChanged, err := rockySSHDMainState(rc)
 		if err != nil {
@@ -36,12 +44,14 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 			changes = append(changes, Change{Description: desc, Command: "add Include " + sshdConfigDir + "/*.conf to " + sshdConfigPath})
 		}
 		if cfg.Port > 0 {
-			allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
-			if err != nil {
-				return blockedFirewallCheck(err), nil
-			}
-			if !allowed {
-				return blockedFirewallCheck(fmt.Errorf("firewall policy does not allow SSH port %d; add the port through the host firewall change process before changing sshd", cfg.Port)), nil
+			if portChanges {
+				allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
+				if err != nil {
+					return blockedFirewallCheck(err), nil
+				}
+				if !allowed {
+					return blockedFirewallCheck(fmt.Errorf("firewall policy does not allow SSH port %d; add the port through the host firewall change process before changing sshd", cfg.Port)), nil
+				}
 			}
 			labeled, err := rockySSHSELinuxPortLabeled(ctx, rc, cfg.Port)
 			if err != nil {
@@ -53,8 +63,7 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 		}
 	}
 
-	existing, _ := rc.Runner.ReadFile(sshdDropInPath)
-	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
+	if !config.IsRocky(rc.Config.System) && portChanges {
 		needsAllow, err := sshFirewallPlan(ctx, rc, cfg.Port)
 		if err != nil {
 			return blockedFirewallCheck(err), nil
@@ -85,6 +94,14 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 
 func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 	cfg := rc.Config.SSH
+	existing, readErr := rc.Runner.ReadFile(sshdDropInPath)
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("reading sshd drop-in %s: %w; repair its permissions before retrying", sshdDropInPath, readErr)
+	}
+	portChanges, err := managedSSHPortChanges(ctx, rc, existing, cfg.Port)
+	if err != nil {
+		return nil, err
+	}
 	needsUFWAllow := false
 
 	var originalMain, updatedMain []byte
@@ -96,7 +113,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		if err != nil {
 			return nil, err
 		}
-		if cfg.Port > 0 {
+		if portChanges {
 			allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
 			if err != nil {
 				return nil, err
@@ -108,11 +125,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	}
 	content := m.buildConfig(cfg)
 
-	existing, readErr := rc.Runner.ReadFile(sshdDropInPath)
-	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		return nil, fmt.Errorf("reading sshd drop-in %s: %w", sshdDropInPath, readErr)
-	}
-	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
+	if !config.IsRocky(rc.Config.System) && portChanges {
 		var err error
 		needsUFWAllow, err = sshFirewallPlan(ctx, rc, cfg.Port)
 		if err != nil {
@@ -392,17 +405,44 @@ func firstLine(s string) string {
 	return s
 }
 
-// managedSSHPortChanges compares an explicit requested port with the managed
-// drop-in, defaulting to SSH's port 22 when no Port directive exists.
-func managedSSHPortChanges(existing []byte, requested int) bool {
+// managedSSHPortChanges shares current-port discovery across Ubuntu and Rocky.
+// A managed directive is authoritative; otherwise inspect sshd without writes,
+// then fall back to an explicit main-config Port or an unambiguous default.
+func managedSSHPortChanges(ctx context.Context, rc *RunContext, existing []byte, requested int) (bool, error) {
 	if requested <= 0 {
-		return false
+		return false, nil
 	}
-	current := 22
 	if ports := parsePortDirectives(string(existing)); len(ports) > 0 {
-		current = ports[0]
+		return ports[0] != requested, nil
 	}
-	return current != requested
+	var probeErr error
+	if bin := sshdBinary(rc); bin != "" {
+		result, err := rc.Runner.Query(ctx, bin, "-T", "-f", sshdConfigPath)
+		if err == nil && result != nil {
+			if ports := parsePortDirectives(result.Stdout); len(ports) > 0 {
+				return ports[0] != requested, nil
+			}
+			err = fmt.Errorf("sshd -T did not report a port")
+		}
+		probeErr = err
+	}
+	main, err := rc.Runner.ReadFile(sshdConfigPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("cannot determine current SSH port from %s: %w; repair its permissions or verify sudo sshd -T before retrying", sshdConfigPath, err)
+	}
+	if ports := parsePortDirectives(string(main)); len(ports) > 0 {
+		return ports[0] != requested, nil
+	}
+	for _, line := range strings.Split(string(main), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && strings.EqualFold(fields[0], "Include") {
+			if probeErr != nil {
+				return false, fmt.Errorf("cannot determine effective SSH port through Include directives: %w; run sudo sshd -T -f %s and repair the query/configuration before retrying", probeErr, sshdConfigPath)
+			}
+			return false, fmt.Errorf("cannot determine effective SSH port through Include directives in %s; make sshd available and verify sudo sshd -T -f %s before retrying", sshdConfigPath, sshdConfigPath)
+		}
+	}
+	return requested != 22, nil
 }
 
 // portLine returns the "Port N" directive of a drop-in, or "" if none.
