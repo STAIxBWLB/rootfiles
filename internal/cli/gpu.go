@@ -21,6 +21,8 @@ func newGPUCmd() *cobra.Command {
 		Use:   "assign USERNAME",
 		Short: "Assign GPUs to a user",
 		Args:  cobra.ExactArgs(1),
+		Example: `  sudo rootfiles gpu assign alice --gpus 0,1
+  sudo rootfiles gpu assign alice --gpus 2,3 --method cgroup`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {

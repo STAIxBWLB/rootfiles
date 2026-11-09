@@ -25,8 +25,9 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show full system status at a glance",
-		Long:  "Unified dashboard: system, profile, modules, GPU allocations, tunnel, users.",
-		RunE:  runStatus,
+		Long: "Read-only overview of the system, profile, modules, GPU allocations, tunnel and users.\n" +
+			"Exit code: 0 for the overview, including reported findings; invalid inputs return an error.",
+		RunE: runStatus,
 	}
 	cmd.Flags().StringSlice("module", nil, "Report specific modules only")
 	addOutputFlag(cmd)
@@ -337,7 +338,7 @@ func renderGPUSection(out io.Writer, rc *module.RunContext) {
 
 	if db == nil || (db.TotalGPUs == 0 && len(db.Allocations) == 0) {
 		ui.WriteKV(out, "Total GPUs", "none recorded")
-		ui.WriteHint(out, "run 'rootfiles gpu assign <user> <indices>' to register an allocation")
+		ui.WriteHint(out, "run 'rootfiles gpu assign <user> --gpus 0,1' to register an allocation")
 		return
 	}
 

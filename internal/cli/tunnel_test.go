@@ -26,7 +26,6 @@ func TestNewTunnelCmd_Subcommands(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"install":   false,
 		"setup":     false,
 		"status":    false,
 		"restart":   false,
@@ -37,6 +36,13 @@ func TestNewTunnelCmd_Subcommands(t *testing.T) {
 		name := sub.Name()
 		if _, ok := want[name]; ok {
 			want[name] = true
+		}
+		// install is an alias of setup, not a command of its own.
+		if name == "install" {
+			t.Error("tunnel registers install as a command of its own")
+		}
+		if name == "setup" && !sub.HasAlias("install") {
+			t.Errorf("tunnel setup lost the install alias: %v", sub.Aliases)
 		}
 	}
 	for name, seen := range want {

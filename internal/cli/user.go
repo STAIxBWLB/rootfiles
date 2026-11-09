@@ -11,6 +11,11 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
+// Action seams keep CLI argument/alias tests independent of host accounts.
+var addCLIUser = module.AddUser
+var backupCLIUsers = module.BackupUsers
+var setCLIUserPasswords = module.SetPasswords
+
 func newUserCmd() *cobra.Command {
 	userCmd := &cobra.Command{
 		Use:   "user",
@@ -46,6 +51,8 @@ func newUserAddCmd() *cobra.Command {
 		Use:   "add [USERNAME]",
 		Short: "Create a user with custom home directory",
 		Args:  cobra.MaximumNArgs(1),
+		Example: `  sudo rootfiles user add alice --ssh-pubkey "$(cat ~/.ssh/id_ed25519.pub)"
+  sudo rootfiles user add bob --groups docker,sudo`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -69,10 +76,7 @@ func newUserAddCmd() *cobra.Command {
 				}
 			}
 
-			pubkey, _ := cmd.Flags().GetString("pubkey")
-			if pubkey == "" {
-				pubkey, _ = cmd.Flags().GetString("ssh-pubkey")
-			}
+			pubkey := stringFlagOrAlias(cmd, "ssh-pubkey", "pubkey")
 			if pubkey == "" {
 				pubkey = os.Getenv("ROOTFILES_SSH_PUBKEY")
 			}
@@ -84,11 +88,12 @@ func newUserAddCmd() *cobra.Command {
 			if pubkey != "" {
 				pubkeys = []string{pubkey}
 			}
-			return module.AddUser(cmd.Context(), rc, username, pubkeys, groups, noDocker)
+			return addCLIUser(cmd.Context(), rc, username, pubkeys, groups, noDocker)
 		},
 	}
 	usesRootFlags(cmd, "user", "ssh-pubkey")
-	cmd.Flags().String("pubkey", "", "SSH public key")
+	cmd.Flags().String("pubkey", "", "Deprecated alias for --ssh-pubkey")
+	_ = cmd.Flags().MarkDeprecated("pubkey", "use --ssh-pubkey instead")
 	cmd.Flags().StringSlice("groups", nil, "Additional groups")
 	cmd.Flags().Bool("no-docker", false, "Do not add to docker group")
 	return cmd
@@ -131,11 +136,14 @@ func newUserBackupCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			output, _ := cmd.Flags().GetString("output")
-			return module.BackupUsers(rc, output)
+			output := stringFlagOrAlias(cmd, "file", "output")
+			return backupCLIUsers(rc, output)
 		},
 	}
-	cmd.Flags().StringP("output", "o", "", "Output path for backup file")
+	cmd.Flags().String("file", "", "Output path for backup file")
+	cmd.Flags().StringP("output", "o", "", "Deprecated alias for --file")
+	_ = cmd.Flags().MarkDeprecated("output", "use --file instead")
+	_ = cmd.Flags().MarkShorthandDeprecated("output", "use --file instead")
 	return cmd
 }
 
@@ -160,7 +168,7 @@ func newUserRestoreCmd() *cobra.Command {
 
 func newUserRehomeCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "rehome [USERNAME]",
+		Use:   "rehome USERNAME",
 		Short: "Move user home to custom home base directory",
 		Long: "Copy the user's home to <home-base>/<user>, verify the copy, switch the account over and\n" +
 			"leave a symlink at the old path. The original is kept as <old>.rootfiles-bak-<ts> unless --remove-old.",
@@ -316,11 +324,12 @@ func newUserPasswdCmd() *cobra.Command {
 				return nil
 			}
 
-			return module.SetPasswords(cmd.Context(), rc, entries, suffix, expire)
+			return setCLIUserPasswords(cmd.Context(), rc, entries, suffix, expire)
 		},
 	}
 	cmd.Flags().String("password", "", "Set the same password for all users")
-	cmd.Flags().String("suffix", "", "Legacy scheme: password = username+suffix (default: random password, printed once)")
+	cmd.Flags().String("suffix", "", "Deprecated: password = username+suffix")
+	_ = cmd.Flags().MarkDeprecated("suffix", "use --password or --file instead; predictable passwords are removed next minor")
 	cmd.Flags().Bool("expire", false, "Force a password change at next login (chage -d 0)")
 	cmd.Flags().StringP("file", "f", "", "File with usernames (or username,password per line)")
 	cmd.Flags().Bool("all", false, "Set passwords for all system users")

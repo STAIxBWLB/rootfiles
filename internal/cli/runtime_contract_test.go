@@ -314,3 +314,48 @@ func TestCheckAcceptsApplyAccountAndTunnelOverrides(t *testing.T) {
 		t.Fatalf("check did not produce a report: %v", err)
 	}
 }
+
+// CLI surface audit AC2: tenant has one password command, and the name it used
+// to register twice still resolves to it.
+func TestTenantPasswdIsOneCommand(t *testing.T) {
+	tenant := newTenantCmd()
+	password := 0
+	for _, sub := range tenant.Commands() {
+		if sub.Name() == "reset" {
+			t.Fatal("tenant registers reset as a command of its own")
+		}
+		if sub.Name() == "passwd" {
+			password++
+			if !sub.HasAlias("reset") {
+				t.Fatalf("tenant passwd lost the reset alias: %v", sub.Aliases)
+			}
+		}
+	}
+	if password != 1 {
+		t.Fatalf("tenant password commands = %d, want 1", password)
+	}
+	root := NewRootCmd("test", "abc")
+	sub, _, err := root.Find([]string{"tenant", "reset"})
+	if err != nil {
+		t.Fatalf("tenant reset no longer resolves: %v", err)
+	}
+	if sub.Name() != "passwd" {
+		t.Fatalf("tenant reset resolved to %q, want passwd", sub.Name())
+	}
+}
+
+// tunnel install was a second way into the cloudflared module; it is now an
+// alias of setup and keeps the native mutation gate.
+func TestTunnelInstallIsSetupAlias(t *testing.T) {
+	root := NewRootCmd("test", "abc")
+	sub, _, err := root.Find([]string{"tunnel", "install"})
+	if err != nil {
+		t.Fatalf("tunnel install no longer resolves: %v", err)
+	}
+	if sub.Name() != "setup" {
+		t.Fatalf("tunnel install resolved to %q, want setup", sub.Name())
+	}
+	if sub.Annotations[annotMutates] != "true" {
+		t.Fatal("tunnel install is no longer a native mutation, so the capability gate would skip it")
+	}
+}

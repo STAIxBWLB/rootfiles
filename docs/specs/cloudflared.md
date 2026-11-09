@@ -31,21 +31,20 @@ The `cloudflared` module and `rootfiles tunnel` install the upstream `cloudflare
 
 ## Behaviour
 
-- `tunnel install`: runs the whole module Apply (binary, service, private network), despite its help text.
-- `tunnel setup [TOKEN] [--vlan-address CIDR]`: private network first (it does not need the binary), then binary if missing, then the service if a token is given (positional, `--tunnel-token`, or `ROOTFILES_TUNNEL_TOKEN`; address also from `ROOTFILES_VLAN_ADDRESS`).
+- `tunnel install` is an alias of `tunnel setup`, not a second constructor. Both share config-aware module Apply, reader annotations, native capability validation and the root/lock preflight.
+- `tunnel setup [TOKEN] [--vlan-address CIDR]`: explicit positional/flag/environment inputs override loaded configuration; configured token-file and VLAN defaults are retained. Module Apply manages the binary, token service and enabled private network only on drift, so setup/install on converged state does not rewrite files or restart services.
 - `tunnel status`, `tunnel restart`, `tunnel update [--version V] [--check]`: use `buildConfigFreeRunContext`, so they work without a loadable profile. `update` skips the download when the current version equals the target and restarts the service only when it is enabled. `--check` prints current vs latest (GitHub releases API, 15 s timeout) without changing anything.
 - `tunnel uninstall`: disables the service, removes the unit, env file, private-network files, interface and binary; stop/delete failures are warnings, file removal failures are errors.
 - `install`, `setup`, `restart`, `update`, `uninstall` are in `mutatingCommands` (root and lock unless `--dry-run`).
 
 ## Distro support
 
-- Ubuntu and DGX OS. Rocky rejects `cloudflared` in `config.ValidateCapabilities` for `apply`/`check`; `tunnel` subcommands do not run capability validation yet (#91).
+- Ubuntu and DGX OS. Rocky rejects `cloudflared` in `config.ValidateCapabilities` for `apply`/`check`; mutating `tunnel` subcommands validate their requested capability before host changes.
 
 ## Safety
 
 - Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
-
-- Never log, print or pass the token as an argument from rootfiles itself. Note that a token given as `tunnel setup TOKEN` or `--tunnel-token` is still recorded in the audit log and backup note today (#88); prefer `tunnel_token_file`.
+- Never log, print or pass the token as an argument from rootfiles itself. Both setup/install positional tokens and `--tunnel-token` are redacted from audit/backup notes; prefer `tunnel_token_file` for unattended inputs.
 - Never leave a partially downloaded binary at the install path.
 - Removing `private_network` from a config does not tear down an existing interface; only `tunnel uninstall` does (unverified beyond reading Check/Apply, which only act when enabled).
 
@@ -57,7 +56,4 @@ The `cloudflared` module and `rootfiles tunnel` install the upstream `cloudflare
 
 ## Open issues
 
-- [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): token in audit log/backup note; `tunnel update --check` should run without root and exit 2 when an update exists.
-- [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): capability validation and distro package manager in `buildRunContext` for `tunnel`.
-- [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `tunnel install` becomes an alias of `tunnel setup`; replace the example address in help and prompts with a TEST-NET address.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated binary path, version parsing, latest-version fetch and `firstNonEmptyCloudflared`.

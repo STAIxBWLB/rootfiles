@@ -101,3 +101,65 @@ func TestFleetStillRequiresExplicitYes(t *testing.T) {
 		t.Fatalf("unauthorized rollout opened SSH: %v", err)
 	}
 }
+
+func TestFleetMutationPreviewStillRequiresSelection(t *testing.T) {
+	for _, operation := range []string{"apply", "update", "bootstrap", "schedule"} {
+		for _, tc := range []struct {
+			name, want string
+			flags      []string
+		}{
+			{"preview all", "", []string{"--all", "--dry-run"}},
+			{"preview host", "", []string{"--host", "host1", "--dry-run"}},
+			{"preview no selection", "--host", []string{"--dry-run"}},
+			{"preview empty host", "--host", []string{"--host=", "--dry-run"}},
+			{"real no yes", "--yes", []string{"--all"}},
+			{"real explicit false dry run", "--yes", []string{"--all", "--dry-run=false"}},
+			{"real yes no selection", "--host", []string{"--yes"}},
+			{"real authorized", "", []string{"--yes", "--all"}},
+		} {
+			t.Run(operation+"/"+tc.name, func(t *testing.T) {
+				inventory, calls := fleetFlagFixture(t)
+				root := NewRootCmd("test", "test")
+				cmd, _, err := root.Find([]string{"fleet", operation})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := cmd.ParseFlags(append([]string{"--inventory", inventory}, tc.flags...)); err != nil {
+					t.Fatal(err)
+				}
+				_, selected, _, err := authorizeFleetMutation(cmd)
+				if tc.want == "" {
+					if err != nil || len(selected) != 1 {
+						t.Fatalf("authorized selection=%v error=%v", selected, err)
+					}
+				} else if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("authorization error=%v, want %q", err, tc.want)
+				}
+				if _, err := os.Stat(calls); !os.IsNotExist(err) {
+					t.Fatalf("authorization opened SSH: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestFleetScheduleRejectsExplicitInvalidCalendarBeforeSSH(t *testing.T) {
+	for _, tc := range []struct{ action, calendar string }{
+		{"enable", ""}, {"enable", " "}, {"enable", "daily\rOnBootSec=1m"},
+		{"enable", "daily\x00"}, {"disable", ""}, {"disable", "hourly"},
+	} {
+		t.Run(tc.action+"/"+tc.calendar, func(t *testing.T) {
+			inventory, calls := fleetFlagFixture(t)
+			root := NewRootCmd("test", "test")
+			root.SetOut(io.Discard)
+			root.SetErr(io.Discard)
+			root.SetArgs([]string{"fleet", "schedule", tc.action, "--inventory", inventory, "--all", "--yes", "--on-calendar", tc.calendar})
+			if err := root.Execute(); err == nil || !strings.Contains(err.Error(), "--on-calendar") {
+				t.Fatalf("calendar %q error=%v", tc.calendar, err)
+			}
+			if _, err := os.Stat(calls); !os.IsNotExist(err) {
+				t.Fatalf("invalid calendar opened SSH: %v", err)
+			}
+		})
+	}
+}

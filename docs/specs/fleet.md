@@ -50,6 +50,10 @@ Invariants an agent must keep:
 
 ## Behaviour
 
+- `fleet targets` honors explicit host/group/all selectors; an omitted selector retains whole-inventory rendering. Explicit empty/unmatched selectors never fall back to all hosts.
+- `fleet schedule enable --on-calendar EXPR` passes a validated, shell-quoted expression; omitted calendar keeps the prior remote enable/disable command bytes. Disable refuses a calendar. Read-only/native report and apply/update wire flags remain accepted.
+- Fleet dry-run skips the real-rollout yes requirement but retains explicit rollout selection; real mutations still require confirmation.
+
 Inventory example (default path `$XDG_CONFIG_HOME/rootfiles/fleet.yaml`, else `~/.config/rootfiles/fleet.yaml`):
 
 ```yaml
@@ -108,5 +112,4 @@ Verification evidence (folded from the 2026-10-03 rollout checklist):
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): fleet commands accept and ignore `--module`, `--profile`, `--config`, `--force`, `--tunnel-token`; `-o` is validated only after the SSH work; sudoers and remote command strings must stay unchanged.
-- [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `fleet targets` ignores `--host/--group/--all`; `fleet schedule` cannot pass `--on-calendar`; `--dry-run` still demands `--yes`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated `shellQuote`/`shellQuoteCLI` and `defaultRunLog`/`defaultFleetInventory`; fleet has its own JSON encoder and hardcoded exit 2.

@@ -140,6 +140,9 @@ func TestRedactArgs(t *testing.T) {
 		{"password", []string{"user", "passwd", "alice", "--password", "secret"}, []string{"user", "passwd", "alice", "--password", "***"}},
 		{"inline password", []string{"user", "passwd", "alice", "--password=secret"}, []string{"user", "passwd", "alice", "--password=***"}},
 		{"positional", []string{"tunnel", "setup", "secret"}, []string{"tunnel", "setup", "***"}},
+		{"install alias positional", []string{"tunnel", "install", "secret"}, []string{"tunnel", "install", "***"}},
+		{"install alias interspersed", []string{"tunnel", "install", "--config", "site.yaml", "secret"}, []string{"tunnel", "install", "--config", "site.yaml", "***"}},
+		{"install alias delimiter", []string{"tunnel", "install", "--", "--token-like-value"}, []string{"tunnel", "install", "--", "***"}},
 		{"interspersed flags", []string{"--profile", "tunnel", "tunnel", "--yes", "setup", "--config", "site.yaml", "secret", "--vlan-address=host"}, []string{"--profile", "tunnel", "tunnel", "--yes", "setup", "--config", "site.yaml", "***", "--vlan-address=host"}},
 		{"delimiter", []string{"tunnel", "setup", "--", "--token-like-value"}, []string{"tunnel", "setup", "--", "***"}},
 		{"both", []string{"tunnel", "setup", "secret", "--tunnel-token", "other"}, []string{"tunnel", "setup", "***", "--tunnel-token", "***"}},
@@ -167,6 +170,7 @@ func TestRedactAuditAndBackupNotes(t *testing.T) {
 		{"apply", "--tunnel-token", "sentinel-secret"},
 		{"apply", "--tunnel-token=sentinel-secret"},
 		{"tunnel", "setup", "sentinel-secret"},
+		{"tunnel", "install", "sentinel-secret"},
 		{"user", "passwd", "alice", "--password", "sentinel-secret"},
 		{"user", "passwd", "alice", "--password=sentinel-secret"},
 	} {

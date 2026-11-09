@@ -67,5 +67,4 @@ The Module interface, the registry and execution order, and the three commands t
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `status` honours `--module`; `ROOTFILES_YES` read in one helper.
-- [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): stale `gpu assign` hint in status, `Example` on `apply` and `check`, VLAN example address in the apply prompt.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): single status collector for text and JSON (text skips `ValidateCapabilities` today), one module-name list checked against `defaultOrder`, module output through `internal/ui` and `rc.Out`.

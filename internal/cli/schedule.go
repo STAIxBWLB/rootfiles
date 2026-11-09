@@ -4,13 +4,16 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
@@ -58,6 +61,11 @@ WantedBy=timers.target
 `, onCalendar, onCalendar)
 }
 
+// validateOnCalendar shares the unit-file boundary with fleet scheduling.
+func validateOnCalendar(expr string) error {
+	return fleet.ValidateScheduleCalendar(expr)
+}
+
 func newScheduleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "schedule",
@@ -71,8 +79,8 @@ func newScheduleCmd() *cobra.Command {
 		Short: "Install and start the report timer",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			onCal, _ := cmd.Flags().GetString("on-calendar")
-			if strings.ContainsAny(onCal, "\n'") {
-				return fmt.Errorf("invalid --on-calendar %q", onCal)
+			if err := validateOnCalendar(onCal); err != nil {
+				return err
 			}
 			bin, err := os.Executable()
 			if err != nil {
@@ -132,8 +140,23 @@ func newScheduleCmd() *cobra.Command {
 		},
 	}
 
-	cmd.AddCommand(enable, disable)
-	return usesConfigTarget(cmd)
+	status := &cobra.Command{
+		Use:   "status",
+		Short: "Show the report timer state and the age of its reports",
+		Long: `Reports what systemd has right now: whether the units are installed, the enabled
+and active state of the timer, the OnCalendar expression it fires on, and how old
+check.json and doctor.json are. A report older than 48 hours is marked stale, the
+same horizon the monitoring hub's RootfilesReportStale alert uses. Read-only.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			runner := exec.NewRunner(true, newLogger(cmd, true, slog.LevelInfo))
+			reportScheduleStatus(cmd, runner)
+			return nil
+		},
+	}
+
+	cmd.AddCommand(usesConfigTarget(enable), usesConfigTarget(disable), status)
+	return cmd
 }
 
 func scheduleTimerReady(ctx context.Context, runner *exec.Runner) bool {
@@ -168,6 +191,98 @@ func writeScheduleUnits(runner *exec.Runner, bin, onCalendar string) (bool, erro
 		changed = true
 	}
 	return changed, nil
+}
+
+// reportScheduleStatus prints the timer and report state; it never changes
+// anything, so an uninstalled timer is a report, not an error.
+func reportScheduleStatus(cmd *cobra.Command, runner *exec.Runner) {
+	ctx, out := cmd.Context(), cmd.OutOrStdout()
+	ui.WriteSection(out, "Scheduled reports")
+
+	timer := filepath.Join(scheduleUnitDir, scheduleName+".timer")
+	if !runner.FileExists(timer) {
+		ui.WriteKV(out, "Timer", "not installed")
+		ui.WriteHint(out, "run `sudo rootfiles schedule enable` to install the daily report timer")
+	} else {
+		ui.WriteKV(out, "Timer", "installed")
+		ui.WriteKV(out, "Enabled", systemctlWord(ctx, runner, "is-enabled", scheduleName+".timer"))
+		ui.WriteKV(out, "Active", systemctlWord(ctx, runner, "is-active", scheduleName+".timer"))
+		calendar := "unknown"
+		if data, err := runner.ReadFile(timer); err == nil {
+			if value := onCalendarLine(string(data)); value != "" {
+				calendar = value
+			}
+		}
+		ui.WriteKV(out, "OnCalendar", calendar)
+	}
+	service := "not installed"
+	if runner.FileExists(filepath.Join(scheduleUnitDir, scheduleName+".service")) {
+		service = "installed"
+	}
+	ui.WriteKV(out, "Service", service)
+	now := time.Now()
+	for _, name := range []string{"check.json", "doctor.json"} {
+		ui.WriteKV(out, name, reportAge(filepath.Join(state.Dir(), name), now))
+	}
+}
+
+// systemctlWord reads a one-word unit state. systemd prints the state on
+// stdout even when the exit status is non-zero (a disabled timer exits 1), and
+// a host without systemd must not fail the report, so an unreadable state
+// shows as unknown.
+func systemctlWord(ctx context.Context, runner *exec.Runner, verb, unit string) string {
+	res, _ := runner.Query(ctx, "systemctl", verb, unit)
+	if res != nil {
+		if word := strings.TrimSpace(res.Stdout); word != "" {
+			return word
+		}
+	}
+	return "unknown"
+}
+
+// onCalendarLine returns the OnCalendar= value of a timer unit.
+func onCalendarLine(unit string) string {
+	for _, line := range strings.Split(unit, "\n") {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), "OnCalendar="); ok {
+			return value
+		}
+	}
+	return ""
+}
+
+// staleReportAge is the horizon the monitoring hub's RootfilesReportStale
+// alert uses, so the operator sees staleness here before the alert fires.
+const staleReportAge = 48 * time.Hour
+
+// reportAge renders a report file's timestamp, its age and, past the alert
+// horizon, that it is stale.
+func reportAge(path string, now time.Time) string {
+	fi, err := os.Stat(path)
+	if os.IsNotExist(err) {
+		return "missing"
+	}
+	if err != nil {
+		return "unavailable: " + err.Error() + "; check the report path and permissions"
+	}
+	age := now.Sub(fi.ModTime())
+	text := fmt.Sprintf("%s (%s old)", fi.ModTime().Format("2006-01-02 15:04"), humanAge(age))
+	if age > staleReportAge {
+		text += " stale"
+	}
+	return text
+}
+
+func humanAge(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return "under a minute"
+	case d < time.Hour:
+		return fmt.Sprintf("%d min", int(d.Minutes()))
+	case d < staleReportAge:
+		return fmt.Sprintf("%d h", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%d d", int(d.Hours()/24))
+	}
 }
 
 // startFirstReport runs the report service once when no report exists yet,

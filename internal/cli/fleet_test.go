@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -149,6 +150,130 @@ func TestFleetTargetsPushValidatesPathAndGuardsParentsBeforeWrites(t *testing.T)
 	}
 	if _, err := os.Stat(calls); !os.IsNotExist(err) {
 		t.Fatalf("invalid discovery path opened SSH: %v", err)
+	}
+}
+
+// targetsInventory writes a two-host inventory whose hosts publish a node
+// exporter target, so a selection is visible in the rendered JSON.
+func targetsInventory(t *testing.T) (inventory string) {
+	t.Helper()
+	dir := t.TempDir()
+	site := filepath.Join(dir, "site.yaml")
+	siteConfig := "users:\n  home_base: /home\nmodules:\n  monitoring:\n    node_exporter: true\n"
+	if err := os.WriteFile(site, []byte(siteConfig), 0600); err != nil {
+		t.Fatal(err)
+	}
+	inventory = filepath.Join(dir, "fleet.yaml")
+	hosts := "hosts:\n" +
+		"  one:\n    ssh: 10.0.0.1\n    address: 10.0.0.1\n    config: site.yaml\n" +
+		"  two:\n    ssh: 10.0.0.2\n    address: 10.0.0.2\n    config: site.yaml\n"
+	if err := os.WriteFile(inventory, []byte(hosts), 0600); err != nil {
+		t.Fatal(err)
+	}
+	return inventory
+}
+
+// AC4: fleet targets --host limits the rendered targets to that host.
+func TestFleetTargetsHonoursSelection(t *testing.T) {
+	inventory := targetsInventory(t)
+	render := func(args ...string) string {
+		t.Helper()
+		var out bytes.Buffer
+		cmd := NewRootCmd("test", "test")
+		cmd.SetOut(&out)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs(append([]string{"fleet", "targets", "--inventory", inventory}, args...))
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("fleet targets %v: %v", args, err)
+		}
+		return out.String()
+	}
+
+	all := render()
+	if !strings.Contains(all, "10.0.0.1:9100") || !strings.Contains(all, "10.0.0.2:9100") {
+		t.Fatalf("without a selection every host is rendered:\n%s", all)
+	}
+	one := render("--host", "one")
+	if !strings.Contains(one, "10.0.0.1:9100") || strings.Contains(one, "10.0.0.2") {
+		t.Fatalf("--host one leaked another host:\n%s", one)
+	}
+
+	cmd := NewRootCmd("test", "test")
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"fleet", "targets", "--inventory", inventory, "--host", "nope"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unknown host") {
+		t.Fatalf("unknown --host accepted: %v", err)
+	}
+}
+
+// AC4: a dry run previews a mutation without --yes and opens no SSH.
+func TestFleetDryRunNeedsNoYes(t *testing.T) {
+	inventory, calls := fleetFlagFixture(t)
+	cmd := NewRootCmd("test", "test")
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"fleet", "update", "--inventory", inventory, "--all", "--version", "v1.2.3", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("fleet update --dry-run without --yes: %v", err)
+	}
+	if _, err := os.Stat(calls); !os.IsNotExist(err) {
+		t.Fatal("a dry run opened SSH")
+	}
+	if !strings.Contains(out.String(), "dry-run") {
+		t.Errorf("dry run did not say so:\n%s", out.String())
+	}
+}
+
+// AC4: fleet schedule enable passes --on-calendar through to each host.
+func TestFleetSchedulePassesOnCalendar(t *testing.T) {
+	dir := t.TempDir()
+	remoteFile := filepath.Join(dir, "remote-command")
+	sshDir := filepath.Join(dir, "bin")
+	if err := os.Mkdir(sshDir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\nprintf '%s\\n' \"$7\" > " + shellQuoteCLI(remoteFile) + "\ncat >/dev/null\necho scheduled\n"
+	if err := os.WriteFile(filepath.Join(sshDir, "ssh"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", sshDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("XDG_STATE_HOME", filepath.Join(dir, "state"))
+	inventory := filepath.Join(dir, "fleet.yaml")
+	if err := os.WriteFile(inventory, []byte("hosts:\n  h1:\n    ssh: h1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := NewRootCmd("test", "test")
+	cmd.SetOut(io.Discard)
+	cmd.SetErr(io.Discard)
+	cmd.SetArgs([]string{"fleet", "schedule", "enable", "--inventory", inventory, "--host", "h1",
+		"--yes", "--on-calendar", "*-*-* 06:00"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("fleet schedule enable --on-calendar: %v", err)
+	}
+	remote, err := os.ReadFile(remoteFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "schedule enable --on-calendar '*-*-* 06:00'"; !strings.Contains(string(remote), want) {
+		t.Fatalf("remote command %q does not carry %q", strings.TrimSpace(string(remote)), want)
+	}
+
+	// The expression belongs to enable, and must not break out of the unit
+	// file or the shell quoting.
+	for _, args := range [][]string{
+		{"disable", "--on-calendar", "hourly"},
+		{"enable", "--on-calendar", "daily\nOnBootSec=1m"},
+	} {
+		cmd := NewRootCmd("test", "test")
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs(append([]string{"fleet", "schedule"}, append(args, "--inventory", inventory, "--host", "h1", "--yes")...))
+		if err := cmd.Execute(); err == nil {
+			t.Errorf("fleet schedule %v accepted", args)
+		}
 	}
 }
 

@@ -278,7 +278,7 @@ exit 0
 	if err != nil || len(updated) != 1 || updated[0].State != "ok" {
 		t.Fatalf("plaintext update success was rejected: results=%#v err=%v", updated, err)
 	}
-	scheduled, err := Schedule(context.Background(), SSHRunner{Binary: bin}, h, "enable", false)
+	scheduled, err := Schedule(context.Background(), SSHRunner{Binary: bin}, h, "enable", "", false)
 	if err != nil || len(scheduled) != 1 || scheduled[0].State != "ok" {
 		t.Fatalf("plaintext schedule success was rejected: results=%#v err=%v", scheduled, err)
 	}

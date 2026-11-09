@@ -178,15 +178,15 @@ func allOK(rs []fleet.Result) bool {
 }
 
 func authorizeFleetMutation(c *cobra.Command) (*fleet.Inventory, []fleet.NamedHost, bool, error) {
+	dry, _ := c.Flags().GetBool("dry-run")
 	yes, _ := c.Flags().GetBool("yes")
-	if !yes {
-		return nil, nil, false, fmt.Errorf("fleet rollout requires --yes")
+	if !yes && !dry {
+		return nil, nil, false, fmt.Errorf("fleet rollout requires --yes (a --dry-run preview does not)")
 	}
 	inv, hosts, err := loadFleetSelection(c, true)
 	if err != nil {
 		return nil, nil, false, err
 	}
-	dry, _ := c.Flags().GetBool("dry-run")
 	return inv, hosts, dry, nil
 }
 
@@ -270,18 +270,21 @@ func finishFleetMutation(c *cobra.Command, op string, args []string, results []f
 }
 
 func newFleetApplyCmd() *cobra.Command {
-	c := &cobra.Command{Use: "apply", Short: "Apply selected hosts' site configs serially", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-		timeout, err := fleetMutationTimeout(c)
-		if err != nil {
-			return err
-		}
-		_, hs, dry, err := authorizeFleetMutation(c)
-		if err != nil {
-			return err
-		}
-		rs := fleet.Apply(c.Context(), fleetMutationRunner(c, timeout), hs, dry)
-		return finishFleetMutation(c, "apply", nil, rs, dry)
-	}}
+	c := &cobra.Command{Use: "apply", Short: "Apply selected hosts' site configs serially", Args: cobra.NoArgs,
+		Example: `  rootfiles fleet apply --host web1,web2 --yes
+  rootfiles fleet apply --group edge --dry-run`,
+		RunE: func(c *cobra.Command, _ []string) error {
+			timeout, err := fleetMutationTimeout(c)
+			if err != nil {
+				return err
+			}
+			_, hs, dry, err := authorizeFleetMutation(c)
+			if err != nil {
+				return err
+			}
+			rs := fleet.Apply(c.Context(), fleetMutationRunner(c, timeout), hs, dry)
+			return finishFleetMutation(c, "apply", nil, rs, dry)
+		}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
@@ -338,6 +341,16 @@ func newFleetBootstrapCmd() *cobra.Command {
 }
 func newFleetScheduleCmd() *cobra.Command {
 	c := &cobra.Command{Use: "schedule <enable|disable>", Short: "Enable or disable scheduled reports serially", Args: cobra.ExactArgs(1), RunE: func(c *cobra.Command, args []string) error {
+		action := args[0]
+		calendar, _ := c.Flags().GetString("on-calendar")
+		if c.Flags().Changed("on-calendar") {
+			if action != "enable" {
+				return fmt.Errorf("--on-calendar applies to fleet schedule enable; remove it from fleet schedule disable")
+			}
+			if err := validateOnCalendar(calendar); err != nil {
+				return err
+			}
+		}
 		timeout, err := fleetMutationTimeout(c)
 		if err != nil {
 			return err
@@ -346,15 +359,16 @@ func newFleetScheduleCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		rs, err := fleet.Schedule(c.Context(), fleetMutationRunner(c, timeout), hs, args[0], dry)
+		rs, err := fleet.Schedule(c.Context(), fleetMutationRunner(c, timeout), hs, action, calendar, dry)
 		if err != nil {
 			return err
 		}
-		return finishFleetMutation(c, "schedule "+args[0], args, rs, dry)
+		return finishFleetMutation(c, "schedule "+action, args, rs, dry)
 	}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
+	c.Flags().String("on-calendar", "", "OnCalendar expression for `fleet schedule enable` (omitted: remote default daily)")
 	c.Flags().StringP("output", "o", "text", "Output format: text or json")
 	return c
 }
@@ -365,7 +379,11 @@ func newFleetTargetsCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		data, err := fleet.RenderTargets(inv)
+		rendered, err := selectedFleetHosts(c, inv)
+		if err != nil {
+			return err
+		}
+		data, err := fleet.RenderTargets(rendered)
 		if err != nil {
 			return err
 		}
@@ -378,11 +396,11 @@ func newFleetTargetsCmd() *cobra.Command {
 		if err != nil {
 			return err
 		}
-		yes, _ := c.Flags().GetBool("yes")
-		if !yes {
-			return fmt.Errorf("pushing fleet targets requires --yes")
-		}
 		dry, _ := c.Flags().GetBool("dry-run")
+		yes, _ := c.Flags().GetBool("yes")
+		if !yes && !dry {
+			return fmt.Errorf("pushing fleet targets requires --yes (a --dry-run preview does not)")
+		}
 		h, ok := inv.Hosts[hub]
 		if !ok {
 			return fmt.Errorf("unknown hub host %q", hub)
@@ -486,4 +504,32 @@ func loadFleetOnly(c *cobra.Command) (*fleet.Inventory, error) {
 	p, _ := c.Flags().GetString("inventory")
 	return fleet.LoadInventory(p)
 }
+
+// selectedFleetHosts narrows the inventory to the hosts --host/--group/--all
+// name, so a read-only render can answer "targets for these hosts" instead of
+// silently ignoring the selection. Without any of them, every host is used:
+// the scrape file wants the whole fleet by default.
+func selectedFleetHosts(c *cobra.Command, inv *fleet.Inventory) (*fleet.Inventory, error) {
+	if !c.Flags().Changed("host") && !c.Flags().Changed("group") && !c.Flags().Changed("all") {
+		return inv, nil
+	}
+	hosts, _ := c.Flags().GetStringSlice("host")
+	groups, _ := c.Flags().GetStringSlice("group")
+	all, _ := c.Flags().GetBool("all")
+	picked, err := inv.Select(hosts, groups, all)
+	if err != nil {
+		return nil, fmt.Errorf("cannot render selected fleet targets: %w; choose --host or --group from the inventory, or use --all", err)
+	}
+	narrowed := &fleet.Inventory{
+		Defaults: inv.Defaults,
+		Hosts:    make(map[string]fleet.Host, len(picked)),
+		Path:     inv.Path,
+	}
+	for _, h := range picked {
+		narrowed.Hosts[h.Name] = inv.Hosts[h.Name]
+		narrowed.Order = append(narrowed.Order, h.Name)
+	}
+	return narrowed, nil
+}
+
 func shellQuoteCLI(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

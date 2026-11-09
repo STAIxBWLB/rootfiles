@@ -189,15 +189,43 @@ func unsatisfiedModules(remote json.RawMessage) []string {
 	return names
 }
 
-func Schedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, action string, dry bool) ([]Result, error) {
+// ValidateScheduleCalendar rejects values that could add systemd directives.
+// The same boundary applies to native timer files and fleet-provided values.
+func ValidateScheduleCalendar(expr string) error {
+	if strings.TrimSpace(expr) == "" {
+		return fmt.Errorf("--on-calendar must not be empty; use a systemd calendar expression such as daily")
+	}
+	if strings.ContainsAny(expr, "\n\r\x00'") {
+		return fmt.Errorf("--on-calendar cannot contain line breaks, NUL or apostrophes; use a single expression such as daily or *-*-* 06:00")
+	}
+	return nil
+}
+
+// Schedule enables or disables the report timer on each host. A calendar sets
+// the OnCalendar expression on enable; empty uses the remote default (daily).
+func Schedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, action, calendar string, dry bool) ([]Result, error) {
 	if action != "enable" && action != "disable" {
 		return nil, fmt.Errorf("schedule action must be enable or disable")
 	}
+	if calendar != "" && action != "enable" {
+		return nil, fmt.Errorf("--on-calendar applies to enable only; use fleet schedule enable --on-calendar EXPR")
+	}
+	if calendar != "" {
+		if err := ValidateScheduleCalendar(calendar); err != nil {
+			return nil, err
+		}
+	}
+	command := "schedule " + action
+	reason := "dry-run: would " + action + " scheduled reports"
+	if calendar != "" {
+		command += " --on-calendar " + shellQuote(calendar)
+		reason += " on " + calendar
+	}
 	return serial(ctx, runner, hosts, "schedule "+action, func(h NamedHost) Result {
 		if dry {
-			return Result{Host: h.Name, Command: "schedule", State: "ok", Reason: "dry-run: would " + action + " scheduled reports"}
+			return Result{Host: h.Name, Command: "schedule", State: "ok", Reason: reason}
 		}
-		return runner.runMutation(ctx, h, "schedule", privileged(h.Sudo, remoteBinary+" schedule "+action), nil)
+		return runner.runMutation(ctx, h, "schedule", privileged(h.Sudo, remoteBinary+" "+command), nil)
 	}), nil
 }
 

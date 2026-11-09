@@ -31,7 +31,7 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 - **System accounts are off limits.** Lifecycle commands resolve the account through `lookupManaged`, which refuses uid < 1000 and uid 65534.
 - **Additive membership.** Group changes only add (`usermod -aG`); the only removal is the explicit `user group-del` (`gpasswd -d`). The conventional `sudo` group maps to the distro admin group (`accountGroupsForSystem`, `config.AdminGroup`), and `requireNativeAdminGroup` fails rather than create an account without the requested admin group. Groups that do not exist yet (for example `docker` before Docker) are skipped with a warning, not created.
 - **Sudoers.** `writeSudoers` writes `<user> ALL=(ALL) NOPASSWD:ALL` to a dot-prefixed temp name sudo ignores, validates with `visudo -cf`, then renames into `/etc/sudoers.d/<user>` (dots replaced by `_`, `sudoersPath`). A failed validation removes the temp file. Never write a sudoers file in place.
-- **Passwords never in argv or logs.** `setPassword` pipes `user:password` to `chpasswd` on stdin and rejects `:` or newlines. Generated passwords use `generatePassword` (crypto/rand, look-alike-free alphabet, 16 chars) and are printed once; dry-run prints `****`. `--expire` runs `chage -d 0`. `--suffix` (username+suffix) is a legacy scheme kept for compatibility.
+- **Passwords never in argv or logs.** `setPassword` pipes `user:password` to `chpasswd` on stdin and rejects `:` or newlines. Generated passwords use `generatePassword` (crypto/rand, look-alike-free alphabet, 16 chars) and are printed once; dry-run prints `****`. `--expire` runs `chage -d 0`. `--suffix` (username+suffix) is deprecated, accepted for this release and removed next minor; use `--password` or `--file`.
 - **Keys.** `authorized_keys` keys are compared by type + blob (`keyID`), ignoring options and comments; existing lines, including comments, are kept verbatim when appending. `installAuthorizedKeys` writes `~/.ssh` 0700 and the file 0600, then `chown -R` to the user.
 - **Declarative accounts** (`users.accounts`): Check reports a missing account, missing keys and missing groups (`accountDrift`); Apply creates or converges exactly those (`convergeAccount`). Neither removes keys, groups or accounts.
 - **useradd default.** When `users.home_base` is set (including `/home`), Check/Apply keep `HOME=` in `/etc/default/useradd` equal to it; Apply refuses to rewrite the file when it exists but cannot be read.
@@ -42,9 +42,10 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 ## Behaviour
 
 - New metadata databases use `CreatedBy: rootfiles`. Existing databases retain their recorded value, including `rootfiles-v2`; marker cleanup alone never rewrites a ledger.
+- `user add` uses the inherited `--ssh-pubkey`; deprecated `--pubkey` remains an alias, including username fallback via `--user` or environment. Prefix root flags retain their values. `user backup --file` keeps deprecated `-o/--output` aliases with a replacement notice.
 
 - Module Check/Apply: custom home base and metadata directory, useradd `HOME`, declarative accounts, then fleet sudoers. Check and Apply cover the same items.
-- `rootfiles user`: `add`, `list [--system] [--names]`, `backup [-o]`, `restore [FILE]`, `rehome USER [--remove-old]`, `id`, `groups`, `group-add`, `group-del`, `passwd [USER...|--all|--file] [--password|--suffix] [--expire]`, `del [--archive|--remove-home]`, `lock`, `unlock`, `expire`, `key list|add|rm`, `du`, `audit`, `quota set|rm|show`. Mutating subcommands are listed in `mutatingCommands` (`internal/cli/runtime.go`); `backup`, `list`, `id`, `groups`, `du`, `audit` are not.
+- `rootfiles user`: `add`, `list [--system] [--names]`, `backup [--file FILE]`, `restore [FILE]`, `rehome USER [--remove-old]`, `id`, `groups`, `group-add`, `group-del`, `passwd [USER...|--all|--file] [--password|--suffix] [--expire]`, `del [--archive|--remove-home]`, `lock`, `unlock`, `expire`, `key list|add|rm`, `du`, `audit`, `quota set|rm|show`. Mutating subcommands are listed in `mutatingCommands` (`internal/cli/runtime.go`); `backup`, `list`, `id`, `groups`, `du`, `audit` are not.
 - `lock` runs `usermod -L -e 1` so SSH key logins stop too; `unlock` reverses it.
 - `user audit` compares `users.json` with `/etc/passwd`: missing accounts (restore candidates), uid drift, home drift, and untracked accounts under `home_base`.
 - Quota (`SetQuota`): xfs uses project quota keyed by uid on the home directory (requires `prjquota`), ext4/ext3 uses user quota (requires `usrquota`); other filesystems and missing mount options are errors naming the fix. rootfiles never changes mount options. Size `0` removes the limit; the size is recorded in `UserMeta.Quota`.
@@ -71,5 +72,4 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 ## Open issues
 
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): `user passwd --password` lands in the audit log and backup note.
-- [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `user backup -o` is a file, `user add --pubkey` duplicates `--ssh-pubkey`, `--suffix` deprecation, `rehome [USERNAME]` help.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated `generatePassword` and home-base defaulting, direct stdout prints in `users.go`, `lifecycle.go`, `quota.go`.

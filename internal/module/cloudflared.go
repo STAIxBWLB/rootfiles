@@ -337,46 +337,6 @@ func (m *CloudflaredModule) setupVLAN(ctx context.Context, rc *RunContext) ([]st
 	return warnings, nil
 }
 
-// TunnelSetup configures VLAN, installs cloudflared and the tunnel service.
-// Called from CLI `rootfiles tunnel setup`.
-func TunnelSetup(ctx context.Context, rc *RunContext, token, vlanAddr string) error {
-	m := NewCloudflaredModule()
-	var warnings []string
-
-	// VLAN first: it does not depend on the binary.
-	if vlanAddr != "" {
-		fmt.Println("Configuring VLAN private network...")
-		rc.Config.Modules.Cloudflared.PrivateNetwork.Address = vlanAddr
-		w, err := m.setupVLAN(ctx, rc)
-		if err != nil {
-			return err
-		}
-		warnings = append(warnings, w...)
-	}
-
-	if !rc.Runner.FileExists(cloudflaredBinary) {
-		fmt.Println("Installing cloudflared...")
-		if err := m.installBinary(ctx, rc); err != nil {
-			return err
-		}
-	}
-
-	if token != "" {
-		fmt.Println("Setting up tunnel service...")
-		w, err := installTunnelService(ctx, rc, token)
-		if err != nil {
-			return err
-		}
-		warnings = append(warnings, w...)
-	}
-
-	for _, w := range warnings {
-		fmt.Println("  " + ui.MarkWarn + " " + w)
-	}
-	fmt.Println("Tunnel setup complete.")
-	return nil
-}
-
 // TunnelStatus shows cloudflared and VLAN status.
 func TunnelStatus(ctx context.Context, rc *RunContext) error {
 	ui.WriteSection(os.Stdout, "Tunnel")

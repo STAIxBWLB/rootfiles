@@ -27,12 +27,12 @@ What rootfiles remembers on a host and how an operator undoes it: the recorded a
 - The Runner calls `Preserve` before `WriteFile`, `Symlink`, `Remove` and the target of `Rename` (see [exec-packages](exec-packages.md)). A write that bypasses the Runner is not rolled back.
 - **Restore** (`RestoreBackup`): walks entries in reverse; restores files (mode, then best-effort owner) and symlinks; removes paths the run created; keeps any directory the run created, because it may hold data. `LoadBackup` rejects ids that are not a single path element. With `dryRun` it only lists actions.
 - **rollback** (`internal/cli/rollback.go`): without an id lists sessions (read-only, no root). With an id it previews, then calls `requireRootAndLock` itself (it is not in `mutatingCommands`), asks for confirmation (`--yes` skips), restores, removes the applied copy (`forgetRolledBackRun`, since the host no longer matches that config) and writes an audit record. Packages, users and services are not reverted, and affected services are not restarted.
-- **backup** (`internal/cli/backup.go`): builds its context with `buildRunContext`; writes `rootfiles-backup-<host>-<YYYYMMDD>` under `-o` (default `/raid/backup`) with system info, users DB, an `/etc` tarball, root crontab, `/root/.ssh` and `/usr/local/bin` tarballs, the Docker image list and a config snapshot (`config.SnapshotCurrent`, inline tunnel token cleared). The output path must pass `config.RootOnlyBase`; tarballs are created under `umask 077`; the directory is forced to 0700 and every artifact to 0600 after writing, also on a same-day re-run. Individual artifact failures are warnings, not errors.
+- **backup** (`internal/cli/backup.go`): builds its context with `buildRunContext`; writes `rootfiles-backup-<host>-<YYYYMMDD>` under `--dir` (default `<state dir>/system-backup`, with deprecated `-o/--output` aliases) with system info, users DB, an `/etc` tarball, root crontab, `/root/.ssh` and `/usr/local/bin` tarballs, the Docker image list and a config snapshot (`config.SnapshotCurrent`, inline tunnel token cleared). The output path must pass `config.RootOnlyBase`; tarballs are created under `umask 077`; the directory is forced to 0700 and every artifact to 0600 after writing, also on a same-day re-run. Individual artifact failures are warnings, not errors.
 
 ## Behaviour
 
 - `rootfiles rollback [BACKUP_ID] [--dry-run] [--yes]`.
-- `rootfiles backup [-o DIR] [--skip-docker] [--skip-etc] [--dry-run]`: all writes go through the Runner, so a dry run writes nothing. Restore is manual: `rootfiles apply --config <dir>/config-snapshot.yaml`, plus `rootfiles user restore` for accounts.
+- `rootfiles backup [--dir DIR] [--skip-docker] [--skip-etc] [--dry-run]`: all writes go through the Runner, so a dry run writes nothing. Restore is manual: `rootfiles apply --config <dir>/config-snapshot.yaml`, plus `rootfiles user restore` for accounts.
 
 ## Distro support
 
@@ -42,7 +42,7 @@ What rootfiles remembers on a host and how an operator undoes it: the recorded a
 
 - Backups and the archive hold private keys and `/etc`: keep them root-only (0700 directories, 0600 files) and refuse output directories another user could control.
 - Rollback never removes directories and never recurses.
-- `backup` is not in `mutatingCommands` today: it takes no lock, writes no audit record and gets no rollback session (see #91). `rootfiles rollback` prints each session's note, which is the raw command line and may contain secrets (see #88).
+- `backup` is a mutating command with the native preflight, lock/audit and backup session. Session notes redact secret inputs before rollback lists them.
 
 ## Tests that pin it
 
@@ -56,5 +56,4 @@ What rootfiles remembers on a host and how an operator undoes it: the recorded a
 
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): redact secrets from the backup-session note that `rollback` prints.
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `backup` becomes a mutating command (lock and audit); `rollback` honours `ROOTFILES_YES`.
-- [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `backup --dir` replaces `-o` (deprecated alias), default derived from the state or home base instead of `/raid/backup`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): backup prints through `internal/ui` and `cmd.OutOrStdout()`; `shellQuoteCLI` merged with `shellQuote`.

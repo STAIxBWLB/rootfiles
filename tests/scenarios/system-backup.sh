@@ -14,7 +14,7 @@ rootfiles user add testuser --profile dgx --yes --home-base /raid/home 2>&1 || t
 
 # Step 1: Run backup
 echo "--- Step 1: Run backup ---"
-rootfiles backup --output /raid/backup --profile dgx --yes 2>&1
+rootfiles backup --dir /raid/backup --profile dgx --yes 2>&1
 
 # Find the backup dir
 BACKUP_DIR=$(ls -d /raid/backup/rootfiles-backup-* | head -1)
@@ -46,7 +46,7 @@ assert_exit_code "apply from snapshot" rootfiles apply --config "$BACKUP_DIR/con
 # Step 4: Test --skip-docker and --skip-etc flags
 echo "--- Step 4: Test skip flags ---"
 rm -rf /raid/backup/rootfiles-backup-*
-rootfiles backup --output /raid/backup --skip-docker --skip-etc --profile dgx --yes 2>&1
+rootfiles backup --dir /raid/backup --skip-docker --skip-etc --profile dgx --yes 2>&1
 
 BACKUP_DIR2=$(ls -d /raid/backup/rootfiles-backup-* | head -1)
 assert_file_exists "$BACKUP_DIR2/system-info.json"

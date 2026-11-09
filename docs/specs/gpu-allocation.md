@@ -65,5 +65,4 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `gpu assign`/`revoke` skip capability validation and always build an APT backend.
-- [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `Example` on `gpu assign`; stale `gpu assign` hint in `status`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `systemdReload` shared helper, home-base defaulting, output through `ui`.

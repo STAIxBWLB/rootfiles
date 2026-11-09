@@ -180,13 +180,13 @@ sudo rootfiles apply --profile dgx --dry-run
 From a backup snapshot:
 
 ```bash
-sudo rootfiles apply --config /raid/backup/rootfiles-backup-*/config-snapshot.yaml
+sudo rootfiles apply --config /var/lib/rootfiles/system-backup/rootfiles-backup-*/config-snapshot.yaml
 ```
 
-Unattended (CI/automation — skips all interactive prompts). `--user`/`--ssh-pubkey` declare an account that is created before SSH is hardened, and `--tunnel-token` installs the tunnel service:
+Unattended (CI/automation — skips all interactive prompts). `--user`/`--ssh-pubkey` declare an account that is created before SSH is hardened, and `--tunnel-token` installs the tunnel service. This example uses a site config with `modules.cloudflared.private_network.enabled: true`; the address flag supplies its CIDR:
 
 ```bash
-sudo rootfiles apply --profile dgx --yes --home-base /raid/home --tunnel-token "$CF_TUNNEL_TOKEN" --vlan-address "172.16.229.32/32" --user yjlee --ssh-pubkey "ssh-ed25519 AAAA..."
+sudo rootfiles apply --config /etc/rootfiles/dgx-site.yaml --yes --home-base /raid/home --tunnel-token "$CF_TUNNEL_TOKEN" --vlan-address "203.0.113.10/32" --user alice --ssh-pubkey "ssh-ed25519 AAAA..."
 ```
 
 ### Check system state
@@ -196,7 +196,7 @@ sudo rootfiles check --profile dgx
 ```
 
 ```bash
-sudo rootfiles check --config /raid/backup/rootfiles-backup-*/config-snapshot.yaml
+sudo rootfiles check --config /var/lib/rootfiles/system-backup/rootfiles-backup-*/config-snapshot.yaml
 ```
 
 `check` exits **0** when everything is satisfied, **2** when changes are pending and **1** on errors. Machine-readable output:
@@ -300,14 +300,14 @@ Audit command arguments and backup-session notes redact `--tunnel-token`, `--pas
 
 ### System backup (for OS upgrade)
 
-Captures system info, users, config files, Docker images, and a rootfiles-compatible config snapshot.
+Captures system info, users, config files, Docker images, and a rootfiles-compatible config snapshot. The default destination is `<state dir>/system-backup` (`/var/lib/rootfiles/system-backup` normally); use `--dir` for another disk.
 
 ```bash
 sudo rootfiles backup
 ```
 
 ```bash
-sudo rootfiles backup -o /raid/backup
+sudo rootfiles backup --dir /raid/backup
 ```
 
 ```bash
@@ -341,11 +341,11 @@ sudo rootfiles user restore
 Restore from snapshot:
 
 ```bash
-sudo rootfiles apply --config /raid/backup/rootfiles-backup-*/config-snapshot.yaml --dry-run
+sudo rootfiles apply --config /var/lib/rootfiles/system-backup/rootfiles-backup-*/config-snapshot.yaml --dry-run
 ```
 
 ```bash
-sudo rootfiles apply --config /raid/backup/rootfiles-backup-*/config-snapshot.yaml --yes
+sudo rootfiles apply --config /var/lib/rootfiles/system-backup/rootfiles-backup-*/config-snapshot.yaml --yes
 ```
 
 ### User management
@@ -355,7 +355,7 @@ Users are created at a custom home base (e.g., `/raid/home/`) that survives OS r
 When `users.home_base` is unset (the built-in profiles except `dgx` leave it unset), it is detected on the host: an uncommented `HOME=` in `/etc/default/useradd` is kept (stock Ubuntu and DGX OS leave it commented out), a base where rootfiles already manages users (`.rootfiles` under `/home`, `/raid/home`, `/data/home` or `/nvme/home`) is kept, and otherwise, on Ubuntu and DGX OS, the first separate read-write local data drive mounted at `/raid`, `/data` or `/nvme` (ext4, xfs, btrfs or zfs) gets `<mount>/home`. A mount on the same device as `/` (such as a bind mount of the root filesystem), a btrfs subvolume of the root filesystem, a ZFS dataset in the root pool, or a read-only mount is not a data drive; when `<mount>/home` is itself a mount, it decides. Rocky keeps `/home` because rootfiles does not label homes outside `/home` for SELinux. `/mnt` and network filesystems are never chosen, nor is a base where `/` or any existing directory down to it is a symlink, not owned by root, or writable by group or others (a world-writable scratch mount keeps `/home`). With no data drive the home base is `/home`. The users module writes the applied home base, `/home` included, as `HOME=` in `/etc/default/useradd`, so a later run keeps it. If another of those bases already holds `.rootfiles/users.json` or `gpu-allocations.json` (for example `user` or `gpu` commands run without `--profile` on a `dgx` host), detection stops with an error naming the file instead of guessing; set `home_base`, `ROOTFILES_HOME_BASE` or `--home-base` to choose. A fleet rollout is not blocked by it, because its site config sets `home_base`. Only new users are affected; existing homes are not moved (`rootfiles user rehome` does that). Fleet site configs must set `home_base` explicitly. Any home base other than `/home`, whether set explicitly or kept from `HOME=` in `/etc/default/useradd`, must be controlled by root alone (a symlinked `/home` is followed once when its target passes the same rule): the users and storage modules, `user add` and `user rehome` refuse it when `/` or any existing directory down to the base is a symlink, not owned by root, or writable by group or others, and change nothing until the operator fixes it. `user restore` applies the rule to each restored home's parent directory, skipping and reporting a user whose parent fails it, and without a file it refuses to read the users database from such a base. The same rule, plus a `<home_base>/.rootfiles` whose every entry is a root-owned regular file or directory that group and others cannot write (no symlinks), guards the user and GPU databases: the users, storage and gpu modules, `user del`, `user key add`/`rm`, `user quota` and `gpu assign`/`revoke` refuse before any change, `backup` leaves the users database out with a warning, `status`, `user list`, `user audit`, `gpu list` and `gpu status` warn on stderr and still report, and no database write follows a symlink.
 
 ```bash
-sudo rootfiles user add yjlee --pubkey "ssh-ed25519 AAAA..."
+sudo rootfiles user add alice --ssh-pubkey "ssh-ed25519 AAAA..."
 ```
 
 ```bash
@@ -406,14 +406,14 @@ sudo rootfiles user group-add yjlee --groups dev,ops
 sudo rootfiles user group-del yjlee --docker
 ```
 
-Set passwords in batch. By default a random password is generated per user and printed once; `--suffix` keeps the legacy `username + suffix` scheme and `--expire` forces a change at next login. Passwords are passed to `chpasswd` on stdin, never on a command line:
+Set passwords in batch. By default a random password is generated per user and printed once; `--suffix` is deprecated and will be removed in the next minor release. Use `--password` or `--file` instead; `--expire` forces a change at next login. Passwords are passed to `chpasswd` on stdin, never on a command line:
 
 ```bash
 sudo rootfiles user passwd alice bob --expire
 ```
 
 ```bash
-sudo rootfiles user passwd alice bob --suffix '!@'
+sudo rootfiles user passwd --file passwords.csv --expire
 ```
 
 ```bash
@@ -429,7 +429,7 @@ sudo rootfiles user passwd alice bob --password 'shared-pass'
 ```
 
 ```bash
-sudo rootfiles user backup
+sudo rootfiles user backup --file users-backup.json
 ```
 
 ```bash
@@ -518,7 +518,7 @@ sudo rootfiles tenant status
 ### Cloudflare tunnel + VLAN
 
 ```bash
-sudo rootfiles tunnel setup "$TOKEN" --vlan-address "172.16.229.32/32"
+sudo rootfiles tunnel setup "$TOKEN" --vlan-address "203.0.113.10/32"
 ```
 
 On a shared host, keep the token out of command lines and site configs: put it in a root-owned file with mode `0600` and point the site config at it. `check` and `apply` read the file on the server, refuse it when it is group/other readable or not owned by root, and `config show` prints only the path. `--tunnel-token` and `ROOTFILES_TUNNEL_TOKEN` still override the file; a config file may set `tunnel_token` or `tunnel_token_file`, not both.
