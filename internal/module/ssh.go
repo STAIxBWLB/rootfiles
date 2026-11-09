@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,11 +25,18 @@ var sshdPrivilegeSeparationDir = "/run/sshd"
 func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, error) {
 	var changes []Change
 	cfg := rc.Config.SSH
+	existing, readErr := rc.Runner.ReadFile(sshdDropInPath)
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("reading sshd drop-in %s: %w; repair its permissions before retrying", sshdDropInPath, readErr)
+	}
+
+	includeChanged := false
 	if config.IsRocky(rc.Config.System) {
-		_, _, _, includeChanged, err := rockySSHDMainState(rc)
+		_, _, _, changed, err := rockySSHDMainState(rc)
 		if err != nil {
 			return nil, err
 		}
+		includeChanged = changed
 		if includeChanged {
 			desc := "Enable Rocky sshd_config.d managed drop-ins"
 			if err := m.lockoutGuard(rc); err != nil {
@@ -35,13 +44,25 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 			}
 			changes = append(changes, Change{Description: desc, Command: "add Include " + sshdConfigDir + "/*.conf to " + sshdConfigPath})
 		}
+	}
+	activeDropIn := existing
+	if includeChanged {
+		activeDropIn = nil
+	}
+	portChanges, err := managedSSHPortChanges(ctx, rc, activeDropIn, cfg.Port)
+	if err != nil {
+		return nil, err
+	}
+	if config.IsRocky(rc.Config.System) {
 		if cfg.Port > 0 {
-			allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
-			if err != nil {
-				return blockedFirewallCheck(err), nil
-			}
-			if !allowed {
-				return blockedFirewallCheck(fmt.Errorf("firewall policy does not allow SSH port %d; add the port through the host firewall change process before changing sshd", cfg.Port)), nil
+			if portChanges {
+				allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
+				if err != nil {
+					return blockedFirewallCheck(err), nil
+				}
+				if !allowed {
+					return blockedFirewallCheck(fmt.Errorf("firewall policy does not allow SSH port %d; add the port through the host firewall change process before changing sshd", cfg.Port)), nil
+				}
 			}
 			labeled, err := rockySSHSELinuxPortLabeled(ctx, rc, cfg.Port)
 			if err != nil {
@@ -53,8 +74,7 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 		}
 	}
 
-	existing, _ := rc.Runner.ReadFile(sshdDropInPath)
-	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
+	if !config.IsRocky(rc.Config.System) && portChanges {
 		needsAllow, err := sshFirewallPlan(ctx, rc, cfg.Port)
 		if err != nil {
 			return blockedFirewallCheck(err), nil
@@ -85,6 +105,11 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 
 func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 	cfg := rc.Config.SSH
+	existing, readErr := rc.Runner.ReadFile(sshdDropInPath)
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		return nil, fmt.Errorf("reading sshd drop-in %s: %w; repair its permissions before retrying", sshdDropInPath, readErr)
+	}
+
 	needsUFWAllow := false
 
 	var originalMain, updatedMain []byte
@@ -96,7 +121,17 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		if err != nil {
 			return nil, err
 		}
-		if cfg.Port > 0 {
+	}
+	activeDropIn := existing
+	if mainIncludeChanged {
+		activeDropIn = nil
+	}
+	portChanges, err := managedSSHPortChanges(ctx, rc, activeDropIn, cfg.Port)
+	if err != nil {
+		return nil, err
+	}
+	if config.IsRocky(rc.Config.System) {
+		if portChanges {
 			allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
 			if err != nil {
 				return nil, err
@@ -108,11 +143,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	}
 	content := m.buildConfig(cfg)
 
-	existing, readErr := rc.Runner.ReadFile(sshdDropInPath)
-	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
-		return nil, fmt.Errorf("reading sshd drop-in %s: %w", sshdDropInPath, readErr)
-	}
-	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
+	if !config.IsRocky(rc.Config.System) && portChanges {
 		var err error
 		needsUFWAllow, err = sshFirewallPlan(ctx, rc, cfg.Port)
 		if err != nil {
@@ -392,17 +423,210 @@ func firstLine(s string) string {
 	return s
 }
 
-// managedSSHPortChanges compares an explicit requested port with the managed
-// drop-in, defaulting to SSH's port 22 when no Port directive exists.
-func managedSSHPortChanges(existing []byte, requested int) bool {
+// managedSSHPortChanges shares current-port discovery across Ubuntu and Rocky.
+// Callers pass only active managed bytes (nil when an Include is being added).
+// Otherwise inspect sshd without writes, then resolve the current config.
+func managedSSHPortChanges(ctx context.Context, rc *RunContext, activeDropIn []byte, requested int) (bool, error) {
 	if requested <= 0 {
-		return false
+		return false, nil
 	}
-	current := 22
-	if ports := parsePortDirectives(string(existing)); len(ports) > 0 {
-		current = ports[0]
+	if ports := parsePortDirectives(string(activeDropIn)); len(ports) > 0 {
+		return ports[0] != requested, nil
 	}
-	return current != requested
+	if bin := sshdBinary(rc); bin != "" {
+		result, err := rc.Runner.Query(ctx, bin, "-T", "-f", sshdConfigPath)
+		if err == nil && result != nil {
+			if ports := parsePortDirectives(result.Stdout); len(ports) > 0 {
+				return ports[0] != requested, nil
+			}
+		}
+	}
+	// A non-root probe cannot read host keys, and socket activation may leave
+	// /run/sshd absent. Resolve the config without creating that directory.
+	if _, err := os.Stat(sshdConfigPath); errors.Is(err, os.ErrNotExist) {
+		return requested != 22, nil
+	}
+	port, err := firstSSHConfigPort(rc, sshdConfigPath, filepath.Dir(sshdConfigPath), map[string]bool{})
+	if err != nil {
+		return false, err
+	}
+	if port == 0 {
+		port = 22
+	}
+	return port != requested, nil
+}
+
+// firstSSHConfigPort follows Include directives in-place. Relative patterns
+// are rooted at the SSH configuration directory, including nested Includes.
+func firstSSHConfigPort(rc *RunContext, name, base string, stack map[string]bool) (int, error) {
+	data, err := rc.Runner.ReadFile(name)
+	if err != nil {
+		return 0, fmt.Errorf("cannot read SSH configuration %s: %w; repair that Include path or its permissions before retrying", name, err)
+	}
+	key, err := filepath.EvalSymlinks(name)
+	if err != nil {
+		return 0, fmt.Errorf("cannot resolve SSH configuration %s: %w; repair that path before retrying", name, err)
+	}
+	if stack[key] || len(stack) >= 64 {
+		return 0, fmt.Errorf("recursive or excessive SSH Include nesting at %s; remove the Include cycle or reduce nesting before retrying", name)
+	}
+	stack[key] = true
+	defer delete(stack, key)
+	for i, line := range strings.Split(string(data), "\n") {
+		fields, err := sshConfigFields(line)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse SSH configuration %s:%d: %w; repair that directive before retrying", name, i+1, err)
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		switch strings.ToLower(fields[0]) {
+		case "port":
+			if len(fields) != 2 {
+				return 0, fmt.Errorf("invalid SSH Port directive at %s:%d; set one numeric port from 1 to 65535 before retrying", name, i+1)
+			}
+			port, err := strconv.Atoi(fields[1])
+			if err != nil || port < 1 || port > 65535 {
+				return 0, fmt.Errorf("invalid SSH Port directive at %s:%d; set one numeric port from 1 to 65535 before retrying", name, i+1)
+			}
+			return port, nil
+		case "include":
+			if len(fields) < 2 {
+				return 0, fmt.Errorf("SSH Include at %s:%d has no path; supply an Include path before retrying", name, i+1)
+			}
+			for _, pattern := range fields[1:] {
+				if !filepath.IsAbs(pattern) {
+					pattern = filepath.Join(base, pattern)
+				}
+				matches, err := expandSSHInclude(pattern)
+				if err != nil {
+					return 0, err
+				}
+				for _, match := range matches {
+					port, err := firstSSHConfigPort(rc, match, base, stack)
+					if err != nil || port != 0 {
+						return port, err
+					}
+				}
+			}
+		}
+	}
+	return 0, nil
+}
+
+// Unlike filepath.Glob, expansion must surface unreadable directories rather
+// than silently treating their contents as absent and guessing the default.
+func expandSSHInclude(pattern string) ([]string, error) {
+	absolute, err := filepath.Abs(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve SSH Include %s: %w; repair that path before retrying", pattern, err)
+	}
+	pattern = absolute
+	parts := strings.Split(strings.TrimPrefix(filepath.Clean(pattern), string(os.PathSeparator)), string(os.PathSeparator))
+	for _, part := range parts {
+		if _, err := filepath.Match(part, ""); err != nil {
+			return nil, fmt.Errorf("cannot expand SSH Include %s: %w; repair that glob before retrying", pattern, err)
+		}
+	}
+	matches := []string{string(os.PathSeparator)}
+	for i, part := range parts {
+		var next []string
+		for _, dir := range matches {
+			if !strings.ContainsAny(part, "*?[") {
+				next = append(next, filepath.Join(dir, part))
+				continue
+			}
+			entries, err := os.ReadDir(dir)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return nil, fmt.Errorf("cannot expand SSH Include %s in %s: %w; repair that directory's permissions before retrying", pattern, dir, err)
+			}
+			for _, entry := range entries {
+				if strings.HasPrefix(entry.Name(), ".") && !strings.HasPrefix(part, ".") {
+					continue
+				}
+				matched, _ := filepath.Match(part, entry.Name())
+				if !matched {
+					continue
+				}
+				candidate := filepath.Join(dir, entry.Name())
+				if i < len(parts)-1 {
+					info, err := os.Stat(candidate)
+					if err != nil {
+						return nil, fmt.Errorf("cannot expand SSH Include through %s: %w; repair that path before retrying", candidate, err)
+					}
+					if !info.IsDir() {
+						continue
+					}
+				}
+				next = append(next, candidate)
+			}
+		}
+		matches = next
+	}
+	sort.Strings(matches)
+	return matches, nil
+}
+
+func sshConfigFields(line string) ([]string, error) {
+	var fields []string
+	var word strings.Builder
+	var quote rune
+	escaped, started := false, false
+	flush := func() {
+		if started {
+			fields = append(fields, word.String())
+			word.Reset()
+			started = false
+		}
+	}
+	for _, char := range line {
+		if escaped {
+			if strings.ContainsRune("*?[", char) {
+				word.WriteRune('\\')
+			}
+			word.WriteRune(char)
+			escaped = false
+			continue
+		}
+		if char == '\\' {
+			escaped, started = true, true
+			continue
+		}
+		if quote != 0 {
+			if char == quote {
+				quote = 0
+			} else {
+				word.WriteRune(char)
+			}
+			continue
+		}
+		switch char {
+		case '=':
+			if len(fields) == 0 || len(fields) == 1 && !started {
+				flush()
+			} else {
+				word.WriteRune(char)
+			}
+		case '#':
+			flush()
+			return fields, nil
+		case '\'', '"':
+			quote, started = char, true
+		case ' ', '\t':
+			flush()
+		default:
+			word.WriteRune(char)
+			started = true
+		}
+	}
+	if escaped || quote != 0 {
+		return nil, fmt.Errorf("unterminated quote or escape")
+	}
+	flush()
+	return fields, nil
 }
 
 // portLine returns the "Port N" directive of a drop-in, or "" if none.

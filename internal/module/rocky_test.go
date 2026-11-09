@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -654,5 +655,330 @@ func TestRockyProfileAvoidsUbuntuAndUnsupportedModules(t *testing.T) {
 		if !strings.Contains(text, required) {
 			t.Errorf("Rocky profile is missing %q", required)
 		}
+	}
+}
+
+func TestRockySSHFirewallGuardOnlyOnPortChange(t *testing.T) {
+	for _, backend := range []string{"ufw", "firewalld"} {
+		for _, tc := range []struct {
+			name                  string
+			current, target       int
+			blocked, missingLabel bool
+		}{
+			{"same default", 22, 22, false, false},
+			{"same custom", 2222, 2222, false, false},
+			{"same custom missing label", 2222, 2222, false, true},
+			{"changed", 22, 2222, true, false},
+		} {
+			t.Run(backend+"/"+tc.name, func(t *testing.T) {
+				dir := rockySSHTestPaths(t)
+				calls := filepath.Join(dir, "calls")
+				write := func(name, body string) {
+					t.Helper()
+					script := "#!/bin/sh\nprintf '%s\\n' '" + name + " '\"$*\" >> '" + calls + "'\n" + body + "\n"
+					if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if backend == "ufw" {
+					write("ufw", "printf 'Status: active\\n22/tcp ALLOW IN 192.0.2.0/24\\n2222/tcp ALLOW IN 192.0.2.0/24\\n'")
+				} else {
+					write("firewall-cmd", `case "$1" in
+--state) echo running ;;
+--get-active-zones) echo public ;;
+--zone) echo 'rule family=ipv4 source address=192.0.2.0/24 accept' ;;
+*) exit 1 ;;
+esac`)
+				}
+				labels := "22, 2222"
+				if tc.missingLabel {
+					labels = "22"
+				}
+				write("semanage", "if [ \"$1:$2\" = 'port:-l' ]; then printf 'ssh_port_t tcp "+labels+"\\n'; fi")
+				t.Setenv("PATH", dir)
+				if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
+					t.Fatal(err)
+				}
+				main := []byte("Include " + sshdConfigDir + "/*.conf\nPort 22\n")
+				if err := os.WriteFile(sshdConfigPath, main, 0644); err != nil {
+					t.Fatal(err)
+				}
+				module := NewSSHModule()
+				before := []byte(module.buildConfig(config.SSHConfig{Port: tc.current}))
+				if err := os.WriteFile(sshdDropInPath, before, 0644); err != nil {
+					t.Fatal(err)
+				}
+				rc := newRealRC(t)
+				rc.Config.System = &config.SystemInfo{OS: "rocky", Version: "9.4"}
+				rc.Config.SSH = config.SSHConfig{Port: tc.target}
+				check, err := module.Check(context.Background(), rc)
+				if tc.blocked {
+					requireBlockedFirewallCheck(t, check, err)
+				} else if err != nil || check.Satisfied == tc.missingLabel {
+					t.Fatalf("unchanged port check: %+v, %v", check, err)
+				}
+				result, err := module.Apply(context.Background(), rc)
+				if tc.blocked {
+					if err == nil {
+						t.Fatal("changed port apply accepted restricted firewall")
+					}
+				} else if err != nil || result.Changed != tc.missingLabel {
+					t.Fatalf("unchanged port apply: %+v, %v", result, err)
+				}
+				for file, want := range map[string][]byte{sshdConfigPath: main, sshdDropInPath: before} {
+					got, err := os.ReadFile(file)
+					if err != nil || string(got) != string(want) {
+						t.Fatalf("modified %s: %q, %v", file, got, err)
+					}
+				}
+				data, _ := os.ReadFile(calls)
+				if !tc.blocked && (strings.Contains(string(data), "ufw ") || strings.Contains(string(data), "firewall-cmd ")) {
+					t.Fatalf("unchanged port queried firewall: %s", data)
+				}
+				if tc.missingLabel && !strings.Contains(string(data), "semanage port -a -t ssh_port_t -p tcp 2222") {
+					t.Fatalf("unchanged custom port lost SELinux labeling: %s", data)
+				}
+			})
+		}
+	}
+}
+
+func TestSSHPortChangeUsesMainOrEffectivePort(t *testing.T) {
+	for _, distro := range []string{"ubuntu", "rocky"} {
+		for _, effective := range []bool{false, true} {
+			name := distro + "/main"
+			if effective {
+				name = distro + "/effective"
+			}
+			t.Run(name, func(t *testing.T) {
+				dir := rockySSHTestPaths(t)
+				calls := filepath.Join(dir, "calls")
+				main := "Include " + sshdConfigDir + "/*.conf\nPort 2222\n"
+				sshdBody := "exit 1"
+				if effective {
+					main = "Include " + sshdConfigDir + "/*.conf\n"
+					sshdBody = "printf 'port 2222\\n'"
+				}
+				if err := os.WriteFile(sshdConfigPath, []byte(main), 0644); err != nil {
+					t.Fatal(err)
+				}
+				for name, body := range map[string]string{"sshd": sshdBody, "ufw": "printf 'unavailable\\n'\nexit 1"} {
+					script := "#!/bin/sh\nprintf '%s\\n' '" + name + " '\"$*\" >> '" + calls + "'\n" + body + "\n"
+					if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0755); err != nil {
+						t.Fatal(err)
+					}
+				}
+				t.Setenv("PATH", dir)
+				rc := newRealRC(t)
+				rc.Config.System = &config.SystemInfo{OS: distro, Version: "9.4"}
+				rc.Config.SSH = config.SSHConfig{Port: 22}
+				module := NewSSHModule()
+				check, err := module.Check(context.Background(), rc)
+				requireBlockedFirewallCheck(t, check, err)
+				if !strings.Contains(check.Changes[0].Description, "UFW") {
+					t.Fatalf("missing UFW blocker: %+v", check)
+				}
+				if _, err := module.Apply(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "UFW") {
+					t.Fatalf("main/effective 2222 ->22 Apply skipped firewall: %v", err)
+				}
+				if after, err := os.ReadFile(sshdConfigPath); err != nil || string(after) != main {
+					t.Fatalf("main changed before firewall proof: %q %v", after, err)
+				}
+				if _, err := os.Stat(sshdDropInPath); !os.IsNotExist(err) {
+					t.Fatalf("drop-in written before firewall proof: %v", err)
+				}
+				if _, err := os.Stat(sshdPrivilegeSeparationDir); !os.IsNotExist(err) {
+					t.Fatalf("read-only probe created privilege-separation directory: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestSSHPortChangeStockIncludesUsesDefaultAfterProbeFailure(t *testing.T) {
+	dir := rockySSHTestPaths(t)
+	t.Setenv("PATH", dir)
+	if err := os.WriteFile(filepath.Join(dir, "sshd"), []byte("#!/bin/sh\necho 'host keys unreadable; missing /run/sshd' >&2\nexit 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sshdConfigPath, []byte("Include sshd_config.d/*.conf\n#Port 22\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), nil, 22)
+	if err != nil || changed {
+		t.Fatalf("stock default must remain22: changed=%v err=%v", changed, err)
+	}
+	if _, err := os.Stat(sshdPrivilegeSeparationDir); !os.IsNotExist(err) {
+		t.Fatalf("probe created privsep directory: %v", err)
+	}
+}
+
+func TestSSHIncludeFallbackOrderAndPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name, main string
+		files      map[string]string
+		port       int
+	}{
+		{"glob order", "Include sshd_config.d/*.conf\nPort 22\n", map[string]string{"sshd_config.d/20-later.conf": "Port 2222\n", "sshd_config.d/10-first.conf": "Port 2200\n"}, 2200},
+		{"pattern order", "Include second.conf first.conf\n", map[string]string{"first.conf": "Port 2200\n", "second.conf": "Port 2300\n"}, 2300},
+		{"nested root relative", "Include sshd_config.d/first.conf\n", map[string]string{"sshd_config.d/first.conf": "Include nested/*.conf\n", "nested/first.conf": "Port 2400\n", "sshd_config.d/nested/first.conf": "Port 22\n"}, 2400},
+		{"quoted path", "Include \"space dir/*.conf\"\n", map[string]string{"space dir/first.conf": "Port 2500 # inline comment\n"}, 2500},
+		{"assignment", "Include=first.conf\n", map[string]string{"first.conf": "Port=2600\n"}, 2600},
+		{"hidden file", "Include sshd_config.d/*.conf\n", map[string]string{"sshd_config.d/.hidden.conf": "Port 22\n", "sshd_config.d/first.conf": "Port 2700\n"}, 2700},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := rockySSHTestPaths(t)
+			t.Setenv("PATH", dir)
+			if err := os.WriteFile(filepath.Join(dir, "sshd"), []byte("#!/bin/sh\nexit 1\n"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(sshdConfigPath, []byte(tc.main), 0644); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range tc.files {
+				file := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(file, []byte(body), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for requested, wantChange := range map[int]bool{tc.port: false, 22: true} {
+				got, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), nil, requested)
+				if err != nil || got != wantChange {
+					t.Fatalf("port=%d changes=%v want=%v err=%v", requested, got, wantChange, err)
+				}
+			}
+			if _, err := os.Stat(sshdPrivilegeSeparationDir); !os.IsNotExist(err) {
+				t.Fatalf("fallback created privsep directory: %v", err)
+			}
+		})
+	}
+}
+
+func TestSSHIncludeFallbackReportsPathFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name, main, expected string
+		files                map[string]string
+		directory            string
+	}{
+		{"bad glob", "Include sshd_config.d/[bad\n", "[bad", nil, ""},
+		{"unreadable included path", "Include included.conf\n", "included.conf", nil, "included.conf"},
+		{"cycle", "Include included.conf\n", "Include cycle", map[string]string{"included.conf": "Include sshd_config\n"}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := rockySSHTestPaths(t)
+			t.Setenv("PATH", dir)
+			if err := os.WriteFile(sshdConfigPath, []byte(tc.main), 0644); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range tc.files {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.directory != "" {
+				if err := os.MkdirAll(filepath.Join(dir, tc.directory), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), nil, 22)
+			if err == nil || !strings.Contains(err.Error(), tc.expected) || !strings.Contains(err.Error(), "before retrying") {
+				t.Fatalf("missing path/cause/fix: %v", err)
+			}
+		})
+	}
+}
+
+func TestRockySSHInactiveDropInChecksFirewallBeforeInclude(t *testing.T) {
+	for _, tc := range []struct {
+		name           string
+		current        int
+		probe, blocked bool
+	}{
+		{"effective current22", 22, true, true},
+		{"fallback current22", 22, false, true},
+		{"main already on target", 2222, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := rockySSHTestPaths(t)
+			calls := filepath.Join(dir, "calls")
+			if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
+				t.Fatal(err)
+			}
+			main := []byte(fmt.Sprintf("# managed Include is absent\nPort %d\n", tc.current))
+			module := NewSSHModule()
+			drop := []byte(module.buildConfig(config.SSHConfig{Port: 2222}))
+			if err := os.WriteFile(sshdConfigPath, main, 0640); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(sshdDropInPath, drop, 0644); err != nil {
+				t.Fatal(err)
+			}
+			sshdBody := fmt.Sprintf("if [ \"$1\" = '-T' ]; then printf 'port %d\\n'; fi", tc.current)
+			if !tc.probe {
+				sshdBody = "if [ \"$1\" = '-T' ]; then exit 1; fi"
+			}
+			scripts := map[string]string{
+				"sshd":      sshdBody,
+				"ufw":       "printf 'Status: active\\n22/tcp ALLOW IN Anywhere\\n22/tcp (v6) ALLOW IN Anywhere (v6)\\n2222/tcp ALLOW IN 192.0.2.0/24\\n'",
+				"semanage":  "printf 'ssh_port_t tcp 22, 2222\\n'",
+				"systemctl": "if [ \"$1\" = 'is-active' ]; then echo inactive; fi",
+			}
+			for name, body := range scripts {
+				script := "#!/bin/sh\nprintf '%s\\n' '" + name + " '\"$*\" >> '" + calls + "'\n" + body + "\n"
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("PATH", dir)
+			rc := newRealRC(t)
+			rc.Runner.Backup = exec.NewBackup(filepath.Join(dir, "backups"), "inactive drop-in fixture")
+			rc.Config.System = &config.SystemInfo{OS: "rocky", Version: "9.4"}
+			rc.Config.SSH = config.SSHConfig{Port: 2222}
+			rc.Force = true
+			check, err := module.Check(context.Background(), rc)
+			if tc.blocked {
+				requireBlockedFirewallCheck(t, check, err)
+				if !strings.Contains(check.Changes[0].Description, "does not allow SSH port 2222") {
+					t.Fatalf("missing inactive-port blocker: %+v", check)
+				}
+			} else if err != nil || check.Satisfied {
+				t.Fatalf("Include-only change should be pending: %+v, %v", check, err)
+			}
+			result, err := module.Apply(context.Background(), rc)
+			if tc.blocked {
+				if err == nil || !strings.Contains(err.Error(), "does not allow SSH port 2222") {
+					t.Fatalf("inactive port escaped Apply firewall verification: %+v, %v", result, err)
+				}
+				if rc.Runner.Backup.Used() {
+					t.Fatal("firewall refusal happened after a backed-up write")
+				}
+				if after, err := os.ReadFile(sshdConfigPath); err != nil || string(after) != string(main) {
+					t.Fatalf("main changed before firewall proof: %q, %v", after, err)
+				}
+			} else {
+				if err != nil || !result.Changed {
+					t.Fatalf("same effective port Include repair: %+v, %v", result, err)
+				}
+				if after, err := os.ReadFile(sshdConfigPath); err != nil || !strings.Contains(string(after), "Include "+sshdConfigDir+"/*.conf") {
+					t.Fatalf("Include not repaired: %q, %v", after, err)
+				}
+			}
+			if after, err := os.ReadFile(sshdDropInPath); err != nil || string(after) != string(drop) {
+				t.Fatalf("drop-in changed: %q, %v", after, err)
+			}
+			data, _ := os.ReadFile(calls)
+			if tc.blocked && (strings.Contains(string(data), "semanage ") || strings.Contains(string(data), "sshd -t") || strings.Contains(string(data), "systemctl ")) {
+				t.Fatalf("host mutation/validation ran before firewall proof: %s", data)
+			}
+			if !tc.blocked && strings.Contains(string(data), "ufw ") {
+				t.Fatalf("same effective port queried firewall: %s", data)
+			}
+		})
 	}
 }

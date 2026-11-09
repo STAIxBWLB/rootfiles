@@ -77,13 +77,16 @@ func globFiles(dir, pattern string) []string {
 	return m
 }
 
+// sshdSystemBinary is overridable so tests never fall back to the host daemon.
+var sshdSystemBinary = "/usr/sbin/sshd"
+
 // sshdBinary locates sshd, which lives in /usr/sbin and may be off PATH.
 func sshdBinary(rc *RunContext) string {
 	if rc.Runner.CommandExists("sshd") {
 		return "sshd"
 	}
-	if rc.Runner.FileExists("/usr/sbin/sshd") {
-		return "/usr/sbin/sshd"
+	if sshdSystemBinary != "" && rc.Runner.FileExists(sshdSystemBinary) {
+		return sshdSystemBinary
 	}
 	return ""
 }

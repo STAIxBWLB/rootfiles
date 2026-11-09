@@ -60,14 +60,30 @@ func TestSSHModule_BuildConfig(t *testing.T) {
 }
 
 func TestSSHModule_ApplyDryRun(t *testing.T) {
+	rockySSHTestPaths(t)
+	if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sshdConfigPath, []byte("Include sshd_config.d/*.conf\n#Port 22\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	log := fakeBin(t, "sshd", "systemctl")
+	t.Setenv("PATH", filepath.Dir(log))
+	if err := os.WriteFile(filepath.Join(filepath.Dir(log), "sshd"), []byte("#!/bin/sh\necho 'host keys unreadable; /run/sshd unavailable' >&2\nexit 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	fakePasswd(t, "alice")
 	rc := newDryRunRC(t)
 	rc.Config.SSH = config.SSHConfig{DisableRootLogin: true, Port: 22}
+	if _, err := NewSSHModule().Check(context.Background(), rc); err != nil {
+		t.Fatalf("non-root Check fallback: %v", err)
+	}
 	result, err := NewSSHModule().Apply(context.Background(), rc)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
 	if !result.Changed {
-		t.Error("Apply should always mark Changed=true (config is rewritten)")
+		t.Error("Apply should plan the missing managed configuration")
 	}
 }
 

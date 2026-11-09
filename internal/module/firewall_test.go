@@ -60,6 +60,12 @@ Nginx Full ALLOW IN 192.0.2.20
 func fakeFirewallStatus(t *testing.T, output string, fail bool) string {
 	t.Helper()
 	dir := t.TempDir()
+	oldMain := sshdConfigPath
+	sshdConfigPath = filepath.Join(dir, "sshd_config")
+	if err := os.WriteFile(sshdConfigPath, []byte("# default port fixture\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { sshdConfigPath = oldMain })
 	calls := filepath.Join(dir, "calls")
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + calls + "'\nprintf '%s\\n' '" + output + "'\n"
 	if fail {
@@ -205,6 +211,14 @@ func TestRockyFirewallRetainsOutboundDenyGuard(t *testing.T) {
 }
 
 func TestManagedSSHPortChanges(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	oldMain := sshdConfigPath
+	sshdConfigPath = filepath.Join(dir, "sshd_config")
+	if err := os.WriteFile(sshdConfigPath, []byte("# default port fixture\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { sshdConfigPath = oldMain })
 	for _, tc := range []struct {
 		existing  string
 		requested int
@@ -214,7 +228,7 @@ func TestManagedSSHPortChanges(t *testing.T) {
 		{"Port 2222\n", 2222, false}, {"Port 2222\n", 22, true},
 		{"# Port 9999\nport 2222\n", 2222, false}, {"Port 2222\n", 0, false},
 	} {
-		if got := managedSSHPortChanges([]byte(tc.existing), tc.requested); got != tc.changes {
+		if got, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), []byte(tc.existing), tc.requested); err != nil || got != tc.changes {
 			t.Fatalf("existing=%q requested=%d: changes=%v, want %v", tc.existing, tc.requested, got, tc.changes)
 		}
 	}
