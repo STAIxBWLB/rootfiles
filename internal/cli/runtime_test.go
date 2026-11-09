@@ -206,7 +206,7 @@ func TestRedactAuditAndBackupNotes(t *testing.T) {
 			if err := runner.Backup.Preserve(filepath.Join(dir, "managed-file")); err != nil {
 				t.Fatal(err)
 			}
-			manifest, err := state.LoadBackup(state.BackupsDir(), runner.Backup.ID)
+			manifest, err := exec.LoadBackup(state.BackupsDir(), runner.Backup.ID)
 			if err != nil {
 				t.Fatal(err)
 			}
