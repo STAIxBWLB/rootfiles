@@ -75,6 +75,7 @@ func TestScheduleEnableLegacyHeadersAvoidsAllServiceMutations(t *testing.T) {
 	})
 	stateDir := t.TempDir()
 	t.Setenv("ROOTFILES_STATE_DIR", stateDir)
+	t.Setenv("ROOTFILES_HOME_BASE", t.TempDir())
 	t.Setenv("ROOTFILES_LOCK_FILE", filepath.Join(stateDir, "lock"))
 	t.Setenv("ROOTFILES_LOG_FILE", filepath.Join(stateDir, "audit"))
 	if err := os.WriteFile(filepath.Join(stateDir, "check.json"), []byte("{}"), 0644); err != nil {
