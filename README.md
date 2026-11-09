@@ -183,10 +183,10 @@ From a backup snapshot:
 sudo rootfiles apply --config /var/lib/rootfiles/system-backup/rootfiles-backup-*/config-snapshot.yaml
 ```
 
-Unattended (CI/automation — skips all interactive prompts). `--user`/`--ssh-pubkey` declare an account that is created before SSH is hardened, and `--tunnel-token` installs the tunnel service:
+Unattended (CI/automation — skips all interactive prompts). `--user`/`--ssh-pubkey` declare an account that is created before SSH is hardened, and `--tunnel-token` installs the tunnel service. This example uses a site config with `modules.cloudflared.private_network.enabled: true`; the address flag supplies its CIDR:
 
 ```bash
-sudo rootfiles apply --profile dgx --yes --home-base /raid/home --tunnel-token "$CF_TUNNEL_TOKEN" --vlan-address "203.0.113.10/32" --user alice --ssh-pubkey "ssh-ed25519 AAAA..."
+sudo rootfiles apply --config /etc/rootfiles/dgx-site.yaml --yes --home-base /raid/home --tunnel-token "$CF_TUNNEL_TOKEN" --vlan-address "203.0.113.10/32" --user alice --ssh-pubkey "ssh-ed25519 AAAA..."
 ```
 
 ### Check system state

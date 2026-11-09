@@ -25,8 +25,9 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show full system status at a glance",
-		Long:  "Unified dashboard: system, profile, modules, GPU allocations, tunnel, users.",
-		RunE:  runStatus,
+		Long: "Read-only overview of the system, profile, modules, GPU allocations, tunnel and users.\n" +
+			"Exit code: 0 for the overview, including reported findings; invalid inputs return an error.",
+		RunE: runStatus,
 	}
 	cmd.Flags().StringSlice("module", nil, "Report specific modules only")
 	addOutputFlag(cmd)

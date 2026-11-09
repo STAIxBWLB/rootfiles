@@ -21,7 +21,7 @@ func newCheckCmd() *cobra.Command {
 		Short: "Check current system state against profile",
 		Long: "Check which modules are satisfied and which need changes.\n" +
 			"Exit code: 0 = all satisfied, 2 = pending changes, 1 = error. Without --profile/--config,\n" +
-			"the last applied profile (or the detected suggestion) is used.",
+			"the last applied target or a detected profile is resolved.",
 		Example: `  rootfiles check
   rootfiles check --profile dgx --module ssh,docker -o json`,
 		RunE: runCheck,

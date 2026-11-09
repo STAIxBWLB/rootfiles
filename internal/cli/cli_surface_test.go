@@ -92,3 +92,25 @@ func TestAuditedCommandsHaveExamples(t *testing.T) {
 		}
 	}
 }
+
+func TestReportHelpExplainsDifferentExitContracts(t *testing.T) {
+	root := NewRootCmd("test", "test")
+	for _, tc := range []struct {
+		name  string
+		words []string
+	}{
+		{"check", []string{"2 = pending changes", "1 = error"}},
+		{"status", []string{"Read-only overview", "Exit code: 0"}},
+		{"doctor", []string{"live system", "2 = at least one failure"}},
+	} {
+		cmd, _, err := root.Find([]string{tc.name})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, word := range tc.words {
+			if !strings.Contains(cmd.Long, word) {
+				t.Errorf("%s help misses %q", tc.name, word)
+			}
+		}
+	}
+}
