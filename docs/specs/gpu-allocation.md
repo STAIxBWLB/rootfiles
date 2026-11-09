@@ -65,4 +65,4 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `gpu assign`/`revoke` skip capability validation and always build an APT backend.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining home-base defaulting and output through `ui`; shared ordinary-file/systemd helpers are in place.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining output through `ui`; equivalent home-base defaults use `UsersConfig.Base()`, while unknown-base guards remain separate. Shared ordinary-file/systemd helpers are in place.

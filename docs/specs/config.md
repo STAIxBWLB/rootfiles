@@ -6,6 +6,7 @@ status: active
 parent: architecture
 paths:
   - internal/config/config.go
+  - internal/config/modules.go
   - internal/config/loader.go
   - internal/config/validate.go
   - internal/config/fingerprint.go
@@ -36,7 +37,8 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 - **Detection** (`internal/config/detector.go`): `DetectSystem` reads os-release, DGX markers, GPUs, memory and mounts. `SuggestProfile`: rocky, then dgx, then gpu-server (NVIDIA GPU), else minimal. Suggestion is used only by `apply` when no profile or config is given and by reports; root-mutating subcommands never take it (see [cli-runtime](cli-runtime.md)).
 - **Home-base detection** (`defaultHomeBase`, `detectHomeBase`) never silently re-homes a host: an uncommented `HOME=` in `/etc/default/useradd` wins, then an existing root-only `<base>/.rootfiles` under `/home`, `/raid/home`, `/data/home`, `/nvme/home`, then (APT hosts only) a separate, local, root-only data drive under `/raid`, `/data`, `/nvme`, else `/home`. If rootfiles metadata exists under another root-only base, loading fails with `ErrAmbiguousHomeBase` and asks for an explicit `users.home_base`.
 - **Root-only checks** (`RootOnlyBase`, `RootOnlyHomeBase`): every existing directory from the trust root down is a non-symlink directory owned by root and not group/other-writable. Used for home bases, the applied copy and backup directories.
-- `IsModuleEnabled` maps module names to their toggle (`gpu` is `modules.nvidia.gpu_allocation.enabled`). It is one of several module-name lists that must agree with `defaultOrder` (see #94).
+- `ModuleNames()` returns a fresh slice in the existing execution order. Its config-owned metadata also maps `IsModuleEnabled` toggles (`gpu` is `modules.nvidia.gpu_allocation.enabled`, independent of `nvidia.enabled`). The registry constructor set, distro support and config inspection agree with these names.
+- `UsersConfig.Base()` returns `/home` only for an empty home base and otherwise returns the configured value verbatim. Use it only where a default was already intended; empty-as-unknown detection, trust checks and refusals remain distinct. It does not mutate config or change its encoding/fingerprint.
 
 ## Behaviour
 
@@ -56,6 +58,8 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 
 ## Tests that pin it
 
+- `internal/config/modules_test.go`: exact module order, independent returned slices, every toggle (including GPU/NVIDIA independence), and the unchanged Rocky subset. `TestRegistryDefaultOrderSync` checks the constructor set against these names.
+
 - `internal/config/loader_test.go`: `TestResolveProfile_*`, `TestMergeTrees`, `TestLoad_CustomFileExtendsProfileAndDisables`, `TestLoad_CustomFileExtendsRelativeFile`, `TestLoad_ExtendsCycle`, `TestLoad_UnknownKeyRejected`, `TestValidate`, `TestAllProfilesValid`, `TestApplyEnvOverrides`, `TestIsModuleEnabled`, `TestLoad_TunnelTokenFile`, `TestDefaultHomeBase*`, `TestLoad_AmbiguousHomeBase`, `TestLoad_HomeBaseDetectionOnlyWhenUnset`, `TestLoadSite_RequiresExplicitHomeBase`, `TestLoad_DoctorDiskThresholds`.
 - `internal/config/fingerprint_test.go`: `TestFingerprintIgnoresRuntimeAndSecretButDetectsIntent`, `TestFingerprintStableAcrossReleases` (pins the digest of a config that sets no new keys), `TestLoadSiteIgnoresControllerEnvironmentAndResolvesFiles`.
 - `internal/config/docs_test.go`: `TestDocsConfigurationCoversEveryKey` (every YAML key path of `Config` appears in `docs/configuration.md`).
@@ -64,4 +68,4 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 
 ## Open issues
 
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `config.ModuleNames()` shared by `IsModuleEnabled`, distro and configcmd (which hard-codes 14 names); `UsersConfig.Base()`; one `maskSecret`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining CLI helper work: one `maskSecret`. Module-name metadata and home-base defaulting are shared.

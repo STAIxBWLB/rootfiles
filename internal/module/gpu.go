@@ -736,10 +736,7 @@ func applyAllocationMethods(ctx context.Context, rc *RunContext, username string
 }
 
 func gpuDBPath(rc *RunContext) string {
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	return filepath.Join(homeBase, ".rootfiles", "gpu-allocations.json")
 }
 
@@ -761,10 +758,7 @@ func loadGPUDB(rc *RunContext) (*GPUAllocationsDB, error) {
 
 func saveGPUDB(rc *RunContext, db *GPUAllocationsDB) error {
 	dbPath := gpuDBPath(rc)
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	if err := ensureMetaDir(rc.Runner, homeBase); err != nil {
 		return fmt.Errorf("ensuring metadata dir: %w", err)
 	}
@@ -795,10 +789,7 @@ func withGPUDBLock(rc *RunContext, fn func(*GPUAllocationsDB) error) error {
 		return saveGPUDB(rc, db)
 	}
 
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	if err := ensureMetaDir(rc.Runner, homeBase); err != nil {
 		return fmt.Errorf("ensuring metadata dir: %w", err)
 	}

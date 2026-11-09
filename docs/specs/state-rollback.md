@@ -56,4 +56,4 @@ What rootfiles remembers on a host and how an operator undoes it: the recorded a
 
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): redact secrets from the backup-session note that `rollback` prints.
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `backup` becomes a mutating command (lock and audit); `rollback` honours `ROOTFILES_YES`.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): backup prints through `internal/ui` and `cmd.OutOrStdout()`; `shellQuoteCLI` merged with `shellQuote`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): backup prints through `internal/ui` and `cmd.OutOrStdout()`. Tar scripts already use shared `fleet.ShellQuote`, preserving their command bytes.

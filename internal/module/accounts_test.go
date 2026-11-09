@@ -65,7 +65,7 @@ func TestGeneratePassword(t *testing.T) {
 		t.Errorf("unexpected passwords %q, %q", a, b)
 	}
 	for _, c := range a {
-		if !strings.ContainsRune(passwordAlphabet, c) {
+		if !strings.ContainsRune("abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789", c) {
 			t.Errorf("unexpected character %q", c)
 		}
 	}

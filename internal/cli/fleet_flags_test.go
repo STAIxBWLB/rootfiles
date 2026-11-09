@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 )
 
 // fleetFlagFixture records any attempt to open SSH without contacting a host.
@@ -13,7 +15,7 @@ func fleetFlagFixture(t *testing.T) (inventory, calls string) {
 	t.Helper()
 	dir := t.TempDir()
 	calls = filepath.Join(dir, "ssh-called")
-	ssh := "#!/bin/sh\nprintf called >> " + shellQuoteCLI(calls) + "\nexit 0\n"
+	ssh := "#!/bin/sh\nprintf called >> " + fleet.ShellQuote(calls) + "\nexit 0\n"
 	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(ssh), 0700); err != nil {
 		t.Fatal(err)
 	}

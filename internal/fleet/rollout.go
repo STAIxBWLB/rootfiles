@@ -71,7 +71,7 @@ func Apply(ctx context.Context, runner SSHRunner, hosts []NamedHost, dry bool) [
 		sum := sha256.Sum256(h.Host.EffectiveConfig)
 		contentHash := hex.EncodeToString(sum[:])
 		script := persistAndApplyScript(path, contentHash)
-		return runner.runMutation(ctx, h, "apply", privileged(h.Sudo, "/bin/sh -c "+shellQuote(script)), h.Host.EffectiveConfig)
+		return runner.runMutation(ctx, h, "apply", privileged(h.Sudo, "/bin/sh -c "+ShellQuote(script)), h.Host.EffectiveConfig)
 	})
 }
 
@@ -87,7 +87,7 @@ func effectiveConfigPath(h NamedHost) (string, error) {
 // runs under umask 077; apply gets the usual 022 back, or every file it
 // creates (such as apt.conf.d policy that non-root apt must read) is 0600.
 func persistAndApplyScript(path, contentHash string) string {
-	return persistConfigScript(path, contentHash) + "; umask 022; exec " + remoteBinary + " apply --yes --config " + shellQuote(path)
+	return persistConfigScript(path, contentHash) + "; umask 022; exec " + remoteBinary + " apply --yes --config " + ShellQuote(path)
 }
 
 func persistConfigScript(path, contentHash string) string {
@@ -117,7 +117,7 @@ if [ -e "$target" ]; then
   rm -f "$tmp"
 else
   mv -f -- "$tmp" "$target"
-fi`, shellQuote(filepath.Dir(path)), shellQuote(path), shellQuote(contentHash))
+fi`, ShellQuote(filepath.Dir(path)), ShellQuote(path), ShellQuote(contentHash))
 }
 
 func Update(ctx context.Context, runner SSHRunner, hosts []NamedHost, version string, dry bool) ([]Result, error) {
@@ -218,7 +218,7 @@ func Schedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, action, 
 	command := "schedule " + action
 	reason := "dry-run: would " + action + " scheduled reports"
 	if calendar != "" {
-		command += " --on-calendar " + shellQuote(calendar)
+		command += " --on-calendar " + ShellQuote(calendar)
 		reason += " on " + calendar
 	}
 	return serial(ctx, runner, hosts, "schedule "+action, func(h NamedHost) Result {
@@ -263,7 +263,7 @@ grep -E "^[0-9a-fA-F]{64}[[:space:]]+\*?${name}$" "$tmp/checksums.txt" > "$tmp/e
 tar -xzf "$tmp/$name" -C "$tmp" rootfiles
 install -o root -g root -m 0755 "$tmp/rootfiles" /usr/local/bin/rootfiles
 `
-		cmd := "env ROOTFILES_VERSION=" + shellQuote(version) + " /bin/sh -c " + shellQuote(script)
+		cmd := "env ROOTFILES_VERSION=" + ShellQuote(version) + " /bin/sh -c " + ShellQuote(script)
 		return runner.runMutation(ctx, h, "bootstrap", privileged(h.Sudo, cmd), nil)
 	}), nil
 }

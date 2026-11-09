@@ -80,24 +80,8 @@ type ApplyResult struct {
 	Warnings []string
 }
 
-// defaultOrder defines the static module execution order.
-// Dependencies are implicit in the ordering.
-var defaultOrder = []string{
-	"locale",
-	"system", // before packages: an APT mirror applies to the first install
-	"packages",
-	"users", // before ssh: declared accounts (and their keys) must exist before password auth is disabled
-	"ssh",
-	"security", // after ssh: the fail2ban jail follows the configured SSH port
-	"docker",
-	"nvidia",
-	"gpu",
-	"cloudflared",
-	"storage",
-	"network",
-	"monitoring",
-	"tenant", // after docker and nvidia: tenant containers need both
-}
+// defaultOrder keeps the config-owned static module execution order.
+var defaultOrder = config.ModuleNames()
 
 // Registry manages module registration and resolution.
 type Registry struct {

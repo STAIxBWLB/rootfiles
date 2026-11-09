@@ -16,10 +16,7 @@ import (
 // disk usage and metadata audit.
 
 func usersDBPath(rc *RunContext) string {
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	return filepath.Join(homeBase, ".rootfiles", "users.json")
 }
 

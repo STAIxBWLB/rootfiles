@@ -145,10 +145,7 @@ func SetQuota(ctx context.Context, rc *RunContext, username, size string) error 
 
 // ShowQuotas prints the quota report for the home_base filesystem.
 func ShowQuotas(ctx context.Context, rc *RunContext) error {
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	mnt, err := findMount(rc, homeBase)
 	if err != nil {
 		return err
