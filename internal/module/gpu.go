@@ -2,10 +2,8 @@ package module
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/user"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -32,6 +30,10 @@ type GPUAllocationsDB struct {
 	Allocations []GPUAllocation `json:"allocations"`
 }
 
+var gpuDeviceDir = "/dev"
+var gpuProfileDir = "/etc/profile.d"
+var gpuSystemdDir = "/etc/systemd/system"
+
 type GPUModule struct{}
 
 func NewGPUModule() *GPUModule    { return &GPUModule{} }
@@ -42,8 +44,11 @@ func (m *GPUModule) Check(_ context.Context, rc *RunContext) (*CheckResult, erro
 		return nil, err
 	}
 	db, err := loadGPUDB(rc)
+	if err != nil {
+		return nil, err
+	}
 	allocs := userAllocations(db)
-	if err != nil || len(allocs) == 0 {
+	if len(allocs) == 0 {
 		return &CheckResult{Satisfied: true}, nil
 	}
 
@@ -64,7 +69,7 @@ func (m *GPUModule) Check(_ context.Context, rc *RunContext) (*CheckResult, erro
 		}
 
 		if method == "cgroup" || method == "both" {
-			u, err := user.Lookup(alloc.Username)
+			u, err := lookupAccount(alloc.Username)
 			if err != nil {
 				continue
 			}
@@ -101,8 +106,11 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		return nil, err
 	}
 	db, err := loadGPUDB(rc)
+	if err != nil {
+		return nil, err
+	}
 	allocs := userAllocations(db)
-	if err != nil || len(allocs) == 0 {
+	if len(allocs) == 0 {
 		// Remove wrapper if it exists but no allocations remain
 		wrapperData, _ := rc.Runner.ReadFile(dockerWrapperPath)
 		if len(wrapperData) > 0 {
@@ -132,7 +140,7 @@ func (m *GPUModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		}
 
 		if method == "cgroup" || method == "both" {
-			u, err := user.Lookup(alloc.Username)
+			u, err := lookupAccount(alloc.Username)
 			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("cgroup GPU limit for %s skipped: %v", alloc.Username, err))
 				continue
@@ -185,7 +193,7 @@ func AssignGPUs(ctx context.Context, rc *RunContext, username string, gpus []int
 	if err := requireTrustedMetadata(rc); err != nil {
 		return err
 	}
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 
@@ -273,7 +281,7 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 
 	// Clean up cgroup conf
 	if method == "cgroup" || method == "both" {
-		u, err := user.Lookup(username)
+		u, err := lookupAccount(username)
 		if err == nil {
 			slicePath := cgroupSlicePath(u.Uid)
 			sliceDir := filepath.Dir(slicePath)
@@ -380,7 +388,10 @@ func ShowGPUStatus(ctx context.Context, rc *RunContext) error {
 		}
 	}
 
-	db, _ := loadGPUDB(rc)
+	db, err := loadGPUDB(rc)
+	if err != nil {
+		return err
+	}
 
 	// Build assignment map
 	assignMap := make(map[int]string)
@@ -610,7 +621,10 @@ func ReserveTenantGPUs(ctx context.Context, rc *RunContext, tenant string, gpus 
 	}
 	owner := tenantOwnerPrefix + tenant
 	if len(gpus) == 0 {
-		db, _ := loadGPUDB(rc)
+		db, err := loadGPUDB(rc)
+		if err != nil {
+			return err
+		}
 		held := false
 		for _, a := range db.Allocations {
 			held = held || a.Username == owner
@@ -701,7 +715,7 @@ func applyAllocationMethods(ctx context.Context, rc *RunContext, username string
 	}
 
 	if method == "cgroup" || method == "both" {
-		u, err := user.Lookup(username)
+		u, err := lookupAccount(username)
 		if err != nil {
 			return fmt.Errorf("looking up %s for cgroup limit: %w", username, err)
 		}
@@ -747,12 +761,8 @@ func LoadGPUDB(rc *RunContext) (*GPUAllocationsDB, error) {
 
 func loadGPUDB(rc *RunContext) (*GPUAllocationsDB, error) {
 	var db GPUAllocationsDB
-	data, err := rc.Runner.ReadFile(gpuDBPath(rc))
-	if err != nil {
+	if _, err := readJSONDB(gpuDBPath(rc), &db); err != nil {
 		return &db, err
-	}
-	if err := json.Unmarshal(data, &db); err != nil {
-		return &db, fmt.Errorf("parsing GPU database: %w", err)
 	}
 	return &db, nil
 }
@@ -766,27 +776,7 @@ func saveGPUDB(rc *RunContext, db *GPUAllocationsDB) error {
 	if err := ensureMetaDir(rc.Runner, homeBase); err != nil {
 		return fmt.Errorf("ensuring metadata dir: %w", err)
 	}
-	data, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshaling GPU database: %w", err)
-	}
-
-	if rc.Runner.DryRun {
-		return rc.Runner.WriteFile(dbPath, data, 0644)
-	}
-
-	// Atomic write: create sibling temp file then rename. This guarantees readers
-	// never observe a partial JSON document, which could crash the Docker wrapper
-	// (buildDockerWrapper's embedded python3 json.load).
-	tmp := dbPath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
-		return fmt.Errorf("writing temp gpu db: %w", err)
-	}
-	if err := os.Rename(tmp, dbPath); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("renaming gpu db: %w", err)
-	}
-	return nil
+	return writeJSONDB(rc, dbPath, db, 0644)
 }
 
 // withGPUDBLock runs fn with exclusive access to the GPU allocation DB.
@@ -800,7 +790,10 @@ func saveGPUDB(rc *RunContext, db *GPUAllocationsDB) error {
 // saveGPUDB routes through Runner.WriteFile which no-ops.
 func withGPUDBLock(rc *RunContext, fn func(*GPUAllocationsDB) error) error {
 	if rc.Runner.DryRun {
-		db, _ := loadGPUDB(rc)
+		db, err := loadGPUDB(rc)
+		if err != nil {
+			return err
+		}
 		if db.Version == 0 {
 			db.Version = 1
 		}
@@ -829,7 +822,10 @@ func withGPUDBLock(rc *RunContext, fn func(*GPUAllocationsDB) error) error {
 		return fmt.Errorf("acquiring gpu db lock: %w", err)
 	}
 
-	db, _ := loadGPUDB(rc)
+	db, err := loadGPUDB(rc)
+	if err != nil {
+		return err
+	}
 	if db.Version == 0 {
 		db.Version = 1
 	}
@@ -851,7 +847,7 @@ func effectiveMethod(rc *RunContext, method string) string {
 }
 
 func profileDScriptPath(username string) string {
-	return fmt.Sprintf("/etc/profile.d/rootfiles-gpu-%s.sh", username)
+	return filepath.Join(gpuProfileDir, fmt.Sprintf("rootfiles-gpu-%s.sh", username))
 }
 
 func buildProfileDScript(username string, gpus []int) string {
@@ -865,7 +861,7 @@ fi
 }
 
 func cgroupSlicePath(uid string) string {
-	return fmt.Sprintf("/etc/systemd/system/user-%s.slice.d/gpu-access.conf", uid)
+	return filepath.Join(gpuSystemdDir, fmt.Sprintf("user-%s.slice.d", uid), "gpu-access.conf")
 }
 
 func buildCgroupConf(gpus []int) string {
@@ -931,7 +927,7 @@ func detectGPUInfo(ctx context.Context, rc *RunContext) (int, string) {
 
 // countGPUDevices counts /dev/nvidia[0-9]+ device files.
 func countGPUDevices() int {
-	entries, err := os.ReadDir("/dev")
+	entries, err := os.ReadDir(gpuDeviceDir)
 	if err != nil {
 		return 0
 	}

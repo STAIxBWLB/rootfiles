@@ -17,7 +17,10 @@ func TestDockerModule_Name(t *testing.T) {
 }
 
 func TestDockerModule_Check(t *testing.T) {
+	fakeDockerAgreementPaths(t)
 	rc := newDryRunRC(t)
+	t.Setenv("PATH", t.TempDir())
+	rc.APT = &agreementPackageManager{}
 	rc.Config.Modules.Docker = config.DockerConfig{Enabled: true}
 	result, err := NewDockerModule().Check(context.Background(), rc)
 	if err != nil {
@@ -29,7 +32,10 @@ func TestDockerModule_Check(t *testing.T) {
 }
 
 func TestDockerModule_ApplyDryRun(t *testing.T) {
+	fakeDockerAgreementPaths(t)
 	rc := newDryRunRC(t)
+	t.Setenv("PATH", t.TempDir())
+	rc.APT = &agreementPackageManager{}
 	rc.Config.Modules.Docker = config.DockerConfig{Enabled: true, StorageDir: "/var/lib/docker-custom"}
 	result, err := NewDockerModule().Apply(context.Background(), rc)
 	if err != nil {

@@ -50,7 +50,7 @@ func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, er
 	}
 	if cfg.NodeExporter {
 		if !rc.APT.IsInstalled(nodeExporterPkg) {
-			changes = append(changes, Change{Description: "Install Prometheus node exporter", Command: "apt-get install " + nodeExporterPkg})
+			changes = append(changes, Change{Description: "Install Prometheus node exporter", Command: packageInstallCommand(rc, []string{nodeExporterPkg})})
 		} else {
 			want, err := desiredNodeExporterDefaults(rc, cfg)
 			if err != nil {

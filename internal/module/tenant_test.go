@@ -142,7 +142,7 @@ func TestPiperUnit(t *testing.T) {
 	rc := newDryRunRC(t)
 	rc.Config.Modules.Tenant.SSHPiper = config.SSHPiperConfig{Enabled: true}
 	u := piperUnitContent(rc)
-	for _, want := range []string{"--port 2222", "--address 0.0.0.0", "/v1.6.1/plugins/yaml --config /etc/rootfiles/sshpiper/tenants/*.yaml -- ", "/plugins/failtoban", "--server-key-generate-mode notexist"} {
+	for _, want := range []string{"--port 2222", "--address 0.0.0.0", "/v1.6.1/plugins/yaml --config " + piperConfDir + "/tenants/*.yaml -- ", "/plugins/failtoban", "--server-key-generate-mode notexist"} {
 		if !strings.Contains(u, want) {
 			t.Errorf("unit lacks %q:\n%s", want, u)
 		}

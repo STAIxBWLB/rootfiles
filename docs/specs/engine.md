@@ -6,6 +6,7 @@ status: active
 parent: architecture
 paths:
   - internal/module/module.go
+  - internal/module/jsondb.go
   - internal/module/preflight.go
   - internal/module/package_commands.go
   - internal/cli/apply.go
@@ -48,7 +49,7 @@ The Module interface, the registry and execution order, and the three commands t
 ## Safety
 
 - Check must stay side-effect free: no writes, no installs, no metadata refresh; Runner writes are dry-run gated but `Runner.Query` is not, so a Check must only query.
-- `ensureMetaDir` still migrates a pre-v0.1 `<home_base>/.rootfiles` file with `os.Rename`/`os.MkdirAll`, bypassing the Runner and dry run (see #93). Do not copy that pattern.
+- `ensureMetaDir` refuses a legacy `<home_base>/.rootfiles` file without moving it, including in dry run, and names the manual relocation to `.rootfiles/users.json`. Shared JSON ledger reads distinguish absence from corruption; atomic sibling writes and destination replacement go through Runner so dry-run and backups apply.
 - Status lines in `RunAll` are printed to stdout with literal glyphs, not through `internal/ui` (see #94).
 
 ## Tests that pin it
@@ -65,5 +66,4 @@ The Module interface, the registry and execution order, and the three commands t
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `status` honours `--module`; `ROOTFILES_YES` read in one helper.
 - [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): stale `gpu assign` hint in status, `Example` on `apply` and `check`, VLAN example address in the apply prompt.
-- [#93](https://github.com/STAIxBWLB/rootfiles/issues/93): remove the legacy `ensureMetaDir` migration; `Change.Command` through `packageInstallCommand` everywhere; Check output equals what Apply runs.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): single status collector for text and JSON (text skips `ValidateCapabilities` today), one module-name list checked against `defaultOrder`, module output through `internal/ui` and `rc.Out`.

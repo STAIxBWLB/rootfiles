@@ -143,7 +143,7 @@ func (m *SecurityModule) Check(ctx context.Context, rc *RunContext) (*CheckResul
 	var changes []Change
 
 	if missing := missingPackages(rc, m.packages(rc)); len(missing) > 0 {
-		changes = append(changes, Change{Description: fmt.Sprintf("Install %v", missing), Command: "apt-get install " + strings.Join(missing, " ")})
+		changes = append(changes, Change{Description: fmt.Sprintf("Install %v", missing), Command: packageInstallCommand(rc, missing)})
 	}
 	if cfg.UnattendedUpgrades {
 		if !fileEquals(rc, autoUpgradesPath, autoUpgradesContent) || !fileEquals(rc, unattendedPolicyPath, unattendedPolicyContent) || len(existingLegacyUnattended(rc)) > 0 || len(unreadableAptConf()) > 0 {
@@ -156,8 +156,14 @@ func (m *SecurityModule) Check(ctx context.Context, rc *RunContext) (*CheckResul
 		changes = append(changes, Change{Description: "Configure fail2ban sshd jail", Command: "write " + fail2banJailPath})
 	}
 	if cfg.TimeSync {
-		if res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value"); err == nil && strings.TrimSpace(res.Stdout) != "yes" {
-			changes = append(changes, Change{Description: "Enable NTP time sync", Command: "timedatectl set-ntp true"})
+		res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value")
+		if err != nil {
+			changes = append(changes, Change{Description: "Cannot determine NTP time sync: " + firstLine(err.Error()) + "; run timedatectl show -p NTP --value and repair the time-sync service", State: ChangeBlocked})
+		} else if strings.TrimSpace(res.Stdout) != "yes" {
+			_, unit := timeSyncPackage(rc)
+			changes = append(changes,
+				Change{Description: "Enable time-sync service " + unit, Command: "systemctl enable --now " + unit},
+				Change{Description: "Enable NTP time sync", Command: "timedatectl set-ntp true"})
 		}
 	}
 	return &CheckResult{Satisfied: len(changes) == 0, Changes: changes}, nil
@@ -243,16 +249,23 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 	}
 
 	if cfg.TimeSync {
-		if res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value"); err == nil && strings.TrimSpace(res.Stdout) != "yes" {
+		res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value")
+		if err != nil {
+			warnings = append(warnings, "cannot determine NTP time sync: "+firstLine(err.Error())+"; run timedatectl show -p NTP --value and repair the time-sync service")
+		} else if strings.TrimSpace(res.Stdout) != "yes" {
 			_, unit := timeSyncPackage(rc)
 			if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", unit); err != nil {
 				warnings = append(warnings, "enabling "+unit+": "+firstLine(err.Error()))
+			} else {
+				messages = append(messages, unit+" time-sync service enabled")
+				changed = true
 			}
 			if _, err := rc.Runner.Run(ctx, "timedatectl", "set-ntp", "true"); err != nil {
 				warnings = append(warnings, "timedatectl set-ntp: "+firstLine(err.Error()))
+			} else {
+				messages = append(messages, "NTP time sync enabled ("+unit+")")
+				changed = true
 			}
-			messages = append(messages, "NTP time sync enabled ("+unit+")")
-			changed = true
 		}
 	}
 

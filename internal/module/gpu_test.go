@@ -7,20 +7,18 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
-	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 func testRunContext(t *testing.T, homeBase string, method string) *RunContext {
 	t.Helper()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(true, logger) // dry-run
+	runner := guardedTestRunner(t, true, logger) // dry-run
 	return &RunContext{
 		Config: &config.Config{
 			Users: config.UsersConfig{HomeBase: homeBase},
@@ -146,14 +144,14 @@ func TestGPUListStr(t *testing.T) {
 
 func TestProfileDScriptPath(t *testing.T) {
 	path := profileDScriptPath("bob")
-	if path != "/etc/profile.d/rootfiles-gpu-bob.sh" {
+	if path != filepath.Join(gpuProfileDir, "rootfiles-gpu-bob.sh") {
 		t.Errorf("profileDScriptPath = %q, unexpected", path)
 	}
 }
 
 func TestCgroupSlicePath(t *testing.T) {
 	path := cgroupSlicePath("1001")
-	if path != "/etc/systemd/system/user-1001.slice.d/gpu-access.conf" {
+	if path != filepath.Join(gpuSystemdDir, "user-1001.slice.d", "gpu-access.conf") {
 		t.Errorf("cgroupSlicePath = %q, unexpected", path)
 	}
 }
@@ -185,7 +183,7 @@ func TestLoadSaveGPUDB(t *testing.T) {
 	os.MkdirAll(metaDir, 0755)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(false, logger) // not dry-run to actually write
+	runner := guardedTestRunner(t, false, logger) // not dry-run to actually write
 	rc := &RunContext{
 		Config: &config.Config{
 			Users: config.UsersConfig{HomeBase: tmpDir},
@@ -335,7 +333,7 @@ func TestGPUDBPath(t *testing.T) {
 
 func TestGPUDBPath_DefaultHomeBase(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(true, logger)
+	runner := guardedTestRunner(t, true, logger)
 	rc := &RunContext{
 		Config: &config.Config{},
 		Runner: runner,
@@ -346,21 +344,18 @@ func TestGPUDBPath_DefaultHomeBase(t *testing.T) {
 	}
 }
 
-// currentUsername returns the current OS user's name for tests that need user.Lookup to succeed.
+// currentUsername names the deterministic account installed by TestMain.
 func currentUsername(t *testing.T) string {
 	t.Helper()
-	u, err := user.Current()
-	if err != nil {
-		t.Fatalf("cannot get current user: %v", err)
-	}
-	return u.Username
+	return "rootfiles-test-user"
 }
 
 // testRunContextReal creates a non-dry-run RunContext so file writes actually happen.
 func testRunContextReal(t *testing.T, homeBase string, method string) *RunContext {
 	t.Helper()
+	fakeBin(t, "nvidia-smi")
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(false, logger)
+	runner := guardedTestRunner(t, false, logger)
 	return &RunContext{
 		Config: &config.Config{
 			Users: config.UsersConfig{HomeBase: homeBase},
@@ -497,8 +492,7 @@ func TestAssignGPUs_GPUIndexOutOfRange(t *testing.T) {
 	rc := testRunContextReal(t, tmpDir, "env")
 
 	// Pre-populate DB with TotalGPUs set so validation kicks in.
-	// Note: detectGPUInfo may override TotalGPUs with real GPU count,
-	// so use index 999 which exceeds any realistic GPU count.
+	// The private device fixture is empty, so the recorded limit stays at four.
 	setupDBWithAllocations(t, tmpDir, &GPUAllocationsDB{
 		Version:   1,
 		TotalGPUs: 4,
@@ -803,8 +797,8 @@ func TestLoadGPUDB_MalformedJSON(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for malformed JSON")
 	}
-	if !strings.Contains(err.Error(), "parsing GPU database") {
-		t.Errorf("error = %q, want 'parsing GPU database'", err.Error())
+	if !strings.Contains(err.Error(), "cannot parse JSON database") {
+		t.Errorf("error = %q, want 'cannot parse JSON database'", err.Error())
 	}
 }
 
@@ -957,8 +951,12 @@ func TestBuildDockerWrapper_SyntaxCheck(t *testing.T) {
 	}
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(false, logger)
-	result, err := runner.Query(context.Background(), "bash", "-n", tmpFile)
+	runner := guardedTestRunner(t, false, logger)
+	syntaxCheck := filepath.Join(t.TempDir(), "check-bash-syntax")
+	if err := os.WriteFile(syntaxCheck, []byte("#!/bin/sh\nexec /bin/bash -n \"$1\"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	result, err := runner.Query(context.Background(), syntaxCheck, tmpFile)
 	if err != nil {
 		t.Fatalf("bash -n failed: %v\nstderr: %s", err, result.Stderr)
 	}

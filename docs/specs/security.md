@@ -29,14 +29,14 @@ paths:
 - Managed apt.conf.d files must be world-readable (non-root apt reads them); Check flags and Apply `chmod 0644`s them (`unreadableAptConf`).
 - Legacy files in `legacyUnattendedPaths` (the earlier `52rootfiles-unattended-upgrades` and a hand-placed origins fix) are drift; Apply removes them through `rc.Runner.Remove`, which backs them up first.
 - fail2ban jail `/etc/fail2ban/jail.d/rootfiles-sshd.conf` (`fail2banJail`) uses `sshPorts` (see [ssh-access](ssh-access.md)), `backend = systemd`, `maxretry = 5`, `findtime = 10m`, `bantime = 1h`. A port change rewrites the jail.
-- Time sync manages the NTP daemon already installed (`chrony`, `ntpsec`, `ntp`, `openntpd`, in that order, `timeSyncPackage`) and only falls back to `systemd-timesyncd`, because installing it would remove a conflicting daemon.
+- Time sync manages the NTP daemon already installed (`chrony`, `ntpsec`, `ntp`, `openntpd`, in that order, `timeSyncPackage`) and only falls back to `systemd-timesyncd`, because installing it would remove a conflicting daemon. A failed `timedatectl` status query is blocked pending work with its cause and repair command, never evidence that NTP is configured. Apply reports the query failure as a warning and attempts no time-sync mutation.
 - All writes go through `rc.Runner` (`MkdirAll`, `WriteFile`, `Remove`, `Run`), so dry-run and backups apply.
 
 ## Behaviour
 
-- Check (Ubuntu): missing packages (`unattended-upgrades`, `fail2ban` + `python3-systemd`, the time-sync package); policy file drift, legacy files or unreadable files as one change, else effective-policy findings; jail drift; `timedatectl show -p NTP --value` not `yes`.
+- Check (Ubuntu): missing packages (`unattended-upgrades`, `fail2ban` + `python3-systemd`, the time-sync package); policy file drift, legacy files or unreadable files as one change, else effective-policy findings; jail drift; a failed `timedatectl show -p NTP --value` query as blocked work, or both the service-enable and NTP-enable commands when its value is not `yes`. Package installation hints use `packageInstallCommand`.
 - Apply (Ubuntu): `apt update` + install only when packages are missing; writes the two policy files when they differ; chmod, legacy removal; effective-policy verification (skipped in dry-run). Jail write then `systemctl enable` and `restart fail2ban` (failures are warnings). Time sync: `systemctl enable --now <unit>` and `timedatectl set-ntp true` (failures are warnings).
-- `Changed` is true for each step that wrote or ran something.
+- `Changed` is true only for a successful write or pending operation. For time sync, each successful service-enable or NTP-enable operation contributes independently; failed commands produce warnings and no success message. When both fail, time sync alone does not set `Changed`.
 
 ## Distro support
 
@@ -51,6 +51,7 @@ paths:
 
 ## Tests that pin it
 
+- `internal/module/agreement_test.go`: Ubuntu/Rocky install plans, current/unknown NTP status, both time-sync commands failing, partial success and exact attempted commands.
 - `internal/module/security_test.go`: NVIDIA exclusion and no reboot, jail uses SSH ports, `#clear` and hand-fix migration, Check judges the effective policy, world-readable policy.
 - `internal/module/rocky_test.go`: Rocky security-only policy, cache-only updateinfo, refresh before writing, coverage gap.
 - CI `module` job: `security` on `ubuntu-22.04` and `ubuntu-24.04` (`tests/integration/run-module.sh` asserts every effective allowed origin ends in `-security`).
@@ -58,6 +59,5 @@ paths:
 
 ## Open issues
 
-- [#93](https://github.com/STAIxBWLB/rootfiles/issues/93): time sync reports `Changed` even when both commands only warned; Ubuntu Check hides a `timedatectl` error; `Change.Command` hard-codes `apt-get install`.
 - [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): unreachable Rocky fail2ban branch; `# Managed by rootfiles-v2` header; set a removal release for the `legacyUnattendedPaths` cleanup.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): hand-written write-if-changed loop to replace with the shared `ensureFile` helper.

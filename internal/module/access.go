@@ -29,9 +29,6 @@ func sshPorts(ctx context.Context, rc *RunContext) []int {
 		return []int{rc.Config.SSH.Port}
 	}
 	if bin := sshdBinary(rc); bin != "" {
-		// sshd -T refuses to run without its privilege separation dir,
-		// which only exists while sshd runs. Creating it is harmless.
-		_ = os.MkdirAll("/run/sshd", 0755)
 		if res, err := rc.Runner.Query(ctx, bin, "-T"); err == nil {
 			if ports := parsePortDirectives(res.Stdout); len(ports) > 0 {
 				return ports

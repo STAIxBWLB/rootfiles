@@ -30,7 +30,7 @@ func (m *NvidiaModule) Check(_ context.Context, rc *RunContext) (*CheckResult, e
 	if !rc.APT.IsInstalled("nvidia-container-toolkit") {
 		changes = append(changes, Change{
 			Description: "Install NVIDIA Container Toolkit",
-			Command:     "apt-get install nvidia-container-toolkit",
+			Command:     packageInstallCommand(rc, []string{"nvidia-container-toolkit"}),
 		})
 	}
 

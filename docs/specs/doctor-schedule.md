@@ -20,7 +20,7 @@ paths:
 
 ## Contracts and invariants
 
-- **Doctor never changes the system.** `runDoctor` builds its own `RunContext` with a dry-run `exec.Runner` and needs no root or lock (not in `mutatingCommands`). The one exception today is `os.MkdirAll("/run/sshd")` in `doctorSSH`, needed by `sshd -T` (#93).
+- **Doctor never changes the system.** `runDoctor` builds its own `RunContext` with a dry-run `exec.Runner` and needs no root or lock (not in `mutatingCommands`). `doctorSSH` reports an unavailable effective-config query with repair guidance and never creates runtime directories.
 - **Finding shape is an output contract.** `module.Finding{check, level, detail, hint}` with `level` in `ok|warn|fail|skip` (`LevelOK`...`LevelSkip`). JSON output is `{findings, failed, applied_config_sha256, version}`; `fleet doctor` reads the exit code and `applied_config_sha256` and embeds the rest verbatim, and the schedule writes it to `doctor.json` for other readers. Renaming fields or levels is a breaking output change.
 - **Exit code.** 0 when no finding is `fail`; 2 (`exitDrift`, `internal/cli/output.go`) when at least one is `fail`, or `warn` with `--strict`. Load errors are not fatal: doctor falls back to `config.Fallback` and adds a `configuration` fail finding.
 - **Report target.** Doctor reports against the same config `status`/`check` use (`resolveTarget`, `reportedTarget`, `appliedFingerprint`; owned by [cli-runtime](cli-runtime.md)). Capability errors become a `capabilities` skip finding; a failed last apply (`state.Last`) is a warn.
@@ -50,6 +50,8 @@ paths:
 
 ## Safety
 
+- SSH inspection never creates `/run/sshd`. If read-only `sshd -T` fails because of configuration, host-key access or missing runtime state, report failure with the operator command to inspect and repair it.
+
 - Doctor must stay read-only and runnable by the fleet sudoers rule (`/usr/local/bin/rootfiles doctor -o json` exactly, see [fleet](fleet.md)); adding a flag requirement or a write would break fleet reporting.
 - Report files are replaced atomically so readers never see partial JSON.
 
@@ -65,6 +67,5 @@ paths:
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `doctor` ignores `--module`; reject it.
 - [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): no `schedule status`; help text says how `check`/`status`/`doctor` differ.
-- [#93](https://github.com/STAIxBWLB/rootfiles/issues/93): `doctorSSH` creates `/run/sshd` on a read-only path.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): repeated capability validation and read-only `RunContext` construction across doctor/status/check.
 - [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `# Managed by rootfiles-v2` header on the schedule units.

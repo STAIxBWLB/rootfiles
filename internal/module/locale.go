@@ -84,10 +84,13 @@ func (m *LocaleModule) Check(ctx context.Context, rc *RunContext) (*CheckResult,
 	}
 
 	if cfg.Locale != "" && currentLocale(rc) != cfg.Locale {
-		command := fmt.Sprintf("locale-gen %s && update-locale LANG=%s", cfg.Locale, cfg.Locale)
-		if config.IsRocky(cfg.System) {
-			command = "write " + rockyLocalePath
+		if !config.IsRocky(cfg.System) {
+			if !rc.Runner.CommandExists("locale-gen") {
+				changes = append(changes, Change{Description: "Install locale generation tools", Command: packageInstallCommand(rc, []string{"locales"})})
+			}
+			changes = append(changes, Change{Description: "Generate locale " + cfg.Locale, Command: "locale-gen " + cfg.Locale})
 		}
+		command := "write " + localeConfigPath(rc)
 		changes = append(changes, Change{
 			Description: fmt.Sprintf("Set locale to %s", cfg.Locale),
 			Command:     command,

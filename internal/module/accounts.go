@@ -137,7 +137,7 @@ func installAuthorizedKeys(ctx context.Context, rc *RunContext, username, home s
 	if rc.DryRun {
 		return nil
 	}
-	u, err := user.Lookup(username)
+	u, err := lookupAccount(username)
 	if err != nil {
 		return fmt.Errorf("looking up %s: %w", username, err)
 	}

@@ -47,7 +47,7 @@ func (m *NetworkModule) Check(ctx context.Context, rc *RunContext) (*CheckResult
 		if !installed {
 			changes = append(changes, Change{
 				Description: "Install UFW firewall",
-				Command:     "apt-get install ufw",
+				Command:     packageInstallCommand(rc, []string{"ufw"}),
 			})
 		}
 		for _, port := range m.requiredPorts(ctx, rc) {

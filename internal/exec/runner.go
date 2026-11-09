@@ -16,6 +16,9 @@ type Runner struct {
 	// Backup, when set, preserves each file before it is overwritten,
 	// renamed over or removed, enabling `rootfiles rollback`.
 	Backup *Backup
+	// QueryGuard, when set, checks the resolved executable before Query runs it.
+	// Tests use it to refuse accidental calls to host binaries; nil permits all.
+	QueryGuard func(resolvedPath string) error
 }
 
 // preserve snapshots path into the backup session (no-op without one).
@@ -48,6 +51,11 @@ func (r *Runner) Query(ctx context.Context, name string, args ...string) (*Resul
 	cmdStr := name + " " + strings.Join(args, " ")
 	r.Logger.Info("query", "cmd", cmdStr)
 	cmd := osexec.CommandContext(ctx, name, args...)
+	if r.QueryGuard != nil && cmd.Err == nil {
+		if err := r.QueryGuard(cmd.Path); err != nil {
+			return &Result{Command: cmdStr, ExitCode: -1}, fmt.Errorf("query %q refused before execution: %w", cmdStr, err)
+		}
+	}
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
