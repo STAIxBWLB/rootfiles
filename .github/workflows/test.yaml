@@ -183,7 +183,7 @@ jobs:
             profile: full
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -224,7 +224,7 @@ jobs:
             os: dgx-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -266,7 +266,7 @@ jobs:
           - user-quota
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -297,7 +297,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -312,7 +312,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -327,7 +327,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -347,7 +347,7 @@ jobs:
         os: [rocky-8.9, rocky-8.10, rocky-9]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
@@ -364,11 +364,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: rootfiles-binary
           path: .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: monitoring-hub-fixtures
           path: hub-fixtures
