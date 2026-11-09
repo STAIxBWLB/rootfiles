@@ -18,7 +18,7 @@ func (m MonitoringConfig) DCGMPort() int {
 
 func (m MonitoringConfig) ExporterImage() string {
 	if m.DCGMExporterImage == "" {
-		return "nvcr.io/nvidia/k8s/dcgm-exporter:4.8.4"
+		return "nvcr.io/nvidia/k8s/dcgm-exporter:4.6.1-4.8.4-distroless"
 	}
 	return m.DCGMExporterImage
 }
