@@ -154,6 +154,9 @@ func TestResolveProfile_Full(t *testing.T) {
 	if cfg.Modules.Network.Enabled {
 		t.Error("network should not be enabled in full")
 	}
+	if !cfg.SSH.DisablePasswordAuth {
+		t.Error("full should keep disabling password auth")
+	}
 }
 
 func TestResolveProfile_NotFound(t *testing.T) {

@@ -5,3 +5,6 @@ modules:
     enabled: true
   storage:
     enabled: true
+
+ssh:
+  disable_password_auth: true

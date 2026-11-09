@@ -66,4 +66,4 @@ users:
     sudo_nopasswd: true
 ssh:
     disable_root_login: true
-    disable_password_auth: false
+    disable_password_auth: true
