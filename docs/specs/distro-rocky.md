@@ -17,7 +17,7 @@ paths:
 
 - Decide which operating systems rootfiles may change, and which modules and options each one supports, before any module runs.
 - Own the native Rocky Linux paths: DNF/RPM package backend, Rocky sshd main-config include, SELinux SSH port labels, firewall verification for SSH port changes, and DNF security-only updates.
-- This spec owns the contract behind the operator matrix in [docs/rocky-support.md](../rocky-support.md). A change to what the code accepts on Rocky updates both in the same PR.
+- This spec owns the contract behind the operator matrix in [docs/rocky.md](../rocky.md) and the Rocky lines of [docs/modules.md](../modules.md). A change to what the code accepts on Rocky updates them in the same PR.
 
 ## Contracts and invariants
 
@@ -41,7 +41,7 @@ paths:
 
 ## Distro support
 
-- Supported matrix and per-module conditions: [docs/rocky-support.md](../rocky-support.md). Unsupported on Rocky: `docker`, `nvidia`, `gpu`, `cloudflared`, `storage`, `network`, `monitoring`, `tenant`, `system.apt_mirror`, `security.fail2ban`.
+- Supported matrix: [docs/rocky.md](../rocky.md); per-module conditions: [docs/modules.md](../modules.md). Unsupported on Rocky: `docker`, `nvidia`, `gpu`, `cloudflared`, `storage`, `network`, `monitoring`, `tenant`, `system.apt_mirror`, `security.fail2ban`.
 - `internal/config/profiles/rocky.yaml` enables only the core modules with native RPM package names and `fail2ban: false` (owned by [config](config.md)).
 
 ## Safety
@@ -72,4 +72,3 @@ paths:
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `tunnel` and `gpu` mutations skip `ValidateCapabilities` and always build an APT backend.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): module-name list duplicated in `SupportedModules`; `config.ModuleNames()` planned.
-- [#96](https://github.com/STAIxBWLB/rootfiles/issues/96): docs/rocky-support.md still says Rocky CI "remains required" although the `rocky` job exists.

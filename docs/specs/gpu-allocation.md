@@ -34,7 +34,7 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
 - **Check and Apply agree** on each user's env script, cgroup drop-in and the wrapper content; file content is compared exactly except for the shared legacy management marker. A missing account skips its cgroup drop-in (warning in Apply).
 - **daemon-reload is a warning.** `systemdReload` returns a warning instead of failing: the drop-in is written and takes effect on the next login or boot.
 - **Revoke removes only rootfiles files:** the env script, the `gpu-access.conf` drop-in, and the slice directory only when empty.
-- **MIG is read-only.** `MIGStatus` reads `nvidia-smi` mode and `nvidia-smi -L` instances; repartitioning is left to the operator because it destroys running instances.
+- **MIG is read-only.** `MIGStatus` reads `nvidia-smi` mode and `nvidia-smi -L` instances; repartitioning is left to the operator because it destroys running instances. Declarative MIG partitioning (carried over from the 2026-09 improvement plan) is not planned; revisit only with an owner decision and a drain procedure for running instances.
 
 ## Behaviour
 

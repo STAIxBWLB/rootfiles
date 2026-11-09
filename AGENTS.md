@@ -59,7 +59,7 @@ type Module interface {
 - Fleet commands run as the operator and inherit OpenSSH host-key verification. They do not take the local native-host root lock; remote native mutations retain their own root/lock preflight. Explicit selection and confirmation guard controller rollouts, and their results are written to the controller audit log.
 - A successful native apply records the effective configuration digest. Read-only reports must not claim applied provenance for legacy, failed, changed or unrelated targets.
 - Check uses cached, read-only package queries. Metadata refresh and package transactions belong to Apply, through the runner; unavailable required advisory sources must not be reported as working protection.
-- Rocky support is per module, as documented in docs/rocky-support.md. Reject unsupported requested capabilities before host configuration changes; do not infer support for another RPM distribution from Rocky support.
+- Rocky support is per module, as documented in docs/rocky.md and docs/modules.md. Reject unsupported requested capabilities before host configuration changes; do not infer support for another RPM distribution from Rocky support.
 
 ## Release notes
 

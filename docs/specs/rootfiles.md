@@ -36,7 +36,7 @@ status: active
 
 ## Distro support
 
-- See [distro-rocky](distro-rocky.md) and `docs/rocky-support.md` for the per-module Rocky matrix. Ubuntu and DGX OS support every module.
+- See [distro-rocky](distro-rocky.md), [docs/rocky.md](../rocky.md) and [docs/modules.md](../modules.md) for the per-module Rocky matrix. Ubuntu and DGX OS support every module.
 
 ## Safety
 

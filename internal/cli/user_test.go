@@ -11,10 +11,10 @@ func TestNewUserCmd_Subcommands(t *testing.T) {
 		t.Errorf("Use = %q, want user", cmd.Use)
 	}
 
-	// Every subcommand documented in PLAN.md and README.md must be registered.
+	// Every subcommand documented in README.md and docs/ must be registered.
 	// Drift between this list and the actual subcommands will fail the test,
 	// which is the point — the doc drift audit showed these were falling out
-	// of sync with PLAN.md.
+	// of sync with the docs.
 	want := []string{"add", "list", "backup", "restore", "rehome", "id", "groups", "group-add", "group-del", "passwd"}
 	have := make(map[string]bool, len(cmd.Commands()))
 	for _, sub := range cmd.Commands() {

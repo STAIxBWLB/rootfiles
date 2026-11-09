@@ -37,13 +37,13 @@ modules:
       enabled: true
       port: 2222       # default; must not be the host's SSH port
       # address: 0.0.0.0, version: v1.6.1 (pinned; the archive SHA-256 is checked)
-      # failtoban_ignore: [172.16.229.33/32]   # shared VPN gateway, never banned
+      # failtoban_ignore: [203.0.113.33/32]   # shared VPN gateway, never banned
 ```
 
 `sudo rootfiles apply --module tenant` installs sshpiperd with its yaml and failtoban plugins under `/usr/local/lib/rootfiles/sshpiper/<version>` and runs `rootfiles-sshpiper.service`. Users then reach any tenant through one port by naming the tenant in the user name:
 
 ```bash
-ssh -p 2222 est.dev@dgx02      # user dev of tenant est
+ssh -p 2222 est.dev@gpu01      # user dev of tenant est
 ```
 
 - Passwords go to the tenant's own sshd, which checks them and enforces the change of a temporary password.
@@ -61,6 +61,19 @@ sudo rootfiles tenant create est \
   --image registry.local/est:2026.10 --ssh-port 3889 --gpus 2,3 --size 2T \
   --account est:1000 --sudo --operator alice
 ```
+
+| Flag | Meaning |
+|---|---|
+| `--image` | Container image; it needs `openssh-server` |
+| `--ssh-port` | Host port published to the container's sshd |
+| `--size` | Volume size, such as `500G` or `2T` |
+| `--fs` | Volume filesystem: `ext4` (default; can shrink offline) or `xfs` |
+| `--gpus` | Comma-separated GPU indices |
+| `--account NAME[:UID[:GID]]` | Account to create (repeatable); UIDs default to 1000, 1001, ... and the GID to the UID |
+| `--sudo` | Give the accounts sudo inside the container |
+| `--operator` | Host account allowed `sudo rootfiles tenant ops` on this tenant (repeatable) |
+| `--port HOST:CONTAINER[/udp]` | Extra published port (repeatable) |
+| `--bind SRC:DST[:ro\|rw]` | Extra bind mount, outside the volume quota (repeatable); stored as `extra_binds` |
 
 This writes `<home_base>/.rootfiles/tenants/est.yaml`, creates the volume, starts `tenant-est`, checks sshd, the host key and the GPUs, and prints a temporary password per account. The password must be changed at first login. It is printed once and never written to a log or passed on a command line.
 
@@ -83,11 +96,20 @@ The image needs only `openssh-server` (and `useradd`, `chpasswd`, which Debian, 
 | Account | `rootfiles tenant user add est bob [--sudo]` | kept, account added live |
 | Password | `rootfiles tenant passwd est bob` (`reset` is the same) | kept |
 | Volume size | `rootfiles tenant volume resize est 3T` | kept (grows online) |
-| Anything in the spec | edit the YAML, then `rootfiles tenant apply est` | as needed |
+| Anything in the spec | edit the YAML, then `rootfiles tenant apply est` (`--all` for every tenant) | as needed |
 
 A recreate saves the current password hashes, prints the size of the old writable layer, renames the old container to `tenant-est-prev` (restart policy `no`), starts the new one and verifies sshd, the stored host key and the GPUs. On failure it removes the new container and restarts the old one. `tenant-est-prev` stays until you remove it; the next recreate refuses while it exists.
 
 Shrinking a volume needs `--offline` and ext4: it stops the container, checks the filesystem, shrinks it and starts the container again. xfs volumes cannot shrink.
+
+## Inspect and restart
+
+```bash
+sudo rootfiles tenant list                  # tenant names
+sudo rootfiles tenant status [est]          # state, spec drift, volume use
+sudo rootfiles tenant logs est --tail 500   # docker logs; last 200 lines by default
+sudo rootfiles tenant restart est           # docker restart; the container is kept
+```
 
 `rootfiles tenant status` shows each tenant's state, spec drift, volume use and the sum of volume sizes against the free space of the tenant root (sparse images can be overcommitted). `rootfiles tenant status est` adds the writable-layer size.
 
