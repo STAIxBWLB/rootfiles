@@ -58,6 +58,8 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 
 ## Safety
 
+- Host and tenant password generation share `tenant.GeneratePassword` (cryptographic randomness, the existing tenant alphabet excluding ambiguous lowercase `o`). Only newly requested host passwords use the narrower alphabet; existing passwords and their delivery are unchanged. Equivalent home-base defaults use `UsersConfig.Base()`; unknown-home and rehome refusal checks retain their meaning.
+
 - Root-mutating subcommands build their context with `buildRunContext` ([cli-runtime](cli-runtime.md)).
 - Never follow symlinks or trust non-root-owned paths under the home base; never remove a home outside `--archive`/`--remove-home`/`--remove-old`; never put a password on a command line.
 - `user del --remove-home` asks for confirmation unless `--yes`.
@@ -72,4 +74,4 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 ## Open issues
 
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): `user passwd --password` lands in the audit log and backup note.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated `generatePassword` and home-base defaulting, direct stdout prints in `users.go`, `lifecycle.go`, `quota.go`.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining direct stdout prints in `users.go`, `lifecycle.go`, `quota.go`.

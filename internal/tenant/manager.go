@@ -421,7 +421,9 @@ func (m *Manager) writeIfChanged(path string, data []byte, perm os.FileMode) err
 
 const passwordAlphabet = "abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-func generatePassword(n int) (string, error) {
+// GeneratePassword returns a cryptographically random password without the
+// look-alike characters omitted from the shared host/tenant alphabet.
+func GeneratePassword(n int) (string, error) {
 	b := make([]byte, n)
 	max := big.NewInt(int64(len(passwordAlphabet)))
 	for i := range b {
@@ -445,7 +447,7 @@ func (m *Manager) Passwd(ctx context.Context, s *Spec, user string) (string, err
 	if !m.Runner.DryRun && !m.inspect(ctx, name).Running {
 		return "", fmt.Errorf("%s is not running", name)
 	}
-	pw, err := generatePassword(16)
+	pw, err := GeneratePassword(16)
 	if err != nil {
 		return "", err
 	}

@@ -37,7 +37,7 @@ Decisions (still in force):
 
 Invariants an agent must keep:
 
-- **Fixed remote command lines.** OpenSSH passes the remote command to a shell as one string, so it may contain only fixed tokens and validated values, shell-quoted (`shellQuote` in `internal/fleet/ssh.go`, `shellQuoteCLI` in `internal/cli/fleet.go`). The destination follows `--` (`runWithTimeout`), so an inventory value cannot become an ssh option. Site configs travel on stdin, never as arguments.
+- **Fixed remote command lines.** OpenSSH passes the remote command to a shell as one string, so it may contain only fixed tokens and validated values, shell-quoted (shared `fleet.ShellQuote` in `internal/fleet/ssh.go`, also used by CLI scripts and backup). The destination follows `--` (`runWithTimeout`), so an inventory value cannot become an ssh option. Site configs travel on stdin, never as arguments.
 - **Sudoers and remote command must match byte for byte.** `fleetSudoCommands` in `internal/module/fleet_sudo.go` lists `/usr/local/bin/rootfiles status|check|doctor -o json`; `SSHRunner.ReadOnly` in `internal/fleet/ssh.go` builds exactly `remoteBinary + " " + op + " -o json"`. Changing either side without the other breaks every `sudo: nopasswd` host. No wildcard and no `--config` is ever allowed in the rule.
 - **Inventory is strict.** `LoadInventory` (`internal/fleet/inventory.go`) uses `KnownFields(true)`, accepts one YAML document, defaults `sudo: nopasswd` and `parallel: 2` (range 1-128), and rejects unsafe host names, groups, `ssh` destinations (leading `-`, whitespace, shell metacharacters, malformed `user@`/IPv6) and addresses.
 - **Site configs resolve on the controller.** `config` paths resolve relative to the inventory file and load through `config.LoadSite`, which ignores the controller's `ROOTFILES_*` environment, requires `users.home_base` (#24) and runs `Validate()`. A config that resolves an inline `tunnel_token` is refused; use `tunnel_token_file`. The resolved YAML (`Host.EffectiveConfig`) and `cfg.Fingerprint()` are computed once at load.
@@ -109,7 +109,9 @@ Verification evidence (folded from the 2026-10-03 rollout checklist):
 | Operator support | `darwin build` step of the CI `lint` job (`GOOS=darwin GOARCH=arm64 go vet/build`); darwin targets in `.goreleaser.yaml` |
 | Secrets and remote access | Inline `tunnel_token` refusal in `LoadInventory` (no dedicated test found; unverified by tests) |
 
+- `internal/fleet/shell_quote_test.go` pins POSIX quoting bytes and synthetic shell round trips (empty, apostrophe, whitespace and metacharacters). Sharing the helper changes no remote command or archive script bytes.
+
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): fleet commands accept and ignore `--module`, `--profile`, `--config`, `--force`, `--tunnel-token`; `-o` is validated only after the SSH work; sudoers and remote command strings must stay unchanged.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated `shellQuote`/`shellQuoteCLI` and `defaultRunLog`/`defaultFleetInventory`; fleet has its own JSON encoder and hardcoded exit 2.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining JSON encoder and hardcoded exit 2. Quoting is shared by `fleet.ShellQuote`; run logs intentionally use XDG state storage while inventory uses XDG config storage.

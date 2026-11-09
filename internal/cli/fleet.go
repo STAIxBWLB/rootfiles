@@ -229,7 +229,7 @@ func fleetRerunCommand(c *cobra.Command, args, hosts []string) string {
 			}
 			return
 		}
-		parts = append(parts, "--"+f.Name, shellQuoteCLI(f.Value.String()))
+		parts = append(parts, "--"+f.Name, fleet.ShellQuote(f.Value.String()))
 	})
 	for _, h := range hosts {
 		parts = append(parts, "--host", h)
@@ -435,7 +435,7 @@ func newFleetTargetsCmd() *cobra.Command {
 			return nil
 		}
 		script := fleetTargetsPushScript(path)
-		remote := "/bin/sh -c " + shellQuoteCLI(script)
+		remote := "/bin/sh -c " + fleet.ShellQuote(script)
 		if nh.Sudo == "nopasswd" {
 			remote = "sudo -n " + remote
 		}
@@ -480,9 +480,9 @@ func fleetTargetsPushScript(target string) string {
 	}
 	quotedDirs := make([]string, 0, len(dirs))
 	for _, dir := range dirs {
-		quotedDirs = append(quotedDirs, shellQuoteCLI(dir))
+		quotedDirs = append(quotedDirs, fleet.ShellQuote(dir))
 	}
-	return "set -eu\ntarget=" + shellQuoteCLI(target) + "\n" +
+	return "set -eu\ntarget=" + fleet.ShellQuote(target) + "\n" +
 		"check_dir() { [ -d \"$1\" ] && [ ! -L \"$1\" ] || return 1; [ \"$(stat -c %u:%g \"$1\")\" = 0:0 ] || return 1; mode=$(stat -c %a \"$1\"); [ \"$((0$mode & 022))\" -eq 0 ]; }\n" +
 		"for dir in " + strings.Join(quotedDirs, " ") + "; do\n" +
 		"  if [ -L \"$dir\" ]; then echo 'refusing symlink discovery parent' >&2; exit 1; fi\n" +
@@ -531,5 +531,3 @@ func selectedFleetHosts(c *cobra.Command, inv *fleet.Inventory) (*fleet.Inventor
 	}
 	return narrowed, nil
 }
-
-func shellQuoteCLI(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

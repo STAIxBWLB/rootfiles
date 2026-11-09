@@ -82,7 +82,7 @@ func (r SSHRunner) ReadOnly(ctx context.Context, h NamedHost, op string) Result 
 	res = compareFingerprint(res, h.Host.ConfigFingerprint)
 	if res.State == "error" && op == "status" && len(res.Remote) == 0 && missingRemoteBinary(res) {
 		probe := "hostname; cat /etc/os-release; uptime; " + remoteBinary + " --version 2>&1"
-		p := r.run(ctx, h, op, "/bin/sh -c "+shellQuote(probe), nil)
+		p := r.run(ctx, h, op, "/bin/sh -c "+ShellQuote(probe), nil)
 		if p.State != "unreachable" && p.State != "needs-privilege" && len(p.Remote) == 0 && missingRemoteBinary(p) {
 			p.State = "missing"
 			p.Reason = "rootfiles is not installed"
@@ -350,4 +350,5 @@ func lastLine(s string, match func(string) bool) string {
 	return ""
 }
 
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+// ShellQuote quotes a single argument for a POSIX shell.
+func ShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

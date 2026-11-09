@@ -50,10 +50,7 @@ type UsersDB struct {
 // Returns an empty DB (not an error) when the file is absent so callers can
 // treat "no managed users" as a valid state. Parse errors are surfaced.
 func LoadUsersDB(rc *RunContext) (*UsersDB, error) {
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	var db UsersDB
 	if _, err := readJSONDB(filepath.Join(homeBase, ".rootfiles", "users.json"), &db); err != nil {
 		return &db, err
@@ -89,14 +86,6 @@ func checkHomeBase(base string) error {
 // warnOut receives the warnings of read-only reports; tests capture it.
 var warnOut io.Writer = os.Stderr
 
-// metaHomeBase is the configured home base, /home when unset.
-func metaHomeBase(rc *RunContext) string {
-	if hb := rc.Config.Users.HomeBase; hb != "" {
-		return hb
-	}
-	return "/home"
-}
-
 // requireTrustedMetadata refuses the user and GPU databases under the home
 // base when a user other than root could control them: checkHomeBase
 // rejects the base, or <base>/.rootfiles (a directory, or the legacy flat
@@ -106,7 +95,7 @@ func metaHomeBase(rc *RunContext) string {
 // the databases grant; fixing the directory modes alone would not remove
 // what was planted while they were open.
 func requireTrustedMetadata(rc *RunContext) error {
-	base := metaHomeBase(rc)
+	base := rc.Config.Users.Base()
 	if err := checkHomeBase(base); err != nil {
 		return err
 	}
@@ -437,10 +426,7 @@ func AddUser(ctx context.Context, rc *RunContext, username string, pubkeys []str
 		return err
 	}
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 	if err := requireTrustedMetadata(rc); err != nil {
 		return err
 	}
@@ -515,10 +501,7 @@ func AddUser(ctx context.Context, rc *RunContext, username string, pubkeys []str
 func BackupUsers(rc *RunContext, outputPath string) error {
 	ctx := context.Background()
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	// Load existing managed users DB (if any). A backup is a restore input,
 	// so the DB of an untrusted base is left out, not just warned about.
@@ -662,10 +645,7 @@ func scanSystemUsers(ctx context.Context, rc *RunContext) ([]UserMeta, error) {
 // RestoreUsers restores users from a backup JSON file.
 func RestoreUsers(ctx context.Context, rc *RunContext, backupPath string) error {
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	// Auto-detect backup path. Its accounts, sudo rights and keys are
 	// trusted only from a base that root alone controls.
@@ -863,10 +843,7 @@ func RehomeUser(ctx context.Context, rc *RunContext, username string, removeOld 
 func ListUsers(rc *RunContext) error {
 	WarnUntrustedMetadata(rc)
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	dbPath := filepath.Join(homeBase, ".rootfiles", "users.json")
 	data, err := rc.Runner.ReadFile(dbPath)
@@ -893,10 +870,7 @@ func ListUsers(rc *RunContext) error {
 // ListUserNames prints only usernames, one per line (for scripting).
 func ListUserNames(rc *RunContext) error {
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	dbPath := filepath.Join(homeBase, ".rootfiles", "users.json")
 	data, err := rc.Runner.ReadFile(dbPath)
@@ -1123,10 +1097,7 @@ func LoadPasswordFile(path, suffix string) ([]PasswordEntry, error) {
 
 func saveUserMeta(rc *RunContext, username, home, shell string, groups []string, sudoNopasswd bool, pubkeys []string) error {
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	if err := ensureMetaDir(rc.Runner, homeBase); err != nil {
 		return err

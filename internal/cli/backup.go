@@ -14,6 +14,8 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
+
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 )
 
 // What `backup` archives and where the config snapshot comes from; tests
@@ -264,9 +266,9 @@ func backupUsrLocalBin(ctx context.Context, rc *module.RunContext, backupDir str
 // it whatever the process umask is; RunShell keeps it dry-run aware.
 func backupTar(ctx context.Context, rc *module.RunContext, outPath string, paths ...string) error {
 	parts := make([]string, 0, len(paths)+2)
-	parts = append(parts, "tar czf", shellQuoteCLI(outPath))
+	parts = append(parts, "tar czf", fleet.ShellQuote(outPath))
 	for _, p := range paths {
-		parts = append(parts, shellQuoteCLI(p))
+		parts = append(parts, fleet.ShellQuote(p))
 	}
 	_, err := rc.Runner.RunShell(ctx, "umask 077 && "+strings.Join(parts, " "))
 	return err

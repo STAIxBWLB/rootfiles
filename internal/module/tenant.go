@@ -38,7 +38,7 @@ func NewTenantManager(rc *RunContext, out io.Writer) *tenant.Manager {
 	return &tenant.Manager{
 		Runner:  rc.Runner,
 		Root:    rc.Config.Modules.Tenant.DataRoot(),
-		SpecDir: tenant.SpecDir(metaHomeBase(rc)),
+		SpecDir: tenant.SpecDir(rc.Config.Users.Base()),
 		UnitDir: tenantUnitDir,
 		Out:     out,
 		ReserveGPUs: func(ctx context.Context, t string, gpus []int) error {
@@ -171,7 +171,7 @@ func loadTenantSpecs(rc *RunContext) ([]*tenant.Spec, error) {
 	if err := requireTrustedMetadata(rc); err != nil {
 		return nil, err
 	}
-	dir := tenant.SpecDir(metaHomeBase(rc))
+	dir := tenant.SpecDir(rc.Config.Users.Base())
 	names, err := tenant.ListSpecs(dir)
 	if err != nil {
 		return nil, err

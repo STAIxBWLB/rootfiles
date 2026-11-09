@@ -66,7 +66,7 @@ func TestInvalidMutationTimeoutFailsBeforeSSH(t *testing.T) {
 		t.Fatal(err)
 	}
 	ssh := filepath.Join(sshDir, "ssh")
-	if err := os.WriteFile(ssh, []byte("#!/bin/sh\ntouch "+shellQuoteCLI(calls)+"\nexit 0\n"), 0700); err != nil {
+	if err := os.WriteFile(ssh, []byte("#!/bin/sh\ntouch "+fleet.ShellQuote(calls)+"\nexit 0\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", sshDir+string(os.PathListSeparator)+os.Getenv("PATH"))
@@ -97,7 +97,7 @@ func TestFleetTargetsPushValidatesPathAndGuardsParentsBeforeWrites(t *testing.T)
 		t.Fatal(err)
 	}
 	ssh := filepath.Join(sshDir, "ssh")
-	fake := []byte("#!/bin/sh\nprintf '%s\\n' \"$7\" > " + shellQuoteCLI(remoteFile) + "\ntouch " + shellQuoteCLI(calls) + "\ncat >/dev/null\necho pushed\nexit 0\n")
+	fake := []byte("#!/bin/sh\nprintf '%s\\n' \"$7\" > " + fleet.ShellQuote(remoteFile) + "\ntouch " + fleet.ShellQuote(calls) + "\ncat >/dev/null\necho pushed\nexit 0\n")
 	if err := os.WriteFile(ssh, fake, 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -234,7 +234,7 @@ func TestFleetSchedulePassesOnCalendar(t *testing.T) {
 	if err := os.Mkdir(sshDir, 0700); err != nil {
 		t.Fatal(err)
 	}
-	script := "#!/bin/sh\nprintf '%s\\n' \"$7\" > " + shellQuoteCLI(remoteFile) + "\ncat >/dev/null\necho scheduled\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$7\" > " + fleet.ShellQuote(remoteFile) + "\ncat >/dev/null\necho scheduled\n"
 	if err := os.WriteFile(filepath.Join(sshDir, "ssh"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +287,7 @@ func TestFleetUpdateSkipUnreachablePrintsRerunCommand(t *testing.T) {
 	script := "#!/bin/sh\n" +
 		"[ \"$6\" != h2 ] || { echo 'ssh: connect to host h2 port 22: No route to host' >&2; exit 255; }\n" +
 		"case \"$7\" in *'check -o json') printf '{\"modules\":[]}'; exit 0 ;; esac\n" +
-		"echo \"$6\" >> " + shellQuoteCLI(contacted) + "\necho updated\n"
+		"echo \"$6\" >> " + fleet.ShellQuote(contacted) + "\necho updated\n"
 	if err := os.WriteFile(filepath.Join(sshDir, "ssh"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +310,7 @@ func TestFleetUpdateSkipUnreachablePrintsRerunCommand(t *testing.T) {
 		t.Fatalf("hosts after the unreachable one should still update: %q", got)
 	}
 	out := stderr.String()
-	for _, want := range []string{"fleet update", "--inventory " + shellQuoteCLI(inventory), "--version 'v1.2.3'", "--yes", "--host h2"} {
+	for _, want := range []string{"fleet update", "--inventory " + fleet.ShellQuote(inventory), "--version 'v1.2.3'", "--yes", "--host h2"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("rerun command missing %q:\n%s", want, out)
 		}
