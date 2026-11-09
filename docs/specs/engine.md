@@ -17,7 +17,7 @@ paths:
 
 ## Purpose
 
-The Module interface, the registry and execution order, and the three commands that drive modules on one host: `apply` (Check then Apply, recorded in state), `check` (drift report, exit 2) and `status` (overview, exit 0). Every per-feature module spec is a child of this one.
+The Module interface, the registry and execution order, and the three commands that drive modules on one host: `apply` (Check then Apply, recorded in state), `check` (drift report, exit 2) and `status` (overview, exit 0). Per-feature module specs are children of [architecture](architecture.md) and declare `depends-on: [engine]`, because they implement the contract stated here.
 
 ## Contracts and invariants
 

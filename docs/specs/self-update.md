@@ -74,11 +74,12 @@ Release notes (`scripts/check-release-notes.sh`)
 
 - `internal/cli/upgrade_test.go`: `TestNormalizeVersion`, `TestVerifyChecksum_Valid`, `TestReplaceBinary`, `TestReplaceBinary_CleansStagingOnCopyFailure`, `TestEnsureRootAlias_SkipsCustomLocations`, `TestEnsureRootAlias_IgnoresNonRootfilesBinary`.
 - `scripts/ci-decision.sh --self-test` (run by `lint`) and `scripts/check-release-notes.sh --self-test` (run by `release-notes`).
-- The `unit` job's `./bin/rootfiles --help` smoke check. The installer has no automated test (unverified beyond release use).
+- The `unit` job's `./bin/rootfiles --help` smoke check. The installer runs in the Rocky fixture (`tests/run-rocky.sh`): sudo `secure_path` resolution through the `/usr/bin/rootfiles` link and refusal to replace unrelated `/usr/local/bin/root` or `/usr/bin/rootfiles` paths. Its Ubuntu path, checksum fallback and download failures have no automated test.
 
 ## Open issues
 
 - [#87](https://github.com/STAIxBWLB/rootfiles/issues/87): Go toolchain and action pinning, required checks (workflows use `go-version: stable` and `govulncheck@latest`).
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): `update --check` must run without root or lock and exit 2 when an update is available; today it requires root.
+- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `fetchLatestVersion` duplicates the cloudflared latest-release lookup (planned shared `githubLatestTag(owner, repo)`), version parsing is duplicated, and `upgrade.go` prints with raw `fmt` instead of the `ui` helpers and `cmd.OutOrStdout()`.
 - [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): CI `TEST_INPUTS` still lists `profiles/` and `templates/`, which no longer exist at the root.
 - [#96](https://github.com/STAIxBWLB/rootfiles/issues/96): README self-update section and `docs/development.md` (CI jobs, release workflow) restructure.
