@@ -1,0 +1,64 @@
+locale: en_US.UTF-8
+timezone: Asia/Seoul
+modules:
+    locale:
+        enabled: true
+    system:
+        enabled: false
+    packages:
+        enabled: true
+    ssh:
+        enabled: true
+    users:
+        enabled: false
+    security:
+        enabled: false
+        unattended_upgrades: false
+        fail2ban: false
+        time_sync: false
+    docker:
+        enabled: false
+    nvidia:
+        enabled: false
+    cloudflared:
+        enabled: false
+    storage:
+        enabled: false
+    network:
+        enabled: false
+        ufw: false
+    monitoring:
+        enabled: false
+        node_exporter: false
+        dcgm_exporter: false
+        perimeter_firewall: false
+        hub:
+            enabled: false
+packages:
+    - ca-certificates
+    - curl
+    - wget
+    - gnupg
+    - lsb-release
+    - git
+    - git-lfs
+    - vim
+    - tmux
+    - tree
+    - jq
+    - htop
+    - unzip
+    - zip
+    - build-essential
+    - locales
+    - zsh
+    - software-properties-common
+packages_extra: []
+users:
+    home_base: ""
+    default_shell: ""
+    default_groups: []
+    sudo_nopasswd: false
+ssh:
+    disable_root_login: false
+    disable_password_auth: false

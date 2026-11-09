@@ -46,6 +46,20 @@ func Load(profileName, customPath string, sysInfo *SystemInfo) (*Config, error) 
 // LoadWithHomeBase is Load with a --home-base override. It is applied
 // before home-base detection, so it also settles an ambiguous host.
 func LoadWithHomeBase(profileName, customPath string, sysInfo *SystemInfo, homeBase string) (*Config, error) {
+	return LoadWithOverrides(profileName, customPath, sysInfo, Overrides{HomeBase: homeBase})
+}
+
+// Overrides are the CLI values a command applies on top of the config file.
+// They are folded in before validation, so they also satisfy a check the file
+// alone would fail: --vlan-address with private_network.enabled, for example.
+type Overrides struct {
+	HomeBase    string
+	VLANAddress string
+}
+
+// LoadWithOverrides is LoadWithHomeBase plus the remaining CLI inputs, which
+// win over the file and its environment overrides.
+func LoadWithOverrides(profileName, customPath string, sysInfo *SystemInfo, ov Overrides) (*Config, error) {
 	var cfg *Config
 	var err error
 
@@ -67,8 +81,11 @@ func LoadWithHomeBase(profileName, customPath string, sysInfo *SystemInfo, homeB
 		return nil, fmt.Errorf("modules.cloudflared: set tunnel_token or tunnel_token_file, not both")
 	}
 	applyEnvOverrides(cfg)
-	if homeBase != "" {
-		cfg.Users.HomeBase = homeBase
+	if ov.HomeBase != "" {
+		cfg.Users.HomeBase = ov.HomeBase
+	}
+	if ov.VLANAddress != "" {
+		cfg.Modules.Cloudflared.PrivateNetwork.Address = ov.VLANAddress
 	}
 	if cfg.Users.HomeBase == "" {
 		hb, err := detectHomeBase(sysInfo)

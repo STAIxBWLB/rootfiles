@@ -48,3 +48,26 @@ func TestConfigValidateFailsOnBadConfig(t *testing.T) {
 		t.Errorf("expected ssh.port validation error, got %v", err)
 	}
 }
+
+func TestConfigValidateAcceptsVLANAddressFlag(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "site.yaml")
+	os.WriteFile(f, []byte("extends: minimal\nusers:\n  home_base: /home\nmodules:\n  cloudflared:\n    private_network:\n      enabled: true\n"), 0600)
+	root := NewRootCmd("test", "abc")
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"config", "validate", "--config", f, "--vlan-address", "203.0.113.10/32"})
+	if err := root.Execute(); err != nil {
+		t.Errorf("--vlan-address should satisfy the address check, got %v", err)
+	}
+}
+
+func TestConfigValidateRejectsPrivateNetworkWithoutAddress(t *testing.T) {
+	f := filepath.Join(t.TempDir(), "site.yaml")
+	os.WriteFile(f, []byte("extends: minimal\nmodules:\n  cloudflared:\n    private_network:\n      enabled: true\n"), 0600)
+	root := NewRootCmd("test", "abc")
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"config", "validate", "--config", f})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "modules.cloudflared.private_network.address") {
+		t.Errorf("expected private_network.address validation error, got %v", err)
+	}
+}

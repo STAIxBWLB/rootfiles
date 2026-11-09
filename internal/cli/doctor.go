@@ -38,6 +38,9 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 	profile, configPath, applied := resolveTarget(cmd, sys)
 	reportProfile, reportPath := reportedTarget(profile, configPath, applied)
+	// Doctor reports on the config it is given; it does not read
+	// --vlan-address, so it stays a config-target reader and keeps refusing
+	// inputs it does not use.
 	cfg, loadErr := config.LoadWithHomeBase(profile, configPath, sys, homeBaseFlag(cmd))
 	if loadErr != nil {
 		cfg = config.Fallback(sys, homeBaseFlag(cmd))

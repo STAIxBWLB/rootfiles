@@ -56,7 +56,7 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Load config
-	cfg, err := config.LoadWithHomeBase(profileName, configPath, sysInfo, homeBaseFlag(cmd))
+	cfg, err := config.LoadWithOverrides(profileName, configPath, sysInfo, loadOverrides(cmd))
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -204,8 +204,17 @@ func homeBaseFlag(cmd *cobra.Command) string {
 	return v
 }
 
-// applyFlagOverrides applies the remaining CLI flags; --home-base is applied
-// by config.LoadWithHomeBase before home-base detection.
+// loadOverrides collects the CLI inputs config loading folds in before
+// validation, so a flag can satisfy a check the file alone would fail.
+func loadOverrides(cmd *cobra.Command) config.Overrides {
+	vlan, _ := cmd.Flags().GetString("vlan-address")
+	return config.Overrides{HomeBase: homeBaseFlag(cmd), VLANAddress: vlan}
+}
+
+// applyFlagOverrides applies the remaining CLI flags. --home-base and
+// --vlan-address are folded in by config.LoadWithOverrides before
+// validation; the address is applied again for the fallback config a command
+// uses when loading fails.
 func applyFlagOverrides(cmd *cobra.Command, cfg *config.Config) {
 	if v, _ := cmd.Flags().GetString("tunnel-token"); v != "" {
 		cfg.Modules.Cloudflared.TunnelToken = v
