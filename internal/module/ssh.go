@@ -53,6 +53,16 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 		}
 	}
 
+	if cfg.Port > 0 && !config.IsRocky(rc.Config.System) {
+		needsAllow, err := sshFirewallPlan(ctx, rc, cfg.Port)
+		if err != nil {
+			return nil, err
+		}
+		if needsAllow {
+			changes = append(changes, Change{Description: fmt.Sprintf("Allow SSH port %d in UFW", cfg.Port), Command: fmt.Sprintf("ufw allow %d/tcp", cfg.Port)})
+		}
+	}
+
 	desired := m.buildConfig(cfg)
 	existing, _ := rc.Runner.ReadFile(sshdDropInPath)
 
@@ -75,6 +85,14 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 
 func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 	cfg := rc.Config.SSH
+	needsUFWAllow := false
+	if cfg.Port > 0 && !config.IsRocky(rc.Config.System) {
+		var err error
+		needsUFWAllow, err = sshFirewallPlan(ctx, rc, cfg.Port)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var originalMain, updatedMain []byte
 	var originalMainMode os.FileMode
 	mainIncludeChanged := false
@@ -131,7 +149,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		}
 		return nil
 	}
-	if !configChanged {
+	if !configChanged && !needsUFWAllow {
 		return &ApplyResult{Changed: rockyPortAdded, Messages: messages}, nil
 	}
 
@@ -191,14 +209,21 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		}
 	}
 
-	// Admit a new SSH port through an active firewall before sshd moves to it.
-	if cfg.Port > 0 && !config.IsRocky(rc.Config.System) {
-		if st, ok := queryUFW(ctx, rc); ok && st.Active && !st.Allowed[cfg.Port] {
-			if _, err := rc.Runner.Run(ctx, "ufw", "allow", strconv.Itoa(cfg.Port)+"/tcp"); err != nil {
-				return nil, fmt.Errorf("allowing ssh port %d in ufw: %w", cfg.Port, err)
-			}
-			messages = append(messages, fmt.Sprintf("ufw: allowed ssh port %d", cfg.Port))
+	// Admit the planned UFW port before sshd writes. Unknown state never reaches here.
+	if needsUFWAllow {
+		if _, err := rc.Runner.Run(ctx, "ufw", "allow", strconv.Itoa(cfg.Port)+"/tcp"); err != nil {
+			return nil, fmt.Errorf("allowing SSH port %d in UFW: %w; inspect sudo ufw status before retrying", cfg.Port, err)
 		}
+		if !rc.DryRun {
+			pending, err := sshFirewallPlan(ctx, rc, cfg.Port)
+			if err != nil {
+				return nil, err
+			}
+			if pending {
+				return nil, fmt.Errorf("UFW did not confirm the unrestricted TCP allowance for SSH port %d; verify sudo ufw status or restore ssh.port before retrying", cfg.Port)
+			}
+		}
+		messages = append(messages, fmt.Sprintf("ufw: allowed ssh port %d", cfg.Port))
 	}
 
 	if configChanged && (readErr != nil || strings.TrimSpace(string(existing)) != strings.TrimSpace(content)) {

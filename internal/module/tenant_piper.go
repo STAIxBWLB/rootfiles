@@ -140,14 +140,13 @@ func piperBlock(ctx context.Context, rc *RunContext, port int) string {
 	if piperPortTaken(ctx, rc, port) {
 		return fmt.Sprintf("port %d is held by another process; free it or set modules.tenant.sshpiper.port", port)
 	}
-	if !rc.Runner.CommandExists("ufw") {
-		return ""
-	}
-	res, err := rc.Runner.Query(ctx, "ufw", "status")
+	st, err := inspectUFW(ctx, rc, false)
 	if err != nil {
-		return fmt.Sprintf("cannot read the UFW state to admit port %d: %s", port, firstLine(err.Error()))
+		return fmt.Sprintf("cannot read the UFW state to admit port %d: %s; run sudo ufw status and repair the query before retrying", port, firstLine(err.Error()))
 	}
-	st := parseUFWStatus(res.Stdout)
+	if !st.Known {
+		return fmt.Sprintf("cannot determine the UFW state to admit port %d; run sudo ufw status and repair the status query", port)
+	}
 	if !st.Active || st.Allowed[port] || rc.Config.Modules.Network.UFW && rc.moduleSucceeding("network") {
 		return ""
 	}
