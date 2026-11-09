@@ -38,10 +38,10 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 		if cfg.Port > 0 {
 			allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
 			if err != nil {
-				return nil, err
+				return blockedFirewallCheck(err), nil
 			}
 			if !allowed {
-				return nil, fmt.Errorf("firewall policy does not allow SSH port %d; add the port through the host firewall change process before changing sshd", cfg.Port)
+				return blockedFirewallCheck(fmt.Errorf("firewall policy does not allow SSH port %d; add the port through the host firewall change process before changing sshd", cfg.Port)), nil
 			}
 			labeled, err := rockySSHSELinuxPortLabeled(ctx, rc, cfg.Port)
 			if err != nil {
@@ -53,8 +53,18 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 		}
 	}
 
-	desired := m.buildConfig(cfg)
 	existing, _ := rc.Runner.ReadFile(sshdDropInPath)
+	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
+		needsAllow, err := sshFirewallPlan(ctx, rc, cfg.Port)
+		if err != nil {
+			return blockedFirewallCheck(err), nil
+		}
+		if needsAllow {
+			changes = append(changes, Change{Description: fmt.Sprintf("Allow SSH port %d in UFW", cfg.Port), Command: fmt.Sprintf("ufw allow %d/tcp", cfg.Port)})
+		}
+	}
+
+	desired := m.buildConfig(cfg)
 
 	if strings.TrimSpace(string(existing)) != strings.TrimSpace(desired) {
 		desc := "Deploy custom sshd configuration"
@@ -75,6 +85,8 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 
 func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 	cfg := rc.Config.SSH
+	needsUFWAllow := false
+
 	var originalMain, updatedMain []byte
 	var originalMainMode os.FileMode
 	mainIncludeChanged := false
@@ -99,6 +111,13 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	existing, readErr := rc.Runner.ReadFile(sshdDropInPath)
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 		return nil, fmt.Errorf("reading sshd drop-in %s: %w", sshdDropInPath, readErr)
+	}
+	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
+		var err error
+		needsUFWAllow, err = sshFirewallPlan(ctx, rc, cfg.Port)
+		if err != nil {
+			return nil, err
+		}
 	}
 	configChanged := readErr != nil || strings.TrimSpace(string(existing)) != strings.TrimSpace(content) || mainIncludeChanged
 	if configChanged {
@@ -131,7 +150,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		}
 		return nil
 	}
-	if !configChanged {
+	if !configChanged && !needsUFWAllow {
 		return &ApplyResult{Changed: rockyPortAdded, Messages: messages}, nil
 	}
 
@@ -191,14 +210,21 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		}
 	}
 
-	// Admit a new SSH port through an active firewall before sshd moves to it.
-	if cfg.Port > 0 && !config.IsRocky(rc.Config.System) {
-		if st, ok := queryUFW(ctx, rc); ok && st.Active && !st.Allowed[cfg.Port] {
-			if _, err := rc.Runner.Run(ctx, "ufw", "allow", strconv.Itoa(cfg.Port)+"/tcp"); err != nil {
-				return nil, fmt.Errorf("allowing ssh port %d in ufw: %w", cfg.Port, err)
-			}
-			messages = append(messages, fmt.Sprintf("ufw: allowed ssh port %d", cfg.Port))
+	// Admit the planned UFW port before sshd writes. Unknown state never reaches here.
+	if needsUFWAllow {
+		if _, err := rc.Runner.Run(ctx, "ufw", "allow", strconv.Itoa(cfg.Port)+"/tcp"); err != nil {
+			return nil, fmt.Errorf("allowing SSH port %d in UFW: %w; inspect sudo ufw status before retrying", cfg.Port, err)
 		}
+		if !rc.DryRun {
+			pending, err := sshFirewallPlan(ctx, rc, cfg.Port)
+			if err != nil {
+				return nil, err
+			}
+			if pending {
+				return nil, fmt.Errorf("UFW did not confirm the unrestricted TCP allowance for SSH port %d; verify sudo ufw status or restore ssh.port before retrying", cfg.Port)
+			}
+		}
+		messages = append(messages, fmt.Sprintf("ufw: allowed ssh port %d", cfg.Port))
 	}
 
 	if configChanged && (readErr != nil || strings.TrimSpace(string(existing)) != strings.TrimSpace(content)) {
@@ -364,6 +390,19 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// managedSSHPortChanges compares an explicit requested port with the managed
+// drop-in, defaulting to SSH's port 22 when no Port directive exists.
+func managedSSHPortChanges(existing []byte, requested int) bool {
+	if requested <= 0 {
+		return false
+	}
+	current := 22
+	if ports := parsePortDirectives(string(existing)); len(ports) > 0 {
+		current = ports[0]
+	}
+	return current != requested
 }
 
 // portLine returns the "Port N" directive of a drop-in, or "" if none.

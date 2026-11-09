@@ -82,8 +82,16 @@ func doctorExporterListener(ctx context.Context, rc *RunContext) []Finding {
 	}
 	covered := cfg.PerimeterFirewall
 	if !covered {
-		fw, present := queryUFW(ctx, rc)
-		if present && fw.Active {
+		fw, err := inspectUFW(ctx, rc, false)
+		if err != nil || !fw.Known {
+			detail := "cannot determine installed UFW state"
+			if err != nil {
+				detail += ": " + firstLine(err.Error())
+			}
+			return []Finding{{Check: "exporter exposure", Level: LevelWarn, Detail: detail,
+				Hint: "run sudo ufw status and verify exporter access restrictions"}}
+		}
+		if fw.Installed && fw.Active {
 			covered = true
 			for _, p := range ports {
 				if !ufwRestrictedPortRuleExists(ctx, rc, p) {
@@ -206,8 +214,16 @@ func userPasswordAuth(ctx context.Context, rc *RunContext, bin, user string) boo
 }
 
 func doctorFirewall(ctx context.Context, rc *RunContext) Finding {
-	st, ok := queryUFW(ctx, rc)
-	if !ok {
+	st, err := inspectUFW(ctx, rc, false)
+	if err != nil || !st.Known {
+		detail := "cannot determine installed UFW state"
+		if err != nil {
+			detail += ": " + firstLine(err.Error())
+		}
+		return Finding{Check: "firewall", Level: LevelFail, Detail: detail,
+			Hint: "run sudo ufw status and repair the status query"}
+	}
+	if !st.Installed {
 		return Finding{Check: "firewall", Level: LevelSkip, Detail: "ufw not installed"}
 	}
 	if !st.Active {

@@ -18,11 +18,15 @@ func fakeBin(t *testing.T, names ...string) string {
 	log := filepath.Join(dir, "calls.log")
 	for _, n := range names {
 		script := "#!/bin/sh\necho \"" + n + " $*\" >> " + log + "\n"
+		if n == "ufw" {
+			script += "printf 'Status: inactive\\n'\n"
+		}
 		if err := os.WriteFile(filepath.Join(dir, n), []byte(script), 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	ensureFixtureUFW(t, dir)
 	return log
 }
 

@@ -399,9 +399,8 @@ func TestRockySSHUnknownFirewallBlocksCheckAndApplyBeforeWrites(t *testing.T) {
 	rc.Config.System = &config.SystemInfo{OS: "rocky", Version: "9.8"}
 	rc.Config.SSH = config.SSHConfig{Port: 2222}
 	module := NewSSHModule()
-	if _, err := module.Check(context.Background(), rc); err == nil {
-		t.Fatal("Check accepted unrecognized active firewall state")
-	}
+	check, err := module.Check(context.Background(), rc)
+	requireBlockedFirewallCheck(t, check, err)
 	if _, err := module.Apply(context.Background(), rc); err == nil {
 		t.Fatal("Apply accepted unrecognized active firewall state")
 	}

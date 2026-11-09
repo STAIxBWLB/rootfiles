@@ -812,8 +812,15 @@ The Rocky capability gate refuses Docker, NVIDIA/GPU allocation, Cloudflare, sto
 
 The gate runs before application, including dry-run. Backup/rollback restores managed files; it does not uninstall packages, reverse service effects or move user data. Verify actual SSH access after any change before ending the administrative session.
 
+### Unknown firewall state
+
+Before changing a configured SSH port, rootfiles checks installed UFW and firewalld state. A failed or unrecognized status blocks the change, including when `--force` is set. Review `sudo ufw status` or `sudo firewall-cmd --state`, repair the reported query or port allowance, then retry; restoring `ssh.port` is another way to avoid the port change. An active UFW can receive a missing unrestricted TCP allowance before sshd changes, and `check` reports that command. Existing source-limited or family-limited rules require an explicit operator adjustment rather than automatic widening. On Ubuntu, an unchanged managed SSH port leaves the existing UFW policy alone.
+
+Read-only `check` and `status` report unknown firewall inspection as a blocked pending change instead of aborting the module report. Apply still refuses before changing the affected component. The network module also refuses UFW rule changes or enablement while firewall state is unknown, or while firewalld is active. Tenant SSH and exporter setup treat unknown UFW state as a blocker, and doctor reports it explicitly. Inspection reuses the supported UFW/firewalld boundaries; it does not probe or manage direct iptables or native nftables policies.
+
 ## AGENTS.md background
 
 Human-readable background. Agent instructions: `AGENTS.md`.
 
 - 2026-11-09: raised the Go baseline to 1.26.10 so CI and release share a supported, pinned toolchain from `go.mod` (#87).
+- 2026-11-09: native-command test isolation now includes installed/failing ambient tools after remote-only module runs missed host sshd/UFW dependencies (#89, #104).

@@ -19,3 +19,9 @@ The Rocky 8.9/8.10 deployment evidence covered locale time zone, journald limits
 ## Native subcommands
 
 Native GPU, tunnel, account and tenant mutations validate the modules they touch before running commands, including `--dry-run`. In particular, `gpu assign`/`revoke` and tunnel install/setup/restart/update/uninstall refuse Rocky's unsupported GPU/cloudflared capabilities. Read-only reports and `tunnel update --check` can still inspect the host. Contexts use the detected distribution's package backend (DNF on supported Rocky), rather than assuming APT.
+
+## Shared firewall inspection
+
+Ubuntu SSH port changes reuse Rocky's UFW/firewalld inspection and refusal behavior. A failed or unrecognized installed-manager query blocks changes before sshd configuration is written. Rocky retains its requirement for verified existing TCP allowance (both UFW address families, no conflicting deny/reject rules, and allowance in every active firewalld zone); rootfiles does not add UFW rules for Rocky. With neither UFW nor firewalld active, the existing Rocky behavior remains unchanged. No direct iptables or nftables probes are introduced.
+
+Read-only module checks represent unknown firewall inspection as a blocked change, so check/status reports stay readable without firewall-query privileges. Apply and its mutation preflight retain the refusal before any affected component changes.

@@ -43,6 +43,7 @@ History: exporters designed in #13 (phase 3) and shipped in #19 (v0.12.0); later
 
 ## Behaviour
 
+- Check converts unknown firewall inspection from preflight/exporter checks into a single blocked change; it omits other pending changes until that blocker is repaired. Other configuration/port-conflict errors retain their existing behavior. Apply and real mutation preflight remain strict before any affected change. The shared model is owned by [ssh-access](ssh-access.md).
 - Check: preflight, then `checkMonitoringExporters` (package, defaults file, unit, collectors, wants link, active/enabled state, UFW source rules), `checkMonitoringHub`, `checkExporterGuard` (blocked when firewalld is active, `iptables`/`iptables-save`/`python3` is missing, or the `DOCKER-USER` chain is absent; pending when the docker module of this run may still create it).
 - Apply: as in the order above. Unit or collectors changes restart a running DCGM exporter; a changed defaults file restarts node exporter. Exporters that stayed down while rules were missing are `reset-failed` and started after a guard setup.
 - `rootfiles doctor` (`doctorExporterExposure` in `internal/module/doctor.go`, owned by [doctor-schedule](doctor-schedule.md)) counts exporters as covered only while `helper check` passes, warns about a helper installed without `exporter_firewall`, and otherwise warns when a non-private listener is covered by neither a restricting UFW rule nor `perimeter_firewall: true`.
@@ -78,7 +79,6 @@ Verification evidence (folded from the 2026-10-03 rollout checklist):
 
 ## Open issues
 
-- [#89](https://github.com/STAIxBWLB/rootfiles/issues/89): UFW output is parsed in three places with different rules; `monitoring_firewall.go` moves to one shared firewall model with an explicit known state.
 - [#93](https://github.com/STAIxBWLB/rootfiles/issues/93): `Change.Command` hardcodes `apt-get install` for node exporter.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `exporterGuardFileCurrent` is one of four write-if-changed helpers; monitoring calls `daemon-reload` directly with failure as error.
 - [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): unused `exporterGuardUnit` constant; the default `dcgm-exporter:3.3.8-3.6.0-ubuntu22.04` image is from 2024.

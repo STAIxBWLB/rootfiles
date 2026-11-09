@@ -28,6 +28,10 @@ var (
 
 func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, error) {
 	cfg := rc.Config.Modules.Monitoring
+	fw, err := monitoringExporterFirewallState(ctx, rc)
+	if err != nil {
+		return nil, err
+	}
 	var changes []Change
 	// Apply cannot fix a missing prerequisite, so it is reported as blocked
 	// and the DCGM steps that depend on it are not planned.
@@ -78,8 +82,7 @@ func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, er
 			changes = append(changes, Change{Description: "Start DCGM exporter", Command: "systemctl enable --now " + dcgmExporterUnit})
 		}
 	}
-	fw, active := queryUFW(ctx, rc)
-	if active && fw.Active {
+	if fw.Installed && fw.Active {
 		ports := exporterPorts(cfg)
 		for _, p := range ports {
 			for _, source := range cfg.AllowFrom {
@@ -94,6 +97,10 @@ func checkMonitoringExporters(ctx context.Context, rc *RunContext) ([]Change, er
 
 func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 	cfg := rc.Config.Modules.Monitoring
+	fw, err := monitoringExporterFirewallState(ctx, rc)
+	if err != nil {
+		return nil, err
+	}
 	out := &ApplyResult{}
 	// A missing DCGM prerequisite must not hold back node exporter: the rest
 	// is applied first and the module then fails with the DCGM error.
@@ -195,7 +202,7 @@ func applyMonitoringExporters(ctx context.Context, rc *RunContext) (*ApplyResult
 			out.Warnings = append(out.Warnings, "DCGM exporter is not active after start")
 		}
 	}
-	if fw, present := queryUFW(ctx, rc); present && fw.Active {
+	if fw.Installed && fw.Active {
 		for _, p := range exporterPorts(cfg) {
 			for _, source := range cfg.AllowFrom {
 				if ufwSourceRuleExists(ctx, rc, source, p) {
@@ -323,28 +330,4 @@ func exporterPorts(cfg config.MonitoringConfig) []int {
 func serviceEnabled(ctx context.Context, rc *RunContext, unit string) bool {
 	res, err := rc.Runner.Query(ctx, "systemctl", "is-enabled", unit)
 	return err == nil && strings.TrimSpace(res.Stdout) == "enabled"
-}
-func ufwSourceRuleExists(ctx context.Context, rc *RunContext, source string, port int) bool {
-	res, err := rc.Runner.Query(ctx, "ufw", "status")
-	if err != nil {
-		return false
-	}
-	wantPort := strconv.Itoa(port)
-	wantSource := strings.ToLower(source)
-	wantSourceHost := strings.TrimSuffix(strings.TrimSuffix(wantSource, "/32"), "/128")
-	for _, line := range strings.Split(res.Stdout, "\n") {
-		fields := strings.Fields(strings.ToLower(line))
-		if len(fields) < 4 || (fields[0] != wantPort && fields[0] != wantPort+"/tcp") {
-			continue
-		}
-		for i, field := range fields {
-			if field == "allow" && i+2 < len(fields) && fields[i+1] == "in" {
-				gotSource := strings.TrimSuffix(strings.TrimSuffix(fields[i+2], "/32"), "/128")
-				if fields[i+2] == wantSource || gotSource == wantSourceHost {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }

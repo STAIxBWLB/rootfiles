@@ -369,7 +369,7 @@ func renderGPUSection(out io.Writer, rc *module.RunContext) {
 	}
 }
 
-const cloudflaredStatusBinary = "/usr/local/bin/cloudflared"
+var cloudflaredStatusBinary = "/usr/local/bin/cloudflared"
 
 func renderTunnelSection(ctx context.Context, out io.Writer, rc *module.RunContext) {
 	ui.WriteSection(out, "Tunnel")
