@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 type DockerModule struct{}
@@ -90,6 +92,10 @@ func (m *DockerModule) Check(ctx context.Context, rc *RunContext) (*CheckResult,
 }
 
 func (m *DockerModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
+	repositories, ok := rc.APT.(exec.APTRepositoryManager)
+	if !ok {
+		return nil, fmt.Errorf("docker requires a package backend with APT repository support; use Ubuntu/DGX OS or disable modules.docker.enabled")
+	}
 	var messages, warnings []string
 	changed := false
 	cfg := rc.Config.Modules.Docker
@@ -104,12 +110,12 @@ func (m *DockerModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 			arch = rc.Config.System.Arch
 		}
 
-		if err := rc.APT.AddKeyring(ctx, "docker", "https://download.docker.com/linux/ubuntu/gpg"); err != nil {
+		if err := repositories.AddKeyring(ctx, "docker", "https://download.docker.com/linux/ubuntu/gpg"); err != nil {
 			return nil, fmt.Errorf("adding docker apt key: %w", err)
 		}
 		repoLine := fmt.Sprintf("deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu %s stable",
 			arch, codename)
-		if err := rc.APT.AddSourceList(ctx, "docker", repoLine); err != nil {
+		if err := repositories.AddSourceList(ctx, "docker", repoLine); err != nil {
 			return nil, fmt.Errorf("adding docker apt source: %w", err)
 		}
 		if err := rc.APT.Update(ctx); err != nil {

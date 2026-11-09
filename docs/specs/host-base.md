@@ -49,6 +49,8 @@ paths:
 
 ## Safety
 
+- Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
+
 - Never delete or overwrite operator data to place a symlink or swapfile; refuse with a message that says what to move.
 - Keep `requireTrustedMetadata` before any metadata directory work.
 
@@ -65,4 +67,3 @@ paths:
 ## Open issues
 
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): hand-written write-if-changed in `system.go`; repeated `homeBase` default.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): dead `setDefaultLocale` (test-only); `# Managed by rootfiles-v2` header in sysctl and journald files.

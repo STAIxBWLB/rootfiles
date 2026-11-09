@@ -553,7 +553,7 @@ func BackupUsers(rc *RunContext, outputPath string) error {
 		db.HomeBase = homeBase
 	}
 	if db.CreatedBy == "" {
-		db.CreatedBy = "rootfiles-v2"
+		db.CreatedBy = "rootfiles"
 	}
 
 	data, err := json.MarshalIndent(db, "", "  ")
@@ -1141,7 +1141,7 @@ func saveUserMeta(rc *RunContext, username, home, shell string, groups []string,
 	if db.Version == 0 {
 		db.Version = 1
 		db.HomeBase = homeBase
-		db.CreatedBy = "rootfiles-v2"
+		db.CreatedBy = "rootfiles"
 	}
 
 	meta := UserMeta{

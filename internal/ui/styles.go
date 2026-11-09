@@ -9,7 +9,7 @@ import "github.com/charmbracelet/lipgloss"
 //   - StyleSection  section dividers   — purple, bold
 //   - StyleKey      left-side labels in key/value rows — green, padded to 14
 //   - StyleValue    right-side values in key/value rows — light blue
-//   - StyleSuccess  positive status (MarkOK, MarkStarred) — green, bold
+//   - StyleSuccess  positive status (MarkOK) — green, bold
 //   - StyleWarning  non-fatal attention (MarkWarn) — orange, bold
 //   - StyleError    hard failure (MarkFail) — red, bold
 //   - StyleHint     secondary info, neutral-missing, (unset) placeholders — gray

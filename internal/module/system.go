@@ -53,7 +53,7 @@ func sysctlContent(entries map[string]string) string {
 	}
 	sort.Strings(keys)
 	var b strings.Builder
-	b.WriteString("# Managed by rootfiles-v2\n")
+	b.WriteString("# Managed by rootfiles\n")
 	for _, k := range keys {
 		fmt.Fprintf(&b, "%s = %s\n", k, entries[k])
 	}
@@ -61,7 +61,7 @@ func sysctlContent(entries map[string]string) string {
 }
 
 func journaldContent(maxUse string) string {
-	return "# Managed by rootfiles-v2\n[Journal]\nSystemMaxUse=" + maxUse + "\n"
+	return "# Managed by rootfiles\n[Journal]\nSystemMaxUse=" + maxUse + "\n"
 }
 
 // mirroredSources returns path and rewritten content for each APT source

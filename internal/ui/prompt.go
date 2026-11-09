@@ -76,23 +76,6 @@ func Input(message, defaultVal string, unattended bool) (string, error) {
 	return value, nil
 }
 
-// InputPassword asks for a masked password input. Returns empty string if unattended.
-func InputPassword(message string, unattended bool) (string, error) {
-	if unattended {
-		return "", nil
-	}
-	var value string
-	err := huh.NewInput().
-		Title(message).
-		Value(&value).
-		EchoMode(huh.EchoModePassword).
-		Run()
-	if err != nil {
-		return "", err
-	}
-	return value, nil
-}
-
 // InputInt asks for an integer input. Returns defaultVal if unattended or empty.
 func InputInt(message string, defaultVal int, unattended bool) (int, error) {
 	s, err := Input(message, strconv.Itoa(defaultVal), unattended)

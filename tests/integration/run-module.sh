@@ -41,7 +41,7 @@ case "$MODULE" in
         ;;
     ssh)
         assert_file_exists "/etc/ssh/sshd_config.d/00-rootfiles.conf"
-        assert_file_contains "/etc/ssh/sshd_config.d/00-rootfiles.conf" "rootfiles-v2"
+        assert_file_contains "/etc/ssh/sshd_config.d/00-rootfiles.conf" "Managed by rootfiles"
         assert_file_contains "/etc/ssh/sshd_config.d/00-rootfiles.conf" "PermitRootLogin no"
         ;;
     users)

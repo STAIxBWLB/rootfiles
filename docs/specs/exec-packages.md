@@ -6,6 +6,7 @@ status: active
 parent: architecture
 paths:
   - internal/exec/runner.go
+  - internal/exec/managed_content.go
   - internal/exec/apt.go
   - internal/exec/package_manager.go
   - internal/module/packages.go
@@ -26,9 +27,11 @@ The single path through which modules and commands run host commands and change 
 - **Test query guard**: `Runner.QueryGuard`, when set, receives the executable resolved by `os/exec` before execution. Returning an error prevents execution, including during dry-run; nil preserves normal command execution. Module test contexts reject executable targets outside their private test root, following symlinks, and fail the test even when a caller ignores the query error. Fixture shell scripts may use `/bin/sh` as their interpreter.
 - **Secrets on stdin**: `RunInput` never logs its input; use it for passwords and tokens instead of putting them on a command line. `Run*` log the full command string.
 - Errors from `Run*`/`Query` include the command string and stderr; callers wrap them with what they were doing.
-- **PackageManager** (`internal/exec/package_manager.go`): `Update`, `Install`, `IsInstalled`, `Installed`, `AddKeyring`, `AddSourceList`. `NewPackageManager` picks the backend from `config.ResolveDistro` (`apt` or `dnf`) and fails on an unsupported OS. `AddKeyring`/`AddSourceList` are APT semantics; the RPM backend returns errors for them (see [distro-rocky](distro-rocky.md)).
+- **PackageManager** (`internal/exec/package_manager.go`): `Update`, `Install`, `IsInstalled`, `Installed`. `NewPackageManager` picks the backend from `config.ResolveDistro` (`apt` or `dnf`) and fails on an unsupported OS. The separate optional `APTRepositoryManager` owns `AddKeyring`/`AddSourceList`; concrete APT implements it, RPM does not. Docker/NVIDIA require that capability before queries or mutations, with no APT fallback for an RPM backend.
 - **APT backend** (`internal/exec/apt.go`): every call runs with `DEBIAN_FRONTEND=noninteractive` and `NEEDRESTART_MODE=a` and waits up to 300 s for the dpkg lock. `Install` keeps modified conffiles (`--force-confdef`, `--force-confold`) and passes `--no-remove`, so an install aborts instead of removing conflicting packages. `Installed` is one `dpkg-query` call; only `ok installed` lines count and arch suffixes are stripped. `AddKeyring` is a no-op when the key file exists.
 - **packages module** (`internal/module/packages.go`): installs `Config.AllPackages()` (profile `packages` plus accumulated `packages_extra`, de-duplicated). Check reports one change listing the missing packages with a distro-correct command (`packageInstallCommand`); Apply refreshes the index and installs only the missing ones, and reports `Changed` only when it installed something. It never upgrades or removes packages.
+
+- **Managed header compatibility** (`ManagedContentEqual`): compare the old `# Managed by rootfiles-v2` and new `# Managed by rootfiles` as equivalent, also for `//` comments and after a shebang. Only the leading management marker is normalized; suffixes, credentials and body bytes remain exact. New/actually changed files use the new marker. Header-only differences never trigger a write, backup or service reload. Module and schedule comparisons use this shared rule to preserve converged hosts.
 
 ## Behaviour
 
@@ -54,7 +57,3 @@ The single path through which modules and commands run host commands and change 
 - `internal/exec/backup_test.go`: `TestBackupPreserveAndRestore` (Runner writes preserved for rollback).
 - `internal/module/packages_test.go`: `TestPackagesModule_CheckNoPackagesIsSatisfied`, `TestPackagesModule_ApplyNoPackagesNoChange`.
 - `tests/integration/run-module.sh` and `tests/integration/run-profile.sh` (CI jobs `module`, `integration`) install real packages in containers; `tests/scenarios/dry-run-all-profiles.sh` (CI job `scenario`) checks dry run changes nothing.
-
-## Open issues
-
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): move `AddKeyring`/`AddSourceList` to an APT-only interface used by the Ubuntu docker and nvidia paths.

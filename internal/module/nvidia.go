@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 type NvidiaModule struct{}
@@ -83,12 +85,16 @@ func serviceActive(ctx context.Context, rc *RunContext, unit string) bool {
 }
 
 func (m *NvidiaModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
+	repositories, ok := rc.APT.(exec.APTRepositoryManager)
+	if !ok {
+		return nil, fmt.Errorf("nvidia requires a package backend with APT repository support; use Ubuntu/DGX OS or disable modules.nvidia.enabled")
+	}
 	var messages, warnings []string
 	changed := false
 
 	installed := false
 	if !rc.APT.IsInstalled("nvidia-container-toolkit") {
-		if err := rc.APT.AddKeyring(ctx, "nvidia-container-toolkit",
+		if err := repositories.AddKeyring(ctx, "nvidia-container-toolkit",
 			"https://nvidia.github.io/libnvidia-container/gpgkey"); err != nil {
 			return nil, fmt.Errorf("adding nvidia apt key: %w", err)
 		}
@@ -100,7 +106,7 @@ func (m *NvidiaModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 		repoLine := fmt.Sprintf(
 			"deb [signed-by=/etc/apt/keyrings/nvidia-container-toolkit.gpg arch=%s] https://nvidia.github.io/libnvidia-container/stable/deb/$(ARCH) /",
 			arch)
-		if err := rc.APT.AddSourceList(ctx, "nvidia-container-toolkit", repoLine); err != nil {
+		if err := repositories.AddSourceList(ctx, "nvidia-container-toolkit", repoLine); err != nil {
 			return nil, fmt.Errorf("adding nvidia apt source: %w", err)
 		}
 		if err := rc.APT.Update(ctx); err != nil {

@@ -30,12 +30,6 @@ type SSHRunner struct {
 // reasonConnectFailed marks a host ssh could not connect to, so nothing ran.
 const reasonConnectFailed = "ssh connection failed"
 
-// RunRemote executes one already-constructed remote command. Callers must use
-// fixed command tokens and validate any values embedded in the shell string.
-func (r SSHRunner) RunRemote(ctx context.Context, h NamedHost, op, remote string, input []byte) Result {
-	return r.run(ctx, h, op, remote, input)
-}
-
 // RunMutationRemote applies the bounded mutation deadline to one remote write.
 func (r SSHRunner) RunMutationRemote(ctx context.Context, h NamedHost, op, remote string, input []byte) Result {
 	return r.runMutation(ctx, h, op, remote, input)

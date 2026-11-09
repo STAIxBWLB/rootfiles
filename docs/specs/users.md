@@ -41,6 +41,8 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 
 ## Behaviour
 
+- New metadata databases use `CreatedBy: rootfiles`. Existing databases retain their recorded value, including `rootfiles-v2`; marker cleanup alone never rewrites a ledger.
+
 - Module Check/Apply: custom home base and metadata directory, useradd `HOME`, declarative accounts, then fleet sudoers. Check and Apply cover the same items.
 - `rootfiles user`: `add`, `list [--system] [--names]`, `backup [-o]`, `restore [FILE]`, `rehome USER [--remove-old]`, `id`, `groups`, `group-add`, `group-del`, `passwd [USER...|--all|--file] [--password|--suffix] [--expire]`, `del [--archive|--remove-home]`, `lock`, `unlock`, `expire`, `key list|add|rm`, `du`, `audit`, `quota set|rm|show`. Mutating subcommands are listed in `mutatingCommands` (`internal/cli/runtime.go`); `backup`, `list`, `id`, `groups`, `du`, `audit` are not.
 - `lock` runs `usermod -L -e 1` so SSH key logins stop too; `unlock` reverses it.
@@ -71,4 +73,3 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): `user passwd --password` lands in the audit log and backup note.
 - [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `user backup -o` is a file, `user add --pubkey` duplicates `--ssh-pubkey`, `--suffix` deprecation, `rehome [USERNAME]` help.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated `generatePassword` and home-base defaulting, direct stdout prints in `users.go`, `lifecycle.go`, `quota.go`.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `CreatedBy: "rootfiles-v2"` in the users DB.

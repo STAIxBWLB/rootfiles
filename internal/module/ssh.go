@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 type SSHModule struct{}
@@ -86,7 +87,7 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 
 	desired := m.buildConfig(cfg)
 
-	if strings.TrimSpace(string(existing)) != strings.TrimSpace(desired) {
+	if !exec.ManagedContentEqual(strings.TrimSpace(string(existing)), strings.TrimSpace(desired)) {
 		desc := "Deploy custom sshd configuration"
 		if err := m.lockoutGuard(rc); err != nil {
 			desc += fmt.Sprintf(" (blocked: %v)", err)
@@ -150,7 +151,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 			return nil, err
 		}
 	}
-	configChanged := readErr != nil || strings.TrimSpace(string(existing)) != strings.TrimSpace(content) || mainIncludeChanged
+	configChanged := readErr != nil || !exec.ManagedContentEqual(strings.TrimSpace(string(existing)), strings.TrimSpace(content)) || mainIncludeChanged
 	if configChanged {
 		if err := m.lockoutGuard(rc); err != nil {
 			if !rc.Force {
@@ -258,7 +259,7 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 		messages = append(messages, fmt.Sprintf("ufw: allowed ssh port %d", cfg.Port))
 	}
 
-	if configChanged && (readErr != nil || strings.TrimSpace(string(existing)) != strings.TrimSpace(content)) {
+	if configChanged && (readErr != nil || !exec.ManagedContentEqual(strings.TrimSpace(string(existing)), strings.TrimSpace(content))) {
 		if err := rc.Runner.MkdirAll(sshdConfigDir, 0755); err != nil {
 			return nil, fmt.Errorf("creating %s: %w", sshdConfigDir, rollbackAfterFailure(err))
 		}
@@ -641,7 +642,7 @@ func portLine(content string) string {
 
 func (m *SSHModule) buildConfig(cfg config.SSHConfig) string {
 	var b strings.Builder
-	b.WriteString("# Managed by rootfiles-v2\n")
+	b.WriteString("# Managed by rootfiles\n")
 
 	if cfg.DisableRootLogin {
 		b.WriteString("PermitRootLogin no\n")

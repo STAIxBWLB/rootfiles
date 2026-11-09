@@ -55,6 +55,8 @@ Release notes (`scripts/check-release-notes.sh`)
 
 ## Behaviour
 
+- Test workflow input prefixes refer to existing source/build/test paths; stale root-level `profiles/` and `templates/` prefixes are absent. Documentation inputs added by the docs workflow remain independently tracked.
+
 - `rootfiles update [--check] [--version vX.Y.Z] [--dry-run]`: prints current and target, downloads, verifies, extracts the regular file named `rootfiles` from the archive, replaces, ensures the alias, then reports apply-pending. `--check` prints whether an update exists and exits 0 either way.
 - `install.sh [--version vX.Y.Z] [--channel stable|dev]`, piped to `sudo bash` from the raw main-branch URL.
 - `bash scripts/check-release-notes.sh [file...]` (default: every `docs/releases/v*.md`) and `--self-test`.
@@ -81,5 +83,4 @@ Release notes (`scripts/check-release-notes.sh`)
 - [#87](https://github.com/STAIxBWLB/rootfiles/issues/87): Go toolchain and action pinning, required checks (workflows use `go-version: stable` and `govulncheck@latest`).
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): `update --check` must run without root or lock and exit 2 when an update is available; today it requires root.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `fetchLatestVersion` duplicates the cloudflared latest-release lookup (planned shared `githubLatestTag(owner, repo)`), version parsing is duplicated, and `upgrade.go` prints with raw `fmt` instead of the `ui` helpers and `cmd.OutOrStdout()`.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): CI `TEST_INPUTS` still lists `profiles/` and `templates/`, which no longer exist at the root.
 - [#96](https://github.com/STAIxBWLB/rootfiles/issues/96): README self-update section and `docs/development.md` (CI jobs, release workflow) restructure.

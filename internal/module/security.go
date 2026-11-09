@@ -26,7 +26,8 @@ var (
 	unattendedPolicyPath = "/etc/apt/apt.conf.d/zzzzzz-rootfiles-unattended-upgrades"
 	fail2banJailPath     = "/etc/fail2ban/jail.d/rootfiles-sshd.conf"
 	// legacyUnattendedPaths are the earlier managed file and the hand-placed
-	// fleet fix it replaces; apply backs them up and removes them.
+	// fleet fix it replaces; apply backs them up and removes them. Retain through
+	// v0.19; removal is eligible for v0.20.0 only after rollout verification.
 	legacyUnattendedPaths = []string{
 		"/etc/apt/apt.conf.d/52rootfiles-unattended-upgrades",
 		"/etc/apt/apt.conf.d/zzzzz-rootfiles-security-origins.conf",
@@ -40,7 +41,7 @@ var securityOrigins = []string{
 	"${distro_id}ESM:${distro_codename}-infra-security",
 }
 
-const autoUpgradesContent = `// Managed by rootfiles-v2
+const autoUpgradesContent = `// Managed by rootfiles
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";
@@ -49,7 +50,7 @@ APT::Periodic::AutocleanInterval "7";
 // The NVIDIA driver/CUDA stack must only change together with a planned
 // reboot and matching kernel modules, so it is never upgraded unattended.
 // Reboots are never automatic; `rootfiles doctor` reports reboot-required.
-const unattendedPolicyContent = `// Managed by rootfiles-v2
+const unattendedPolicyContent = `// Managed by rootfiles
 #clear Unattended-Upgrade::Allowed-Origins;
 #clear Unattended-Upgrade::Origins-Pattern;
 Unattended-Upgrade::Allowed-Origins {
@@ -75,7 +76,7 @@ func fail2banJail(ports []int) string {
 	for i, p := range ports {
 		ps[i] = strconv.Itoa(p)
 	}
-	return fmt.Sprintf(`# Managed by rootfiles-v2
+	return fmt.Sprintf(`# Managed by rootfiles
 [sshd]
 enabled  = true
 port     = %s
@@ -116,9 +117,6 @@ func (m *SecurityModule) packages(rc *RunContext) []string {
 		}
 		if cfg.TimeSync {
 			pkgs = append(pkgs, "chrony")
-		}
-		if cfg.Fail2ban {
-			pkgs = append(pkgs, "fail2ban", "python3-systemd")
 		}
 		return pkgs
 	}

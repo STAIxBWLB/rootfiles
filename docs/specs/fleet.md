@@ -82,6 +82,8 @@ hosts:
 
 ## Safety
 
+- Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
+
 - Host key verification is inherited from OpenSSH; there is no flag to disable it.
 - The only passwordless privilege the feature adds is the three-command read-only rule. `installSudoersFile` is shared with the tenant operator rule (`internal/module/tenant.go`); keep its temp-file, `visudo -cf` and rename order.
 - Secrets reach hosts only as files on the host (`tunnel_token_file`, `alert_receiver_file`); inline secrets in site configs are refused at inventory load.
@@ -108,4 +110,3 @@ Verification evidence (folded from the 2026-10-03 rollout checklist):
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): fleet commands accept and ignore `--module`, `--profile`, `--config`, `--force`, `--tunnel-token`; `-o` is validated only after the SSH work; sudoers and remote command strings must stay unchanged.
 - [#92](https://github.com/STAIxBWLB/rootfiles/issues/92): `fleet targets` ignores `--host/--group/--all`; `fleet schedule` cannot pass `--on-calendar`; `--dry-run` still demands `--yes`.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): duplicated `shellQuote`/`shellQuoteCLI` and `defaultRunLog`/`defaultFleetInventory`; fleet has its own JSON encoder and hardcoded exit 2.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): dead `SSHRunner.RunRemote`; the sudoers header still says `rootfiles-v2`.

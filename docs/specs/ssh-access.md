@@ -49,6 +49,8 @@ paths:
 
 ## Safety
 
+- Generated-file comparisons preserve legacy headers using the [shared managed-header rule](exec-packages.md#contracts-and-invariants); changing the marker alone never rewrites a converged file or reloads its service.
+
 - Read-only port discovery never creates `/run/sshd`; a failed effective-port query uses existing config/default fallback. Module fixtures redirect native config paths and reject Query executables outside the private fixture tree.
 
 - Any change that can alter SSH reachability (port, password auth, firewall enable) must keep the lockout guard and the rules-before-enable order.
@@ -70,4 +72,3 @@ paths:
 ## Open issues
 
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `ssh.go` prints the `--force` warning to stdout directly; daemon-reload failure policy to unify.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): `# Managed by rootfiles-v2` header in the drop-in.

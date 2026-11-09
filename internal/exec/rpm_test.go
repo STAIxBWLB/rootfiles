@@ -25,6 +25,9 @@ func TestNewPackageManagerSelectsDNFOnRocky(t *testing.T) {
 	if _, ok := pm.(*RPM); !ok {
 		t.Fatalf("package manager type = %T, want *RPM", pm)
 	}
+	if _, ok := pm.(APTRepositoryManager); ok {
+		t.Fatal("RPM backend exposes APT repository operations")
+	}
 }
 
 func TestRPMInstalledQueriesRPMAndParsesPresentNames(t *testing.T) {
@@ -60,7 +63,7 @@ func TestRPMInstalledTreatsCurlMinimalAsCurlOnly(t *testing.T) {
 	}
 }
 
-func TestRPMInstallUsesDNFAndRejectsAPTRepositoryOperations(t *testing.T) {
+func TestRPMInstallUsesDNFAndRejectsPackageOptions(t *testing.T) {
 	bin := t.TempDir()
 	log := filepath.Join(bin, "calls")
 	writeRPMFake(t, bin, "dnf", "#!/bin/sh\nprintf 'dnf %s\\n' \"$*\" >> '"+log+"'\n")
@@ -75,9 +78,6 @@ func TestRPMInstallUsesDNFAndRejectsAPTRepositoryOperations(t *testing.T) {
 	}
 	if err := r.Install(context.Background(), []string{"--allowerasing"}); err == nil {
 		t.Fatal("Install accepted an option as a package name")
-	}
-	if err := r.AddSourceList(context.Background(), "docker", "deb ..."); err == nil {
-		t.Fatal("AddSourceList accepted APT syntax")
 	}
 	calls, _ := os.ReadFile(log)
 	if strings.Contains(string(calls), "allowerasing") || !strings.Contains(string(calls), "dnf -q makecache") || !strings.Contains(string(calls), "dnf -y --setopt=install_weak_deps=False install curl vim-enhanced") {

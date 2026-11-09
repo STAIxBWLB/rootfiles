@@ -31,7 +31,7 @@ The `docker` module installs Docker CE with the compose and buildx plugins and m
 
 ## Behaviour
 
-- Docker install (Apply, when `docker` is missing): adds the Docker APT keyring and source for the host codename/arch (`rc.APT.AddKeyring`, `AddSourceList`), then installs `docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin`.
+- Docker install (Apply, when `docker` is missing): adds the Docker APT keyring and source for the host codename/arch (the checked `APTRepositoryManager.AddKeyring` and `AddSourceList` capability), then installs `docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin`.
 - `/usr/local/bin/docker-compose` (`dockerComposePath`, overridable in tests) compatibility symlink points at the first existing compose plugin in `composePluginPaths`; Check names that same source and a dangling symlink there is replaced. A missing plugin is not reported as an available symlink operation.
 - Toolkit install (Apply, when `nvidia-container-toolkit` is not installed): NVIDIA libnvidia-container APT keyring and source, then the package.
 - No CLI surface of its own: run through `rootfiles apply|check --module docker|nvidia`.
@@ -42,6 +42,9 @@ The `docker` module installs Docker CE with the compose and buildx plugins and m
 - Install hints use `packageInstallCommand` and include the same package set passed to the backend. This does not add Rocky vendor support or RPM repository installation.
 
 ## Safety
+
+- Docker and NVIDIA Apply require the APT repository capability before any query or change. A package-only or RPM backend is refused with a cause and a module-disable next step; no replacement APT backend is silently constructed.
+- The docker-compose v1 compatibility link is retained, including links installed by earlier releases. Header/dead-code cleanup never removes it.
 
 - Never remove or reorder unmanaged daemon.json keys, never change Docker's `default-runtime` (tenants select `--runtime=nvidia` per container), never restart Docker when a reload suffices.
 - A daemon.json parse error stops the module instead of rewriting the file.
@@ -56,4 +59,3 @@ The `docker` module installs Docker CE with the compose and buildx plugins and m
 ## Open issues
 
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): shared write-if-changed and `systemdReload` helpers.
-- [#95](https://github.com/STAIxBWLB/rootfiles/issues/95): drop the docker-compose v1 symlink (owner approved, Action needed); `AddKeyring`/`AddSourceList` move to an APT-only interface.
