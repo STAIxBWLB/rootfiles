@@ -97,8 +97,12 @@ func newScheduleCmd() *cobra.Command {
 					return fmt.Errorf("units written but systemd not reachable: %w; run systemctl daemon-reload after restoring access to systemd", err)
 				}
 			}
-			if _, err := rc.Runner.Run(cmd.Context(), "systemctl", "enable", "--now", scheduleName+".timer"); err != nil {
-				return err
+			if !scheduleTimerReady(cmd.Context(), rc.Runner) {
+				// enable itself otherwise implies daemon-reload, even when
+				// all installed unit bytes are unchanged.
+				if _, err := rc.Runner.Run(cmd.Context(), "systemctl", "enable", "--now", "--no-reload", scheduleName+".timer"); err != nil {
+					return fmt.Errorf("cannot enable schedule timer: %w; inspect systemctl status %s.timer before retrying", err, scheduleName)
+				}
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "%s timer enabled (%s); reports in %s/{check,doctor}.json\n",
 				ui.MarkOK, onCal, state.Dir())
@@ -130,6 +134,19 @@ func newScheduleCmd() *cobra.Command {
 
 	cmd.AddCommand(enable, disable)
 	return usesConfigTarget(cmd)
+}
+
+func scheduleTimerReady(ctx context.Context, runner *exec.Runner) bool {
+	enabled, err := runner.Query(ctx, "systemctl", "is-enabled", scheduleName+".timer")
+	if err != nil {
+		return false
+	}
+	state := strings.TrimSpace(enabled.Stdout)
+	if state != "enabled" && state != "enabled-runtime" {
+		return false
+	}
+	active, err := runner.Query(ctx, "systemctl", "is-active", scheduleName+".timer")
+	return err == nil && strings.TrimSpace(active.Stdout) == "active"
 }
 
 // writeScheduleUnits preserves an installed unit when only its legacy marker

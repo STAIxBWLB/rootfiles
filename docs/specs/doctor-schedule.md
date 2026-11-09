@@ -40,7 +40,7 @@ paths:
 
 ## Behaviour
 
-- Schedule enable writes only units with real content changes, preserving old headers. It runs daemon-reload only after an actual unit write; existing enable/first-report behavior is unchanged.
+- Schedule enable writes only units with real content changes, preserving old headers. It runs daemon-reload only after an actual unit write; already enabled/active timers skip enable; a necessary enable uses `--no-reload` to prevent an implicit daemon-reload. First-report behavior is unchanged.
 
 - `rootfiles doctor [-o text|json|prometheus] [--strict]`.
 - `rootfiles schedule enable [--on-calendar EXPR]`, `schedule disable` (both in `mutatingCommands`; context from `buildConfigFreeRunContext`). `disable` stops the timer, removes both units and reloads systemd, ignoring systemctl errors.
