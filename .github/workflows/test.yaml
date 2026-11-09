@@ -198,7 +198,6 @@ jobs:
             -e ROOTFILES_PROFILE=${{ matrix.profile }} \
             -e ROOTFILES_USER=testuser \
             -e ROOTFILES_TUNNEL_TOKEN=test-token-dummy \
-            -e ROOTFILES_VLAN_ADDRESS=172.16.0.1/32 \
             -e ROOTFILES_HOME_BASE=/raid/home \
             rootfiles-test:${{ matrix.os }} \
             /tests/run-profile.sh ${{ matrix.profile }}
