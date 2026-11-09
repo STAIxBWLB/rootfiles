@@ -19,10 +19,8 @@ modules:
       method: both
   cloudflared:
     enabled: true
-    private_network:
-      enabled: true
-      interface: vlan0
-      address: "172.16.229.32/32"
+    # The tunnel's private VLAN is site-specific: set
+    # modules.cloudflared.private_network in a site config that extends dgx.
   storage:
     enabled: true
     data_dir: /raid/data
@@ -32,10 +30,8 @@ modules:
     enabled: true
     ufw: true
     allowed_ports:
-      - 22
       - 80
       - 443
 
 ssh:
-  disable_root_login: true
   disable_password_auth: true

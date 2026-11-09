@@ -120,13 +120,17 @@ func (c *Config) Validate() error {
 		add("modules.nvidia.gpu_allocation.method: %q (want env, cgroup or both)", c.Modules.Nvidia.GPUAllocation.Method)
 	}
 
-	if pn := c.Modules.Cloudflared.PrivateNetwork; pn.Address != "" {
+	pn := c.Modules.Cloudflared.PrivateNetwork
+	if pn.Enabled && pn.Address == "" {
+		add("modules.cloudflared.private_network.address: must be set when private_network.enabled is true (set it in a site config, or set enabled: false)")
+	}
+	if pn.Address != "" {
 		if _, err := netip.ParsePrefix(pn.Address); err != nil {
-			add("modules.cloudflared.private_network.address: %q is not a CIDR (e.g. 172.16.229.32/32)", pn.Address)
+			add("modules.cloudflared.private_network.address: %q is not a CIDR (e.g. 203.0.113.10/32)", pn.Address)
 		}
 	}
 	checkAbs("modules.cloudflared.tunnel_token_file", c.Modules.Cloudflared.TunnelTokenFile)
-	if iface := c.Modules.Cloudflared.PrivateNetwork.Interface; len(iface) > 15 || strings.ContainsAny(iface, " /") {
+	if iface := pn.Interface; len(iface) > 15 || strings.ContainsAny(iface, " /") {
 		add("modules.cloudflared.private_network.interface: %q is not a valid interface name", iface)
 	}
 

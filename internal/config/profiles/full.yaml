@@ -1,17 +1,7 @@
 extends: minimal
 
 modules:
-  users:
-    enabled: true
   docker:
-    enabled: true
-  cloudflared:
     enabled: true
   storage:
     enabled: true
-  network:
-    enabled: true
-
-ssh:
-  disable_root_login: true
-  disable_password_auth: true

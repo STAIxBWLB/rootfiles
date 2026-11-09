@@ -16,17 +16,11 @@ modules:
       method: env
   cloudflared:
     enabled: true
-    private_network:
-      enabled: true
-      interface: vlan0
-      address: ""
   storage:
     enabled: true
   network:
     enabled: true
     ufw: true
-    allowed_ports:
-      - 22
 
 ssh:
   disable_password_auth: true

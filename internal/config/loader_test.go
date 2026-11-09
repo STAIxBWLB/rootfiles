@@ -89,11 +89,11 @@ func TestResolveProfile_DGX(t *testing.T) {
 	if !cfg.Modules.Nvidia.Enabled {
 		t.Error("nvidia should be enabled in dgx")
 	}
-	if !cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
-		t.Error("cloudflared private_network should be enabled in dgx")
+	if cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
+		t.Error("cloudflared private_network must stay site-specific, not enabled in dgx")
 	}
-	if cfg.Modules.Cloudflared.PrivateNetwork.Address != "172.16.229.32/32" {
-		t.Errorf("vlan address = %q, want 172.16.229.32/32", cfg.Modules.Cloudflared.PrivateNetwork.Address)
+	if addr := cfg.Modules.Cloudflared.PrivateNetwork.Address; addr != "" {
+		t.Errorf("dgx must not carry a VLAN address, got %q", addr)
 	}
 	if !cfg.Modules.Storage.Enabled {
 		t.Error("storage should be enabled in dgx")
@@ -132,6 +132,9 @@ func TestResolveProfile_GPUServer(t *testing.T) {
 	if cfg.Modules.Nvidia.GPUAllocation.Method != "env" {
 		t.Errorf("gpu_allocation method = %q, want env", cfg.Modules.Nvidia.GPUAllocation.Method)
 	}
+	if cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
+		t.Error("cloudflared private_network must stay site-specific, not enabled in gpu-server")
+	}
 }
 
 func TestResolveProfile_Full(t *testing.T) {
@@ -145,8 +148,11 @@ func TestResolveProfile_Full(t *testing.T) {
 	if !cfg.Modules.Storage.Enabled {
 		t.Error("storage should be enabled in full")
 	}
-	if !cfg.Modules.Network.Enabled {
-		t.Error("network should be enabled in full")
+	// full leaves the network module off: a network block without ufw is a
+	// no-op, and enabling the firewall is a behaviour change for existing
+	// hosts, not a key removal.
+	if cfg.Modules.Network.Enabled {
+		t.Error("network should not be enabled in full")
 	}
 }
 
