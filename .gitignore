@@ -8,3 +8,6 @@ bin/
 .omx/
 graphify-out/
 /rootfiles
+.agenthub/state/
+.agenthub/config.local.json
+.agenthub/routing.local.toml
