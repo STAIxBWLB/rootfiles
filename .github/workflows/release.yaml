@@ -10,6 +10,8 @@ on:
 permissions:
   contents: write
   actions: read
+  id-token: write
+  attestations: write
 
 concurrency:
   group: release-${{ github.ref }}
@@ -59,7 +61,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: "stable"
+          go-version-file: go.mod
 
       - name: Require release notes in the AGENTS.md format
         env:
@@ -72,3 +74,8 @@ jobs:
           args: release --clean --release-notes docs/releases/${{ github.ref_name }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest release checksums
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: dist/checksums.txt

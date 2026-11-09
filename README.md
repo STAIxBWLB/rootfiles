@@ -798,3 +798,9 @@ The native Rocky profile covers 8.9, 8.10 and 9.x with RPM/DNF package queries a
 The Rocky capability gate refuses Docker, NVIDIA/GPU allocation, Cloudflare, storage, firewall/network and monitoring modules until those paths are qualified on RPM-family systems. `system.apt_mirror` and EPEL-dependent fail2ban are also gated. This is a core-profile support boundary; it does not claim Ubuntu profile parity or compatibility with other RHEL derivatives. Use `--profile rocky`, or adapt an existing restricted site configuration explicitly. Security-only updates require usable repository advisory metadata; missing metadata is reported instead of treated as successful protection.
 
 The gate runs before application, including dry-run. Backup/rollback restores managed files; it does not uninstall packages, reverse service effects or move user data. Verify actual SSH access after any change before ending the administrative session.
+
+## AGENTS.md background
+
+Human-readable background. Agent instructions: `AGENTS.md`.
+
+- 2026-11-09: raised the Go baseline to 1.26.10 so CI and release share a supported, pinned toolchain from `go.mod` (#87).

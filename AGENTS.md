@@ -40,7 +40,7 @@ type Module interface {
 
 ## Conventions
 
-- Go 1.23+, conventional commits
+- Go 1.26.10+ (CI and release use the version in `go.mod`), conventional commits
 - Profiles embedded via go:embed in `internal/config/profiles/`
 - Module execution order is static (defined in `module.go defaultOrder`)
 - `--yes` propagates via RunContext, bypasses all prompts
