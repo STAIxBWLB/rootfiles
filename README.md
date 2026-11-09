@@ -823,3 +823,4 @@ Read-only `check` and `status` report unknown firewall inspection as a blocked p
 Human-readable background. Agent instructions: `AGENTS.md`.
 
 - 2026-11-09: raised the Go baseline to 1.26.10 so CI and release share a supported, pinned toolchain from `go.mod` (#87).
+- 2026-11-09: native-command test isolation now includes installed/failing ambient tools after remote-only module runs missed host sshd/UFW dependencies (#89, #104).
