@@ -160,7 +160,7 @@ func inspectUFWVerbose(ctx context.Context, rc *RunContext) (FirewallState, erro
 
 func (st FirewallState) hasDenyOrRejectRule() bool {
 	for _, rule := range st.Rules {
-		if rule.Direction == "IN" && (rule.Action == "DENY" || rule.Action == "REJECT") {
+		if rule.Action == "DENY" || rule.Action == "REJECT" {
 			return true
 		}
 	}
@@ -387,7 +387,7 @@ func sshFirewallPlan(ctx context.Context, rc *RunContext, port int) (bool, error
 		return false, fmt.Errorf("firewall policy does not allow SSH port %d; open it through the host firewall change process or restore ssh.port before retrying", port)
 	}
 	if st.UFWActive && st.hasDenyOrRejectRule() {
-		return false, fmt.Errorf("UFW has an incoming DENY or REJECT rule, so SSH port %d reachability cannot be verified; review sudo ufw status and adjust the rules or restore ssh.port before retrying", port)
+		return false, fmt.Errorf("UFW has a DENY or REJECT rule, so SSH port %d reachability cannot be verified; review sudo ufw status and adjust the rules or restore ssh.port before retrying", port)
 	}
 	if st.UFWActive && !st.allowsUnrestrictedTCPPort(port) {
 		for _, rule := range st.Rules {

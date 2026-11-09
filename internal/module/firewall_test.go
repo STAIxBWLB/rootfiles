@@ -183,3 +183,11 @@ func TestNetworkKnownUnrelatedDenyPolicyRemainsIdempotent(t *testing.T) {
 		t.Fatalf("known unrelated policy should be idempotent: %+v, %v", result, err)
 	}
 }
+
+func TestRockyFirewallRetainsOutboundDenyGuard(t *testing.T) {
+	fakeFirewallStatus(t, "Status: active\n2222/tcp ALLOW IN Anywhere\n2222/tcp (v6) ALLOW IN Anywhere (v6)\n53/udp DENY OUT Anywhere", false)
+	allowed, err := rockyFirewallAllowsSSH(context.Background(), newDryRunRC(t), 2222)
+	if err != nil || allowed {
+		t.Fatalf("Rocky's existing deny guard was relaxed: allowed=%v err=%v", allowed, err)
+	}
+}
