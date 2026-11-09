@@ -60,6 +60,7 @@ Shared plumbing every native `rootfiles` command runs through: the cobra root an
 - `internal/cli/provenance_test.go`: `TestAppliedFingerprintRequiresSuccessfulMatchingRecordedIntent`.
 - `internal/cli/tunnel_test.go`: `TestBuildRunContext_ConfigSelection`, `TestResolveRunTarget_FallbackAfterConfigApply`, `TestResolveRunTarget_WarnsMutatingPreview`.
 - `internal/cli/check_test.go`: `TestCheck_RejectsUnknownOutput`.
+- `internal/cli/docs_test.go`: `TestDocsCommandsCoverCobraTree` (every visible command has a `### <path>` heading in `docs/commands.md` that names its visible local flags).
 - `tests/scenarios/state-rollback-lock.sh` (CI job `scenario`): real refusal without root and while another command holds the lock.
 
 ## Open issues

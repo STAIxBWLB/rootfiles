@@ -81,6 +81,4 @@ Release notes (`scripts/check-release-notes.sh`)
 ## Open issues
 
 - [#87](https://github.com/STAIxBWLB/rootfiles/issues/87): Go toolchain and action pinning, required checks (workflows use `go-version: stable` and `govulncheck@latest`).
-- [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): `update --check` must run without root or lock and exit 2 when an update is available; today it requires root.
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `fetchLatestVersion` duplicates the cloudflared latest-release lookup (planned shared `githubLatestTag(owner, repo)`), version parsing is duplicated, and `upgrade.go` prints with raw `fmt` instead of the `ui` helpers and `cmd.OutOrStdout()`.
-- [#96](https://github.com/STAIxBWLB/rootfiles/issues/96): README self-update section and `docs/development.md` (CI jobs, release workflow) restructure.

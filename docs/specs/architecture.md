@@ -60,4 +60,3 @@ paths:
 ## Open issues
 
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94) route module and CLI output through `internal/ui` and an injected writer; remove literal glyphs outside `internal/ui`.
-- [#96](https://github.com/STAIxBWLB/rootfiles/issues/96) moves the architecture list out of README/AGENTS.md into `docs/architecture.md`.

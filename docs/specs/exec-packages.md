@@ -49,6 +49,8 @@ The single path through which modules and commands run host commands and change 
 - A new Runner method that mutates must honour `DryRun` and call `preserve` before overwriting or removing a path.
 - Do not log secrets: use `RunInput` for anything confidential.
 
+- Deferred (2026-11-10, from the 2026-09 improvement plan): no default timeout on native commands. Commands run under the caller's context (Ctrl-C cancels them) and fleet rollouts are bounded per host by `--timeout`; a default per-command limit could cut off long package installs or image pulls mid-way. Revisit with a measured hang.
+
 ## Tests that pin it
 
 - `internal/exec/exec_test.go`: `TestRunner_DryRunDoesNotExecute`, `TestRunner_RunEnvAndInput`, `TestRunner_RemoveIsNotRecursive`, `TestParseDpkgQuery`.

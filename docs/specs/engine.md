@@ -58,6 +58,8 @@ The Module interface, the registry and execution order, and the three commands t
 - `ensureMetaDir` refuses a legacy `<home_base>/.rootfiles` file without moving it, including in dry run, and names the manual relocation to `.rootfiles/users.json`. Shared JSON ledger reads distinguish absence from corruption; atomic sibling writes and destination replacement go through Runner so dry-run and backups apply.
 - Status lines in `RunAll` are printed to stdout with literal glyphs, not through `internal/ui` (see #94).
 
+- Not planned (retired 2026-11-10, from the 2026-09 improvement plan): a common disk-space and network-reachability preflight. `doctor` already reports disk use against thresholds, and package or download failures already stop with their error. A refusal on low disk would block `apply` on converged hosts whose root filesystem is close to full, which contract #115 forbids.
+
 ## Tests that pin it
 
 - `internal/module/module_test.go`: `TestRegistryDefaultOrderSync`, `TestRegistry_ResolveAll`, `TestRegistry_ResolveFiltered`, `TestRegistry_ResolveDisabledSkipped`.

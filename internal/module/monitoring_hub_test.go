@@ -248,19 +248,19 @@ func TestMonitoringHubRulesAlertOnDoctorFailuresAndGPUHealth(t *testing.T) {
 	}
 }
 
-func TestMonitoringHubREADMEReceiverTemplateShowsFiringResolvedAndOptionalRunbook(t *testing.T) {
-	readme, err := os.ReadFile("../../README.md")
+func TestMonitoringDocReceiverTemplateShowsFiringResolvedAndOptionalRunbook(t *testing.T) {
+	readme, err := os.ReadFile("../../docs/monitoring.md")
 	if err != nil {
-		t.Fatalf("read monitoring hub README example: %v", err)
+		t.Fatalf("read monitoring receiver example in docs/monitoring.md: %v", err)
 	}
 	const start = "route:\n  receiver: operations"
 	startAt := strings.Index(string(readme), start)
 	if startAt < 0 {
-		t.Fatal("README monitoring receiver example is missing")
+		t.Fatal("docs/monitoring.md receiver example is missing")
 	}
 	endAt := strings.Index(string(readme[startAt:]), "\n```")
 	if endAt < 0 {
-		t.Fatal("README monitoring receiver example is not closed")
+		t.Fatal("docs/monitoring.md receiver example is not closed")
 	}
 	example := []byte(string(readme[startAt : startAt+endAt]))
 	var config struct {
@@ -273,28 +273,28 @@ func TestMonitoringHubREADMEReceiverTemplateShowsFiringResolvedAndOptionalRunboo
 		} `yaml:"receivers"`
 	}
 	if err := yaml.Unmarshal(example, &config); err != nil {
-		t.Fatalf("parse README monitoring receiver example: %v", err)
+		t.Fatalf("parse docs/monitoring.md receiver example: %v", err)
 	}
 	if len(config.Receivers) != 1 || len(config.Receivers[0].Telegram) != 1 {
-		t.Fatal("README example must define one Telegram receiver")
+		t.Fatal("docs/monitoring.md example must define one Telegram receiver")
 	}
 	receiver := config.Receivers[0].Telegram[0]
 	if !receiver.SendResolved {
-		t.Fatal("README receiver example does not request resolved notifications")
+		t.Fatal("docs/monitoring.md receiver example does not request resolved notifications")
 	}
 	if receiver.ParseMode == nil || *receiver.ParseMode != "" {
-		t.Fatal("README Telegram receiver must explicitly select plain-text parse_mode")
+		t.Fatal("docs/monitoring.md Telegram receiver must explicitly select plain-text parse_mode")
 	}
 	if _, err := template.New("telegram-message").Parse(receiver.Message); err != nil {
-		t.Fatalf("parse README Telegram message template: %v", err)
+		t.Fatalf("parse docs/monitoring.md Telegram message template: %v", err)
 	}
 	for _, expected := range []string{".Alerts.Firing", ".Alerts.Resolved", ".Annotations.summary", ".Annotations.description", ".Annotations.runbook_url"} {
 		if !strings.Contains(receiver.Message, expected) {
-			t.Errorf("README Telegram template does not render %q", expected)
+			t.Errorf("docs/monitoring.md Telegram template does not render %q", expected)
 		}
 	}
 	if strings.Contains(receiver.Message, "GeneratorURL") {
-		t.Fatal("README Telegram template must not expose the container-local Prometheus generator URL")
+		t.Fatal("docs/monitoring.md Telegram template must not expose the container-local Prometheus generator URL")
 	}
 	type alert struct {
 		Labels       map[string]string
