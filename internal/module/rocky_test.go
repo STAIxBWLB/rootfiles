@@ -794,14 +794,101 @@ func TestSSHPortChangeUsesMainOrEffectivePort(t *testing.T) {
 	}
 }
 
-func TestSSHPortChangeUnknownIncludedConfigRefuses(t *testing.T) {
+func TestSSHPortChangeStockIncludesUsesDefaultAfterProbeFailure(t *testing.T) {
 	dir := rockySSHTestPaths(t)
 	t.Setenv("PATH", dir)
-	if err := os.WriteFile(sshdConfigPath, []byte("Include "+sshdConfigDir+"/*.conf\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "sshd"), []byte("#!/bin/sh\necho 'host keys unreadable; missing /run/sshd' >&2\nexit 1\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sshdConfigDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sshdConfigPath, []byte("Include sshd_config.d/*.conf\n#Port 22\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	changed, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), nil, 22)
-	if err == nil || changed || !strings.Contains(err.Error(), "sshd -T") {
-		t.Fatalf("unknown included port guessed as22: changed=%v err=%v", changed, err)
+	if err != nil || changed {
+		t.Fatalf("stock default must remain22: changed=%v err=%v", changed, err)
+	}
+	if _, err := os.Stat(sshdPrivilegeSeparationDir); !os.IsNotExist(err) {
+		t.Fatalf("probe created privsep directory: %v", err)
+	}
+}
+
+func TestSSHIncludeFallbackOrderAndPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name, main string
+		files      map[string]string
+		port       int
+	}{
+		{"glob order", "Include sshd_config.d/*.conf\nPort 22\n", map[string]string{"sshd_config.d/20-later.conf": "Port 2222\n", "sshd_config.d/10-first.conf": "Port 2200\n"}, 2200},
+		{"pattern order", "Include second.conf first.conf\n", map[string]string{"first.conf": "Port 2200\n", "second.conf": "Port 2300\n"}, 2300},
+		{"nested root relative", "Include sshd_config.d/first.conf\n", map[string]string{"sshd_config.d/first.conf": "Include nested/*.conf\n", "nested/first.conf": "Port 2400\n", "sshd_config.d/nested/first.conf": "Port 22\n"}, 2400},
+		{"quoted path", "Include \"space dir/*.conf\"\n", map[string]string{"space dir/first.conf": "Port 2500 # inline comment\n"}, 2500},
+		{"assignment", "Include=first.conf\n", map[string]string{"first.conf": "Port=2600\n"}, 2600},
+		{"hidden file", "Include sshd_config.d/*.conf\n", map[string]string{"sshd_config.d/.hidden.conf": "Port 22\n", "sshd_config.d/first.conf": "Port 2700\n"}, 2700},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := rockySSHTestPaths(t)
+			t.Setenv("PATH", dir)
+			if err := os.WriteFile(filepath.Join(dir, "sshd"), []byte("#!/bin/sh\nexit 1\n"), 0755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(sshdConfigPath, []byte(tc.main), 0644); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range tc.files {
+				file := filepath.Join(dir, name)
+				if err := os.MkdirAll(filepath.Dir(file), 0755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(file, []byte(body), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for requested, wantChange := range map[int]bool{tc.port: false, 22: true} {
+				got, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), nil, requested)
+				if err != nil || got != wantChange {
+					t.Fatalf("port=%d changes=%v want=%v err=%v", requested, got, wantChange, err)
+				}
+			}
+			if _, err := os.Stat(sshdPrivilegeSeparationDir); !os.IsNotExist(err) {
+				t.Fatalf("fallback created privsep directory: %v", err)
+			}
+		})
+	}
+}
+
+func TestSSHIncludeFallbackReportsPathFailures(t *testing.T) {
+	for _, tc := range []struct {
+		name, main, expected string
+		files                map[string]string
+		directory            string
+	}{
+		{"bad glob", "Include sshd_config.d/[bad\n", "[bad", nil, ""},
+		{"unreadable included path", "Include included.conf\n", "included.conf", nil, "included.conf"},
+		{"cycle", "Include included.conf\n", "Include cycle", map[string]string{"included.conf": "Include sshd_config\n"}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := rockySSHTestPaths(t)
+			t.Setenv("PATH", dir)
+			if err := os.WriteFile(sshdConfigPath, []byte(tc.main), 0644); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range tc.files {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tc.directory != "" {
+				if err := os.MkdirAll(filepath.Join(dir, tc.directory), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := managedSSHPortChanges(context.Background(), newDryRunRC(t), nil, 22)
+			if err == nil || !strings.Contains(err.Error(), tc.expected) || !strings.Contains(err.Error(), "before retrying") {
+				t.Fatalf("missing path/cause/fix: %v", err)
+			}
+		})
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -415,34 +417,200 @@ func managedSSHPortChanges(ctx context.Context, rc *RunContext, existing []byte,
 	if ports := parsePortDirectives(string(existing)); len(ports) > 0 {
 		return ports[0] != requested, nil
 	}
-	var probeErr error
 	if bin := sshdBinary(rc); bin != "" {
 		result, err := rc.Runner.Query(ctx, bin, "-T", "-f", sshdConfigPath)
 		if err == nil && result != nil {
 			if ports := parsePortDirectives(result.Stdout); len(ports) > 0 {
 				return ports[0] != requested, nil
 			}
-			err = fmt.Errorf("sshd -T did not report a port")
 		}
-		probeErr = err
 	}
-	main, err := rc.Runner.ReadFile(sshdConfigPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("cannot determine current SSH port from %s: %w; repair its permissions or verify sudo sshd -T before retrying", sshdConfigPath, err)
+	// A non-root probe cannot read host keys, and socket activation may leave
+	// /run/sshd absent. Resolve the config without creating that directory.
+	if _, err := os.Stat(sshdConfigPath); errors.Is(err, os.ErrNotExist) {
+		return requested != 22, nil
 	}
-	if ports := parsePortDirectives(string(main)); len(ports) > 0 {
-		return ports[0] != requested, nil
+	port, err := firstSSHConfigPort(rc, sshdConfigPath, filepath.Dir(sshdConfigPath), map[string]bool{})
+	if err != nil {
+		return false, err
 	}
-	for _, line := range strings.Split(string(main), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) > 0 && strings.EqualFold(fields[0], "Include") {
-			if probeErr != nil {
-				return false, fmt.Errorf("cannot determine effective SSH port through Include directives: %w; run sudo sshd -T -f %s and repair the query/configuration before retrying", probeErr, sshdConfigPath)
+	if port == 0 {
+		port = 22
+	}
+	return port != requested, nil
+}
+
+// firstSSHConfigPort follows Include directives in-place. Relative patterns
+// are rooted at the SSH configuration directory, including nested Includes.
+func firstSSHConfigPort(rc *RunContext, name, base string, stack map[string]bool) (int, error) {
+	data, err := rc.Runner.ReadFile(name)
+	if err != nil {
+		return 0, fmt.Errorf("cannot read SSH configuration %s: %w; repair that Include path or its permissions before retrying", name, err)
+	}
+	key, err := filepath.EvalSymlinks(name)
+	if err != nil {
+		return 0, fmt.Errorf("cannot resolve SSH configuration %s: %w; repair that path before retrying", name, err)
+	}
+	if stack[key] || len(stack) >= 64 {
+		return 0, fmt.Errorf("recursive or excessive SSH Include nesting at %s; remove the Include cycle or reduce nesting before retrying", name)
+	}
+	stack[key] = true
+	defer delete(stack, key)
+	for i, line := range strings.Split(string(data), "\n") {
+		fields, err := sshConfigFields(line)
+		if err != nil {
+			return 0, fmt.Errorf("cannot parse SSH configuration %s:%d: %w; repair that directive before retrying", name, i+1, err)
+		}
+		if len(fields) == 0 {
+			continue
+		}
+		switch strings.ToLower(fields[0]) {
+		case "port":
+			if len(fields) != 2 {
+				return 0, fmt.Errorf("invalid SSH Port directive at %s:%d; set one numeric port from 1 to 65535 before retrying", name, i+1)
 			}
-			return false, fmt.Errorf("cannot determine effective SSH port through Include directives in %s; make sshd available and verify sudo sshd -T -f %s before retrying", sshdConfigPath, sshdConfigPath)
+			port, err := strconv.Atoi(fields[1])
+			if err != nil || port < 1 || port > 65535 {
+				return 0, fmt.Errorf("invalid SSH Port directive at %s:%d; set one numeric port from 1 to 65535 before retrying", name, i+1)
+			}
+			return port, nil
+		case "include":
+			if len(fields) < 2 {
+				return 0, fmt.Errorf("SSH Include at %s:%d has no path; supply an Include path before retrying", name, i+1)
+			}
+			for _, pattern := range fields[1:] {
+				if !filepath.IsAbs(pattern) {
+					pattern = filepath.Join(base, pattern)
+				}
+				matches, err := expandSSHInclude(pattern)
+				if err != nil {
+					return 0, err
+				}
+				for _, match := range matches {
+					port, err := firstSSHConfigPort(rc, match, base, stack)
+					if err != nil || port != 0 {
+						return port, err
+					}
+				}
+			}
 		}
 	}
-	return requested != 22, nil
+	return 0, nil
+}
+
+// Unlike filepath.Glob, expansion must surface unreadable directories rather
+// than silently treating their contents as absent and guessing the default.
+func expandSSHInclude(pattern string) ([]string, error) {
+	absolute, err := filepath.Abs(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve SSH Include %s: %w; repair that path before retrying", pattern, err)
+	}
+	pattern = absolute
+	parts := strings.Split(strings.TrimPrefix(filepath.Clean(pattern), string(os.PathSeparator)), string(os.PathSeparator))
+	for _, part := range parts {
+		if _, err := filepath.Match(part, ""); err != nil {
+			return nil, fmt.Errorf("cannot expand SSH Include %s: %w; repair that glob before retrying", pattern, err)
+		}
+	}
+	matches := []string{string(os.PathSeparator)}
+	for i, part := range parts {
+		var next []string
+		for _, dir := range matches {
+			if !strings.ContainsAny(part, "*?[") {
+				next = append(next, filepath.Join(dir, part))
+				continue
+			}
+			entries, err := os.ReadDir(dir)
+			if errors.Is(err, os.ErrNotExist) {
+				continue
+			}
+			if err != nil {
+				return nil, fmt.Errorf("cannot expand SSH Include %s in %s: %w; repair that directory's permissions before retrying", pattern, dir, err)
+			}
+			for _, entry := range entries {
+				if strings.HasPrefix(entry.Name(), ".") && !strings.HasPrefix(part, ".") {
+					continue
+				}
+				matched, _ := filepath.Match(part, entry.Name())
+				if !matched {
+					continue
+				}
+				candidate := filepath.Join(dir, entry.Name())
+				if i < len(parts)-1 {
+					info, err := os.Stat(candidate)
+					if err != nil {
+						return nil, fmt.Errorf("cannot expand SSH Include through %s: %w; repair that path before retrying", candidate, err)
+					}
+					if !info.IsDir() {
+						continue
+					}
+				}
+				next = append(next, candidate)
+			}
+		}
+		matches = next
+	}
+	sort.Strings(matches)
+	return matches, nil
+}
+
+func sshConfigFields(line string) ([]string, error) {
+	var fields []string
+	var word strings.Builder
+	var quote rune
+	escaped, started := false, false
+	flush := func() {
+		if started {
+			fields = append(fields, word.String())
+			word.Reset()
+			started = false
+		}
+	}
+	for _, char := range line {
+		if escaped {
+			if strings.ContainsRune("*?[", char) {
+				word.WriteRune('\\')
+			}
+			word.WriteRune(char)
+			escaped = false
+			continue
+		}
+		if char == '\\' {
+			escaped, started = true, true
+			continue
+		}
+		if quote != 0 {
+			if char == quote {
+				quote = 0
+			} else {
+				word.WriteRune(char)
+			}
+			continue
+		}
+		switch char {
+		case '=':
+			if len(fields) == 0 || len(fields) == 1 && !started {
+				flush()
+			} else {
+				word.WriteRune(char)
+			}
+		case '#':
+			flush()
+			return fields, nil
+		case '\'', '"':
+			quote, started = char, true
+		case ' ', '\t':
+			flush()
+		default:
+			word.WriteRune(char)
+			started = true
+		}
+	}
+	if escaped || quote != 0 {
+		return nil, fmt.Errorf("unterminated quote or escape")
+	}
+	flush()
+	return fields, nil
 }
 
 // portLine returns the "Port N" directive of a drop-in, or "" if none.
