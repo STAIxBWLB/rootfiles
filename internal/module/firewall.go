@@ -2,11 +2,29 @@ package module
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
 	"strconv"
 	"strings"
 )
+
+// firewallInspectionError distinguishes unknown external firewall state from
+// invalid configuration and known policy conflicts in read-only reports.
+type firewallInspectionError struct{ cause error }
+
+func (e *firewallInspectionError) Error() string { return e.cause.Error() }
+func (e *firewallInspectionError) Unwrap() error { return e.cause }
+func firewallInspectionErrorf(format string, args ...any) error {
+	return &firewallInspectionError{cause: fmt.Errorf(format, args...)}
+}
+func isFirewallInspectionError(err error) bool {
+	var inspection *firewallInspectionError
+	return errors.As(err, &inspection)
+}
+func blockedFirewallCheck(err error) *CheckResult {
+	return &CheckResult{Satisfied: false, Changes: []Change{{Description: fmt.Sprintf("Firewall verification (blocked: %v)", err), State: ChangeBlocked}}}
+}
 
 // Rule is one parsed UFW row. Consumers apply their own reachability/source
 // policy to the same target, direction and address-family representation.
@@ -108,14 +126,14 @@ func inspectUFW(ctx context.Context, rc *RunContext, verbose bool) (FirewallStat
 	}
 	res, err := rc.Runner.Query(ctx, "ufw", args...)
 	if err != nil {
-		return FirewallState{Installed: true, Allowed: map[int]bool{}}, fmt.Errorf("cannot inspect installed UFW status: %w; run sudo ufw status and repair the firewall query before applying", err)
+		return FirewallState{Installed: true, Allowed: map[int]bool{}}, firewallInspectionErrorf("cannot inspect installed UFW status: %w; run sudo ufw status and repair the firewall query before applying", err)
 	}
 	if res == nil {
-		return FirewallState{Installed: true, Allowed: map[int]bool{}}, fmt.Errorf("installed UFW returned no status; run sudo ufw status and repair the firewall query before applying")
+		return FirewallState{Installed: true, Allowed: map[int]bool{}}, firewallInspectionErrorf("installed UFW returned no status; run sudo ufw status and repair the firewall query before applying")
 	}
 	st := parseUFWStatus(res.Stdout)
 	if !st.Known {
-		return st, fmt.Errorf("installed UFW returned an unrecognized status; run sudo ufw status and repair its status output before applying")
+		return st, firewallInspectionErrorf("installed UFW returned an unrecognized status; run sudo ufw status and repair its status output before applying")
 	}
 	return st, nil
 }
@@ -136,11 +154,11 @@ func inspectFirewall(ctx context.Context, rc *RunContext) (FirewallState, error)
 	}
 	if err != nil {
 		st.Known = false
-		return st, fmt.Errorf("cannot determine installed firewalld state: %w; run sudo firewall-cmd --state and repair the query before applying", err)
+		return st, firewallInspectionErrorf("cannot determine installed firewalld state: %w; run sudo firewall-cmd --state and repair the query before applying", err)
 	}
 	if result == nil || strings.TrimSpace(result.Stdout) != "running" {
 		st.Known = false
-		return st, fmt.Errorf("installed firewalld returned an unrecognized state; run sudo firewall-cmd --state and verify its policy before applying")
+		return st, firewallInspectionErrorf("installed firewalld returned an unrecognized state; run sudo firewall-cmd --state and verify its policy before applying")
 	}
 	st.firewalldActive = true
 	st.Active = true
@@ -204,23 +222,23 @@ func firewalldAllowsSSH(ctx context.Context, rc *RunContext, st FirewallState, p
 	}
 	zones, err := rc.Runner.Query(ctx, "firewall-cmd", "--get-active-zones")
 	if err != nil {
-		return false, fmt.Errorf("cannot inspect active firewalld zones before changing SSH port: %w", err)
+		return false, firewallInspectionErrorf("cannot inspect active firewalld zones before changing SSH port: %w", err)
 	}
 	if zones == nil {
-		return false, fmt.Errorf("firewalld returned no active-zone status before changing SSH port")
+		return false, firewallInspectionErrorf("firewalld returned no active-zone status before changing SSH port")
 	}
 	activeZones := parseFirewalldZones(zones.Stdout)
 	if len(activeZones) == 0 {
 		defaultZone, err := rc.Runner.Query(ctx, "firewall-cmd", "--get-default-zone")
 		if err != nil {
-			return false, fmt.Errorf("cannot inspect firewalld default zone before changing SSH port: %w", err)
+			return false, firewallInspectionErrorf("cannot inspect firewalld default zone before changing SSH port: %w", err)
 		}
 		if defaultZone == nil {
-			return false, fmt.Errorf("firewalld returned no default-zone status before changing SSH port")
+			return false, firewallInspectionErrorf("firewalld returned no default-zone status before changing SSH port")
 		}
 		zone := strings.TrimSpace(defaultZone.Stdout)
 		if zone == "" {
-			return false, fmt.Errorf("firewalld returned an empty default zone before changing SSH port")
+			return false, firewallInspectionErrorf("firewalld returned an empty default zone before changing SSH port")
 		}
 		activeZones = []string{zone}
 	}
@@ -228,22 +246,22 @@ func firewalldAllowsSSH(ctx context.Context, rc *RunContext, st FirewallState, p
 	for _, zone := range activeZones {
 		richRules, err := rc.Runner.Query(ctx, "firewall-cmd", "--zone", zone, "--list-rich-rules")
 		if err != nil {
-			return false, fmt.Errorf("cannot inspect rich firewalld rules in zone %s before changing SSH port: %w", zone, err)
+			return false, firewallInspectionErrorf("cannot inspect rich firewalld rules in zone %s before changing SSH port: %w", zone, err)
 		}
 		if richRules == nil {
-			return false, fmt.Errorf("firewalld returned no rich-rule status for zone %s before changing SSH port", zone)
+			return false, firewallInspectionErrorf("firewalld returned no rich-rule status for zone %s before changing SSH port", zone)
 		}
 		if strings.TrimSpace(richRules.Stdout) != "" {
 			return false, nil
 		}
 		allowed, err := queryFirewalldBoolean(ctx, rc, "--zone", zone, "--query-port", strconv.Itoa(port)+"/tcp")
 		if err != nil {
-			return false, fmt.Errorf("cannot verify firewalld allowance for SSH port %d in zone %s: %w", port, zone, err)
+			return false, firewallInspectionErrorf("cannot verify firewalld allowance for SSH port %d in zone %s: %w", port, zone, err)
 		}
 		if !allowed && port == 22 {
 			serviceAllowed, serviceErr := queryFirewalldBoolean(ctx, rc, "--zone", zone, "--query-service", "ssh")
 			if serviceErr != nil {
-				return false, fmt.Errorf("cannot verify firewalld SSH service in zone %s: %w", zone, serviceErr)
+				return false, firewallInspectionErrorf("cannot verify firewalld SSH service in zone %s: %w", zone, serviceErr)
 			}
 			allowed = serviceAllowed
 		}
@@ -267,7 +285,7 @@ func ufwRuleAppliesToPort(ctx context.Context, rc *RunContext, target string, po
 	// read-only so a named broad rule cannot bypass the port preflight.
 	res, err := rc.Runner.Query(ctx, "ufw", "app", "info", target)
 	if err != nil {
-		return false, fmt.Errorf("cannot resolve UFW application rule %q while checking exporter port %d: %w", target, port, err)
+		return false, firewallInspectionErrorf("cannot resolve UFW application rule %q while checking exporter port %d: %w", target, port, err)
 	}
 	for _, line := range strings.Split(res.Stdout, "\n") {
 		trim := strings.TrimSpace(line)

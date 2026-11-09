@@ -209,6 +209,7 @@ func fakeMonitoringCommand(t *testing.T, name, script string) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	ensureFixtureUFW(t, dir)
 }
 
 func TestDoctorExporterExposure(t *testing.T) {
@@ -274,6 +275,7 @@ func fakeCommandOutput(t *testing.T, outputs map[string]string) string {
 		}
 	}
 	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
+	ensureFixtureUFW(t, dir)
 	return dir
 }
 

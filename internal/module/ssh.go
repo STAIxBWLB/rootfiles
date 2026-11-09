@@ -38,10 +38,10 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 		if cfg.Port > 0 {
 			allowed, err := rockyFirewallAllowsSSH(ctx, rc, cfg.Port)
 			if err != nil {
-				return nil, err
+				return blockedFirewallCheck(err), nil
 			}
 			if !allowed {
-				return nil, fmt.Errorf("firewall policy does not allow SSH port %d; add the port through the host firewall change process before changing sshd", cfg.Port)
+				return blockedFirewallCheck(fmt.Errorf("firewall policy does not allow SSH port %d; add the port through the host firewall change process before changing sshd", cfg.Port)), nil
 			}
 			labeled, err := rockySSHSELinuxPortLabeled(ctx, rc, cfg.Port)
 			if err != nil {
@@ -57,7 +57,7 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
 		needsAllow, err := sshFirewallPlan(ctx, rc, cfg.Port)
 		if err != nil {
-			return nil, err
+			return blockedFirewallCheck(err), nil
 		}
 		if needsAllow {
 			changes = append(changes, Change{Description: fmt.Sprintf("Allow SSH port %d in UFW", cfg.Port), Command: fmt.Sprintf("ufw allow %d/tcp", cfg.Port)})

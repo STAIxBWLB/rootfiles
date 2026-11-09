@@ -16,7 +16,7 @@ func preflightExporterFirewall(ctx context.Context, rc *RunContext) error {
 		return fmt.Errorf("checking UFW exporter access rules: %w", err)
 	}
 	if !state.Known {
-		return fmt.Errorf("cannot determine UFW state before restricting exporter access; inspect sudo ufw status verbose and repair the status query before retrying")
+		return firewallInspectionErrorf("cannot determine UFW state before restricting exporter access; inspect sudo ufw status verbose and repair the status query before retrying")
 	}
 	if !state.Active || len(cfg.AllowFrom) == 0 {
 		return nil
@@ -25,7 +25,7 @@ func preflightExporterFirewall(ctx context.Context, rc *RunContext) error {
 		return fmt.Errorf("UFW default incoming policy allows traffic; review sudo ufw status verbose and configure a restrictive incoming policy through the host firewall change process before applying allow_from")
 	}
 	if state.DefaultInbound != "deny" && state.DefaultInbound != "reject" {
-		return fmt.Errorf("cannot determine a restrictive UFW incoming policy (got %q); inspect sudo ufw status verbose and configure an explicit deny/reject incoming policy before retrying", state.DefaultInbound)
+		return firewallInspectionErrorf("cannot determine a restrictive UFW incoming policy (got %q); inspect sudo ufw status verbose and configure an explicit deny/reject incoming policy before retrying", state.DefaultInbound)
 	}
 	for _, rule := range state.Rules {
 		if rule.Action != "ALLOW" || rule.Direction != "IN" {
@@ -58,7 +58,7 @@ func monitoringExporterFirewallState(ctx context.Context, rc *RunContext) (Firew
 		return state, fmt.Errorf("checking UFW before configuring exporters: %w", err)
 	}
 	if !state.Known {
-		return state, fmt.Errorf("cannot determine UFW state before configuring exporters; run sudo ufw status and repair the status query")
+		return state, firewallInspectionErrorf("cannot determine UFW state before configuring exporters; run sudo ufw status and repair the status query")
 	}
 	return state, nil
 }

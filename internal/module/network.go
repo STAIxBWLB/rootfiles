@@ -41,7 +41,7 @@ func (m *NetworkModule) Check(ctx context.Context, rc *RunContext) (*CheckResult
 	if cfg.UFW {
 		st, err := networkFirewallState(ctx, rc)
 		if err != nil {
-			return nil, err
+			return blockedFirewallCheck(err), nil
 		}
 		installed := st.Installed
 		if !installed {

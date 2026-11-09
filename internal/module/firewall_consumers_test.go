@@ -53,6 +53,8 @@ func TestFirewallConsumersRejectUnknownUFWState(t *testing.T) {
 			// Even without allow_from, an unknown firewall must not be skipped
 			// before starting an exporter or changing its access rules.
 			rc.Config.Modules.Monitoring = config.MonitoringConfig{NodeExporter: true}
+			check, err := NewMonitoringModule().Check(context.Background(), rc)
+			requireBlockedFirewallCheck(t, check, err)
 			if _, err := NewMonitoringModule().Apply(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "UFW") {
 				t.Fatalf("monitoring Apply accepted unknown status: %v", err)
 			}
@@ -107,4 +109,32 @@ func TestDoctorFirewallDistinguishesAbsentAndInactive(t *testing.T) {
 			t.Fatalf("known inactive firewall: %+v", got)
 		}
 	})
+}
+
+func TestCheckAllKeepsUnknownFirewallAsBlockedData(t *testing.T) {
+	dir, mutations := firewallConsumerFixture(t, "permission denied", true)
+	oldMain, oldDir, oldDrop := sshdConfigPath, sshdConfigDir, sshdDropInPath
+	sshdConfigPath = filepath.Join(dir, "sshd_config")
+	sshdConfigDir = filepath.Join(dir, "sshd_config.d")
+	sshdDropInPath = filepath.Join(sshdConfigDir, "managed.conf")
+	t.Cleanup(func() { sshdConfigPath, sshdConfigDir, sshdDropInPath = oldMain, oldDir, oldDrop })
+	if err := os.WriteFile(sshdConfigPath, []byte("# default SSH port22\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rc := newRealRC(t)
+	rc.Config.System = &config.SystemInfo{OS: "ubuntu", Version: "24.04"}
+	rc.Config.SSH = config.SSHConfig{Port: 2222}
+	rc.Config.Modules.Network = config.NetworkConfig{UFW: true}
+	rc.Config.Modules.Monitoring = config.MonitoringConfig{NodeExporter: true}
+	modules := []Module{NewSSHModule(), NewNetworkModule(), NewMonitoringModule()}
+	results, err := CheckAll(context.Background(), modules, rc)
+	if err != nil {
+		t.Fatalf("read-only report aborted: %v", err)
+	}
+	for _, component := range modules {
+		requireBlockedFirewallCheck(t, results[component.Name()], nil)
+	}
+	if _, err := os.Stat(mutations); !os.IsNotExist(err) {
+		t.Fatalf("CheckAll ran a mutation: %v", err)
+	}
 }

@@ -10,6 +10,19 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
+func requireBlockedFirewallCheck(t *testing.T, result *CheckResult, err error) {
+	t.Helper()
+	if err != nil || result == nil || result.Satisfied {
+		t.Fatalf("read-only firewall refusal must be a pending report: %+v, %v", result, err)
+	}
+	for _, change := range result.Changes {
+		if change.State == ChangeBlocked && strings.Contains(change.Description, "blocked:") && change.Command == "" {
+			return
+		}
+	}
+	t.Fatalf("missing blocked firewall change: %+v", result.Changes)
+}
+
 func TestFirewallParserKnownStateAndRules(t *testing.T) {
 	for _, output := range []string{"", "Status: broken\n", "something else\n", "Status: active\nStatus: inactive\n"} {
 		if parseUFWStatus(output).Known {
@@ -76,16 +89,13 @@ func TestSSHUnknownFirewallDoesNotWrite(t *testing.T) {
 			rc.Config.System = &config.SystemInfo{OS: "ubuntu", Version: "24.04"}
 			rc.Config.SSH = config.SSHConfig{Port: 2222}
 			rc.Force = true
-			for _, run := range []func() error{
-				func() error { _, err := NewSSHModule().Check(context.Background(), rc); return err },
-				func() error { _, err := NewSSHModule().Apply(context.Background(), rc); return err },
-			} {
-				if err := run(); err == nil || !strings.Contains(err.Error(), "UFW") || !strings.Contains(err.Error(), "ssh.port") {
-					t.Fatalf("missing refusal/cause/fix: %v", err)
-				}
-				if _, err := os.Stat(path); !os.IsNotExist(err) {
-					t.Fatalf("unknown firewall wrote sshd config: %v", err)
-				}
+			check, err := NewSSHModule().Check(context.Background(), rc)
+			requireBlockedFirewallCheck(t, check, err)
+			if _, err := NewSSHModule().Apply(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "UFW") || !strings.Contains(err.Error(), "ssh.port") {
+				t.Fatalf("missing Apply refusal/cause/fix: %v", err)
+			}
+			if _, err := os.Stat(path); !os.IsNotExist(err) {
+				t.Fatalf("unknown firewall wrote sshd config: %v", err)
 			}
 		})
 	}
@@ -135,9 +145,8 @@ func TestNetworkUnknownFirewallDoesNotEnable(t *testing.T) {
 			rc.DryRun = false
 			rc.Runner.DryRun = false
 			rc.Config.Modules.Network = config.NetworkConfig{UFW: true}
-			if _, err := NewNetworkModule().Check(context.Background(), rc); err == nil {
-				t.Fatal("Check accepted unknown firewall")
-			}
+			check, err := NewNetworkModule().Check(context.Background(), rc)
+			requireBlockedFirewallCheck(t, check, err)
 			if _, err := NewNetworkModule().Apply(context.Background(), rc); err == nil {
 				t.Fatal("Apply accepted unknown firewall")
 			}
@@ -239,8 +248,9 @@ func TestUbuntuSSHFirewallGuardOnlyOnPortChange(t *testing.T) {
 			rc.Runner.DryRun = false
 			check, err := module.Check(context.Background(), rc)
 			if tc.blocked {
-				if err == nil || !strings.Contains(err.Error(), "DENY") {
-					t.Fatalf("changed port must be refused: %v", err)
+				requireBlockedFirewallCheck(t, check, err)
+				if !strings.Contains(check.Changes[0].Description, "DENY") {
+					t.Fatalf("missing deny cause: %+v", check)
 				}
 			} else if err != nil || !check.Satisfied || len(check.Changes) != 0 {
 				t.Fatalf("unchanged port not clean: %+v, %v", check, err)
