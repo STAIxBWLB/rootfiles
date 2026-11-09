@@ -37,7 +37,7 @@ func newRollbackCmd() *cobra.Command {
 			}
 
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
-			yes, _ := cmd.Flags().GetBool("yes")
+			yes := yesFlag(cmd)
 			preview, err := exec.RestoreBackup(state.BackupsDir(), args[0], true)
 			if err != nil {
 				return fmt.Errorf("loading backup %s: %w", args[0], err)

@@ -57,9 +57,7 @@ func newRootFlags() *pflag.FlagSet {
 	flags.Bool("yes", false, "Unattended mode (skip all prompts)")
 	flags.Bool("dry-run", false, "Show what would be done without executing")
 	_ = flags.SetAnnotation("dry-run", annotReadOnly, []string{"true"})
-	flags.Bool("force", false, "Override safety guards (e.g. SSH lockout protection)")
 	flags.String("profile", "", "Profile name (base, minimal, dgx, gpu-server, full, rocky)")
-	flags.StringSlice("module", nil, "Run specific modules only")
 	flags.String("config", "", "Path to custom config YAML")
 
 	// Flags for unattended mode

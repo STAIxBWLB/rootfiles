@@ -20,12 +20,47 @@ import (
 )
 
 func newFleetCmd() *cobra.Command {
-	c := &cobra.Command{Use: "fleet", Short: "Manage and monitor an SSH host fleet", Args: cobra.NoArgs}
+	c := &cobra.Command{
+		Use: "fleet", Short: "Manage and monitor an SSH host fleet", Args: cobra.NoArgs,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateFleetFlags(cmd); err != nil {
+				return err
+			}
+			return preflight(cmd, args)
+		},
+	}
+	// Keep these native-host flags parseable only to reject them with guidance.
+	c.PersistentFlags().StringSlice("module", nil, "Unsupported for fleet; set modules in each host config")
+	c.PersistentFlags().Bool("force", false, "Unsupported for fleet; set host configuration in inventory")
+	_ = c.PersistentFlags().MarkHidden("module")
+	_ = c.PersistentFlags().MarkHidden("force")
 	for _, op := range []string{"status", "check", "doctor"} {
 		c.AddCommand(newFleetReadCmd(op))
 	}
 	c.AddCommand(newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetTargetsCmd())
 	return c
+}
+
+// validateFleetFlags rejects native-host settings and invalid report formats
+// before loading inventory or opening any SSH connection.
+func validateFleetFlags(cmd *cobra.Command) error {
+	var ignored []string
+	cmd.Flags().Visit(func(flag *pflag.Flag) {
+		switch flag.Name {
+		case "module", "profile", "config", "force", "tunnel-token", "home-base", "user", "ssh-pubkey", "vlan-address":
+			ignored = append(ignored, "--"+flag.Name)
+		}
+	})
+	if len(ignored) > 0 {
+		return fmt.Errorf("fleet commands do not use %s; put host settings in the fleet inventory or each host's remote site config", strings.Join(ignored, ", "))
+	}
+	if cmd.Flags().Lookup("output") != nil {
+		format, _ := cmd.Flags().GetString("output")
+		if format != "text" && format != "json" {
+			return fmt.Errorf("--output must be text or json; choose the fleet report format before connecting")
+		}
+	}
+	return nil
 }
 
 func fleetCommonFlags(c *cobra.Command) {

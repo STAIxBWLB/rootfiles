@@ -131,7 +131,7 @@ func newScheduleCmd() *cobra.Command {
 	}
 
 	cmd.AddCommand(enable, disable)
-	return cmd
+	return usesConfigTarget(cmd)
 }
 
 // startFirstReport runs the report service once when no report exists yet,

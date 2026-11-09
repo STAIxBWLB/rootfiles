@@ -30,12 +30,12 @@ host keys survive image changes. Specs live in <home_base>/.rootfiles/tenants.`,
 		newTenantRestartCmd(), newTenantLogsCmd(), newTenantImportCmd(), newTenantOpsCmd(),
 		newTenantSyncCmd(),
 	)
-	return cmd
+	return usesConfigTarget(cmd)
 }
 
 // tenantEnv loads the run context and a manager after the tenant checks.
 func tenantEnv(cmd *cobra.Command) (*module.RunContext, *tenant.Manager, error) {
-	rc, err := buildRunContext(cmd)
+	rc, err := buildRunContext(cmd, "tenant")
 	if err != nil {
 		return nil, nil, err
 	}

@@ -15,3 +15,7 @@ The Rocky profile targets Rocky Linux 8.9, 8.10, and Rocky Linux 9. Other Rocky 
 Use `--profile rocky` as the starting point for a Rocky host. Review package names and SSH settings for the target before applying. A reduced configuration does not enable unsupported modules; requesting one produces an explicit capability error.
 
 The Rocky 8.9/8.10 deployment evidence covered locale time zone, journald limits, and users. Rocky 8 and Rocky 9 CI plus effective SSH, DNF security policy, installer path, idempotency, and rollback checks remain required before treating this compatibility scope as release verified.
+
+## Native subcommands
+
+Native GPU, tunnel, account and tenant mutations validate the modules they touch before running commands, including `--dry-run`. In particular, `gpu assign`/`revoke` and tunnel install/setup/restart/update/uninstall refuse Rocky's unsupported GPU/cloudflared capabilities. Read-only reports and `tunnel update --check` can still inspect the host. Contexts use the detected distribution's package backend (DNF on supported Rocky), rather than assuming APT.

@@ -25,7 +25,7 @@ const annotReadOnly = "rootfiles/readonly"
 
 // mutatingCommands change the system; they need root and the global lock.
 var mutatingCommands = [][]string{
-	{"apply"},
+	{"apply"}, {"backup"},
 	{"update"},
 	{"user", "add"}, {"user", "restore"}, {"user", "rehome"},
 	{"user", "group-add"}, {"user", "group-del"}, {"user", "passwd"},
@@ -64,6 +64,9 @@ var geteuid = os.Geteuid
 // preflight enforces root and the global lock for mutating commands.
 // Dry runs and annotated read-only flags are exempt.
 func preflight(cmd *cobra.Command, _ []string) error {
+	if err := rejectUnusedNativeFlags(cmd); err != nil {
+		return err
+	}
 	if cmd.Annotations[annotMutates] != "true" {
 		return nil
 	}
@@ -71,6 +74,60 @@ func preflight(cmd *cobra.Command, _ []string) error {
 		return nil
 	}
 	return requireRootAndLock(cmd)
+}
+
+const annotReadsRootFlag = "rootfiles/reads-root-flag/"
+
+// usesRootFlags declares inherited inputs beside the command's reader.
+func usesRootFlags(cmd *cobra.Command, names ...string) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	for _, name := range names {
+		cmd.Annotations[annotReadsRootFlag+name] = "true"
+	}
+	return cmd
+}
+
+func usesConfigTarget(cmd *cobra.Command) *cobra.Command {
+	return usesRootFlags(cmd, "profile", "config", "home-base")
+}
+
+// usesConfigInputs accompanies readers of both applyFlagOverrides and
+// applyAccountFlags, keeping check and config inspection aligned with apply.
+func usesConfigInputs(cmd *cobra.Command) *cobra.Command {
+	return usesRootFlags(usesConfigTarget(cmd), "user", "ssh-pubkey", "tunnel-token", "vlan-address")
+}
+
+// rejectUnusedNativeFlags catches inherited configuration inputs without a
+// reader declaration. Fleet and tenant ops have their own refusal/audit paths.
+func rejectUnusedNativeFlags(cmd *cobra.Command) error {
+	command := strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ")
+	if strings.HasPrefix(command, "fleet ") || command == "tenant ops" {
+		return nil
+	}
+	var refused []string
+	cmd.Flags().Visit(func(flag *pflag.Flag) {
+		switch flag.Name {
+		case "profile", "config", "home-base", "user", "ssh-pubkey", "tunnel-token", "vlan-address":
+			for reader := cmd; reader != nil; reader = reader.Parent() {
+				if reader.Annotations[annotReadsRootFlag+flag.Name] == "true" {
+					return
+				}
+			}
+			refused = append(refused, "--"+flag.Name)
+		}
+	})
+	if len(refused) > 0 {
+		return fmt.Errorf("%s does not use %s; remove these flags or use them with apply/config inspection", cmd.CommandPath(), strings.Join(refused, ", "))
+	}
+	return nil
+}
+
+// yesFlag is shared by native commands; fleet still requires explicit --yes.
+func yesFlag(cmd *cobra.Command) bool {
+	yes, _ := cmd.Flags().GetBool("yes")
+	return yes || os.Getenv("ROOTFILES_YES") == "true"
 }
 
 // readOnlyFlagSet accepts only enabled boolean flags explicitly marked read-only.

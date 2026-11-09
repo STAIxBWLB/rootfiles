@@ -18,28 +18,27 @@ import (
 var errAborted = errors.New("aborted by user")
 
 func newApplyCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply server configuration",
 		Long:  "Apply the selected profile's configuration to the system.",
 		RunE:  runApply,
 	}
+	cmd.Flags().StringSlice("module", nil, "Run specific modules only")
+	cmd.Flags().Bool("force", false, "Override SSH lockout safety guards")
+	return usesConfigInputs(cmd)
 }
 
 func runApply(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 
-	yes, _ := cmd.Flags().GetBool("yes")
+	yes := yesFlag(cmd)
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	profileName, _ := cmd.Flags().GetString("profile")
 	moduleFilter, _ := cmd.Flags().GetStringSlice("module")
 	configPath, _ := cmd.Flags().GetString("config")
 	force, _ := cmd.Flags().GetBool("force")
 
-	// Check ROOTFILES_YES env
-	if os.Getenv("ROOTFILES_YES") == "true" {
-		yes = true
-	}
 	// Check ROOTFILES_PROFILE env
 	if profileName == "" {
 		profileName = os.Getenv("ROOTFILES_PROFILE")
