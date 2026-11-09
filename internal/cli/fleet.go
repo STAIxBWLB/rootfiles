@@ -270,18 +270,21 @@ func finishFleetMutation(c *cobra.Command, op string, args []string, results []f
 }
 
 func newFleetApplyCmd() *cobra.Command {
-	c := &cobra.Command{Use: "apply", Short: "Apply selected hosts' site configs serially", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-		timeout, err := fleetMutationTimeout(c)
-		if err != nil {
-			return err
-		}
-		_, hs, dry, err := authorizeFleetMutation(c)
-		if err != nil {
-			return err
-		}
-		rs := fleet.Apply(c.Context(), fleetMutationRunner(c, timeout), hs, dry)
-		return finishFleetMutation(c, "apply", nil, rs, dry)
-	}}
+	c := &cobra.Command{Use: "apply", Short: "Apply selected hosts' site configs serially", Args: cobra.NoArgs,
+		Example: `  rootfiles fleet apply --host web1,web2 --yes
+  rootfiles fleet apply --group edge --dry-run --yes`,
+		RunE: func(c *cobra.Command, _ []string) error {
+			timeout, err := fleetMutationTimeout(c)
+			if err != nil {
+				return err
+			}
+			_, hs, dry, err := authorizeFleetMutation(c)
+			if err != nil {
+				return err
+			}
+			rs := fleet.Apply(c.Context(), fleetMutationRunner(c, timeout), hs, dry)
+			return finishFleetMutation(c, "apply", nil, rs, dry)
+		}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)

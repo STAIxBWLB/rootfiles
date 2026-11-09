@@ -2,9 +2,13 @@ package cli
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 // buildVersion is recorded in state and audit entries.
@@ -14,7 +18,7 @@ func NewRootCmd(version, commit string) *cobra.Command {
 	buildVersion = version
 	root := &cobra.Command{
 		Use:               "rootfiles",
-		Short:             "Server bootstrapping tool for Ubuntu and DGX OS",
+		Short:             "Bootstrap Ubuntu, DGX OS and Rocky servers, on this host or across a fleet",
 		Long:              "rootfiles: Declarative server configuration management with modular profiles.",
 		PersistentPreRunE: preflight,
 		SilenceUsage:      true,
@@ -57,7 +61,7 @@ func newRootFlags() *pflag.FlagSet {
 	flags.Bool("yes", false, "Unattended mode (skip all prompts)")
 	flags.Bool("dry-run", false, "Show what would be done without executing")
 	_ = flags.SetAnnotation("dry-run", annotReadOnly, []string{"true"})
-	flags.String("profile", "", "Profile name (base, minimal, dgx, gpu-server, full, rocky)")
+	flags.String("profile", "", fmt.Sprintf("Profile name (%s)", strings.Join(config.AvailableProfiles(), ", ")))
 	flags.String("config", "", "Path to custom config YAML")
 
 	// Flags for unattended mode
@@ -65,7 +69,7 @@ func newRootFlags() *pflag.FlagSet {
 	flags.String("user", "", "Username to create")
 	flags.String("ssh-pubkey", "", "SSH public key for the user")
 	flags.String("tunnel-token", "", "Cloudflare tunnel token")
-	flags.String("vlan-address", "", "VLAN private network address (e.g., 172.16.229.32/32)")
+	flags.String("vlan-address", "", "VLAN private network address (e.g., 203.0.113.10/32)")
 
 	return flags
 }

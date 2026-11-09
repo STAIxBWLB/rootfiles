@@ -22,7 +22,9 @@ func newApplyCmd() *cobra.Command {
 		Use:   "apply",
 		Short: "Apply server configuration",
 		Long:  "Apply the selected profile's configuration to the system.",
-		RunE:  runApply,
+		Example: `  rootfiles apply --profile dgx --dry-run
+  sudo rootfiles apply --config /etc/rootfiles/dgx-site.yaml --yes`,
+		RunE: runApply,
 	}
 	cmd.Flags().StringSlice("module", nil, "Run specific modules only")
 	cmd.Flags().Bool("force", false, "Override SSH lockout safety guards")
@@ -333,7 +335,7 @@ func configureInteractive(cfg *config.Config, yes, dryRun bool) error {
 			return err
 		}
 		if cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
-			cfg.Modules.Cloudflared.PrivateNetwork.Address, err = ui.Input("VLAN address (e.g. 172.16.229.32/32)", cfg.Modules.Cloudflared.PrivateNetwork.Address, false)
+			cfg.Modules.Cloudflared.PrivateNetwork.Address, err = ui.Input("VLAN address (e.g. 203.0.113.10/32)", cfg.Modules.Cloudflared.PrivateNetwork.Address, false)
 			if err != nil {
 				return err
 			}

@@ -148,9 +148,10 @@ func newTenantStatusCmd() *cobra.Command {
 
 func newTenantCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create TENANT",
-		Short: "Create a tenant: volume, container and temporary passwords",
-		Args:  cobra.ExactArgs(1),
+		Use:     "create TENANT",
+		Short:   "Create a tenant: volume, container and temporary passwords",
+		Args:    cobra.ExactArgs(1),
+		Example: `  sudo rootfiles tenant create lab --image ubuntu:24.04 --ssh-port 2201 --size 200G --account alice:1000`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t := args[0]
 			s := &tenant.Spec{Name: t}
@@ -351,7 +352,7 @@ func newTenantPasswdCmd() *cobra.Command {
 
 func newTenantGPUCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "gpu TENANT --gpus 0,1|none",
+		Use:   "gpu TENANT",
 		Short: "Change a tenant's GPUs (recreates the container)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -469,7 +470,7 @@ func newTenantLogsCmd() *cobra.Command {
 
 func newTenantImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "import TENANT --from CONTAINER --size SIZE",
+		Use:   "import TENANT",
 		Short: "Move a hand-made container under rootfiles (the old one is kept stopped)",
 		Long: `Writes the spec from the running container, copies its host keys, password
 hashes, --data and --keep paths into a new volume, stops the old container and

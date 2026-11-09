@@ -337,7 +337,7 @@ func renderGPUSection(out io.Writer, rc *module.RunContext) {
 
 	if db == nil || (db.TotalGPUs == 0 && len(db.Allocations) == 0) {
 		ui.WriteKV(out, "Total GPUs", "none recorded")
-		ui.WriteHint(out, "run 'rootfiles gpu assign <user> <indices>' to register an allocation")
+		ui.WriteHint(out, "run 'rootfiles gpu assign <user> --gpus 0,1' to register an allocation")
 		return
 	}
 

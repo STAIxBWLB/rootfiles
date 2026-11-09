@@ -46,6 +46,8 @@ func newUserAddCmd() *cobra.Command {
 		Use:   "add [USERNAME]",
 		Short: "Create a user with custom home directory",
 		Args:  cobra.MaximumNArgs(1),
+		Example: `  sudo rootfiles user add alice --ssh-pubkey "$(cat ~/.ssh/id_ed25519.pub)"
+  sudo rootfiles user add bob --groups docker,sudo`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -161,7 +163,7 @@ func newUserRestoreCmd() *cobra.Command {
 
 func newUserRehomeCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "rehome [USERNAME]",
+		Use:   "rehome USERNAME",
 		Short: "Move user home to custom home base directory",
 		Long: "Copy the user's home to <home-base>/<user>, verify the copy, switch the account over and\n" +
 			"leave a symlink at the old path. The original is kept as <old>.rootfiles-bak-<ts> unless --remove-old.",
