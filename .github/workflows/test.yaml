@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "stable"
+          go-version-file: go.mod
       - name: CI decision path classification
         run: bash scripts/ci-decision.sh --self-test
       - name: gofmt
@@ -103,9 +103,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "stable"
+          go-version-file: go.mod
       - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
       - name: Run govulncheck
         run: govulncheck ./...
 
@@ -118,7 +118,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: "stable"
+          go-version-file: go.mod
       - name: Run unit tests
         run: ROOTFILES_MONITORING_SCENARIO_DIR="$PWD/hub-fixtures" go test ./... -race -count=1 -coverprofile=coverage.out
       - uses: actions/upload-artifact@v4
@@ -376,3 +376,19 @@ jobs:
         run: |
           chmod +x rootfiles
           bash tests/scenarios/monitoring-hub.sh "$PWD/hub-fixtures"
+
+  ci-ok:
+    if: always()
+    needs: [decision, release-notes, lint, vuln, unit, integration, module, scenario, fleet-scenario, tenant-scenario, exporter-firewall-scenario, rocky, monitoring-hub]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Aggregate gate self-test
+        run: bash scripts/ci-ok.sh --self-test
+      - name: Require successful gating jobs or intentional skips
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: bash scripts/ci-ok.sh
