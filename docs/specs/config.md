@@ -42,7 +42,7 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 
 - `rootfiles config show [--reveal]`: prints the merged config for the same target `check` would use (`loadForInspection` via `resolveTarget`), with env and flag overrides; the tunnel token is masked unless `--reveal`.
 - `rootfiles config validate`: same loading, prints the source and exits non-zero on any error. On Rocky it also runs `ValidateCapabilities`.
-- `rootfiles config init [--extends P] [--file F] [--overwrite] [--from-system]`: writes a template extending the suggested profile, or a snapshot of the running host (`SnapshotCurrent` in `internal/config/snapshot.go`, works on hosts not set up by rootfiles); files are written 0600 because a capture may hold the tunnel token; an existing file needs `--overwrite` (`--force` is a deprecated alias).
+- `rootfiles config init [--extends P] [--file F] [--overwrite] [--from-system]`: writes a template extending the suggested profile, or a snapshot of the running host (`SnapshotCurrent` in `internal/config/snapshot.go`, works on hosts not set up by rootfiles); a new file is created 0600 because a capture may hold the tunnel token, while an existing destination keeps its mode and owner (`os.WriteFile` semantics; hardening tracked in #119); an existing file needs `--overwrite` (`--force` is a deprecated alias).
 
 ## Distro support
 
