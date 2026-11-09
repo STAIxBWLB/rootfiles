@@ -23,14 +23,13 @@ rootfiles supports a core profile on Rocky Linux 8.9, 8.10 and 9. Other Rocky re
 
 ## Native subcommands
 
-Native GPU, tunnel, account and tenant mutations validate the modules they touch before running commands, including `--dry-run`. In particular, `gpu assign`/`revoke` and tunnel install/setup/restart/update/uninstall refuse Rocky's unsupported GPU/cloudflared capabilities. Read-only reports and `tunnel update --check` can still inspect the host. Contexts use the detected distribution's package backend (DNF on supported Rocky), rather than assuming APT.
+GPU, tunnel, account and tenant commands that change the host check the capabilities of the modules they touch before running anything, `--dry-run` included. `gpu assign`, `gpu revoke` and the tunnel `setup`, `restart`, `update` and `uninstall` commands therefore refuse on Rocky. Read-only reports and `tunnel update --check` still inspect the host. Package work uses DNF on Rocky.
 
-## Shared firewall inspection
+## Firewall and SSH port
 
-Ubuntu SSH port changes reuse Rocky's UFW/firewalld inspection and refusal behavior. A failed or unrecognized installed-manager query blocks changes before sshd configuration is written. For an actual SSH port change, Rocky retains its requirement for verified existing TCP allowance (both UFW address families, no conflicting deny/reject rules, and allowance in every active firewalld zone); rootfiles does not add UFW rules for Rocky. With neither UFW nor firewalld active, the existing Rocky behavior remains unchanged. No direct iptables or nftables probes are introduced.
+The shared rules are in [modules.md](modules.md#firewall-state). On Rocky in addition:
 
-Rocky Check and Apply skip firewall verification when the requested SSH port is unchanged, so existing source-limited or rich-rule policies remain valid. Compatible SELinux port labels are still checked and added for an unchanged custom port when needed. Ubuntu and Rocky share current-port detection: use the managed drop-in Port when its Include is already active, otherwise inspect `sshd -T` read-only or the main config's explicit Port. When `sshd -T` cannot read host keys or the socket-activated daemon has not yet created `/run/sshd`, discovery follows Include patterns read-only, in lexical order, resolving relative paths from the SSH config directory. It uses the first Port found, or 22 when none is declared. An unreadable included path or invalid glob names the path to repair before retrying. Discovery never creates the sshd privilege-separation directory.
-
-When Rocky must add the managed Include, current-port detection ignores an inactive drop-in and inspects the existing main/effective configuration before firewall verification. Activating a pre-existing custom Port therefore cannot bypass the firewall guard.
-
-Read-only module checks represent unknown firewall inspection as a blocked change, so check/status reports stay readable without firewall-query privileges. Apply and its mutation preflight retain the refusal before any affected component changes.
+- A port change needs an existing, verified TCP allowance for the new port: in UFW for both address families with no conflicting deny or reject rule, or in every active firewalld zone. rootfiles never adds or widens a rule; prepare source-, family- or zone-limited and rich-rule policies yourself and verify from the console.
+- The port also needs a compatible SELinux `ssh_port_t` label. The label is checked, and added when needed, for an unchanged custom port too.
+- With neither UFW nor firewalld active, no firewall check runs.
+- When Apply must add the managed `Include` to the main sshd config, an inactive drop-in is ignored and the current port comes from the existing main and effective config, so activating a custom port in an old drop-in cannot skip the firewall check.

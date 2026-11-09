@@ -58,9 +58,9 @@ Behaviour:
 
 ## DCGM image
 
-- The default image is `nvcr.io/nvidia/k8s/dcgm-exporter:3.3.8-3.6.0-ubuntu22.04`, chosen for the R535 driver baseline. It is not qualified for Blackwell or newer drivers; NVIDIA documents that driver 580.126.16 needs DCGM 4.3 or newer.
-- Set `dcgm_exporter_image` to a pinned newer image only after checking NVIDIA's supported GPU, driver and DCGM versions and validating the endpoint on that host. For example `nvcr.io/nvidia/k8s/dcgm-exporter:4.6.1-4.8.4-distroless`, which still needs real GPU validation before rollout.
-- The managed collector file selects temperature, utilization, framebuffer used and free, XID and volatile double-bit ECC fields, which the old and new images share. ECC series may be absent on GPUs that do not expose ECC counters. The XID gauge of DCGM 3.3.8 reports the last observed XID and can stay set after recovery.
+- The default image is `nvcr.io/nvidia/k8s/dcgm-exporter:4.6.1-4.8.4-distroless`. Hosts that set `dcgm_exporter_image` keep their pinned image unchanged.
+- Pin another image only after checking NVIDIA's supported GPU, driver and DCGM versions and validating the endpoint on that host. Images need a tag or digest; `:latest` is refused.
+- The managed collector file selects temperature, utilization, framebuffer used and free, XID and volatile double-bit ECC fields, which the hub's GPU alerts use. ECC series may be absent on GPUs that do not expose ECC counters. The XID gauge reports the last observed XID and can stay set after recovery.
 
 ## Monitoring hub
 
@@ -176,6 +176,7 @@ Apply the hub and the exporters, enable reports, then publish the targets from t
 sudo rootfiles check --config sites/monitor01.yaml
 sudo rootfiles apply --yes --config sites/monitor01.yaml
 sudo rootfiles schedule enable --on-calendar hourly
+rootfiles schedule status
 rootfiles fleet targets --inventory fleet.yaml --push monitor01 --yes
 ```
 

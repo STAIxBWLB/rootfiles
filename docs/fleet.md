@@ -1,6 +1,6 @@
 # Fleet controller
 
-`rootfiles fleet` runs on an operator's Linux or macOS machine and drives the per-host commands over the system `ssh` client. Hosts keep running rootfiles as a single-host tool; the controller adds no agent to them. Contract: [docs/specs/fleet.md](specs/fleet.md).
+`rootfiles fleet` runs on an operator's Linux or macOS machine and drives the per-host commands over the system `ssh` client. Hosts keep running rootfiles as a single-host tool; the controller adds no agent to them. Every flag: [commands.md](commands.md#rootfiles-fleet). Contract: [docs/specs/fleet.md](specs/fleet.md).
 
 ## Inventory
 
@@ -48,7 +48,7 @@ The `users` module writes it to `/etc/sudoers.d/rootfiles-fleet` and refuses whe
 
 ## Selection
 
-Every fleet command except `fleet targets` needs a selection, the read-only ones included:
+Every fleet command except `fleet targets` needs a selection, the read-only ones included; `fleet targets` uses the whole inventory unless one is given:
 
 - `--host gpu01,gpu02` (comma-separated or repeated) and `--group gpu` select a union, in inventory order.
 - `--all` selects every host and cannot be combined with `--host` or `--group`.
@@ -71,18 +71,18 @@ rootfiles fleet doctor --host gpu01 --parallel 4
 ## Rollouts
 
 ```bash
-rootfiles fleet apply --host gpu01 --yes --dry-run
+rootfiles fleet apply --host gpu01 --dry-run
 rootfiles fleet apply --group gpu --yes
 rootfiles fleet update --group gpu --version v1.2.3 --yes --timeout 25m
 rootfiles fleet bootstrap --host gpu03 --version v1.2.3 --yes
-rootfiles fleet schedule enable --all --yes
+rootfiles fleet schedule enable --all --yes --on-calendar hourly
 ```
 
-- Rollouts need a selection and `--yes`. They run one host at a time and stop at the first failure; the remaining hosts are reported `skipped`. Try one host as a canary before widening a rollout.
+- Rollouts need a selection and `--yes`; a `--dry-run` preview needs no `--yes`. They run one host at a time and stop at the first failure; the remaining hosts are reported `skipped`. Try one host as a canary before widening a rollout.
 - `apply` needs a site config per host. It checks the remote OS first and refuses modules that host does not support before sending anything. A real run stores the config on the host as `/etc/rootfiles/fleet/<host>-<sha256>.yaml` (root, 0600) and applies it; `--dry-run` streams it to `rootfiles apply --dry-run --config -`.
 - `update` and `bootstrap` need `--version vX.Y.Z`. `bootstrap` installs a checksum-verified release only on hosts where rootfiles is missing.
 - After `update`, each host runs a read-only `check` with the new binary. A host that plans changes is reported `apply-pending` with the modules affected; the rollout continues, nothing is applied, and the run exits 2 with a hint to run `fleet check` and `fleet apply` for those hosts.
-- `schedule enable|disable` runs `rootfiles schedule` on each host with its default calendar.
+- `schedule enable|disable` runs `rootfiles schedule enable` or `disable` on each host. `--on-calendar` passes an OnCalendar expression to `enable` (default `daily` on the host) and is refused with `disable`.
 
 ## Timeouts and unreachable hosts
 
@@ -100,9 +100,11 @@ Every rollout and target push appends one JSON line (time, operator, command, pe
 
 ```bash
 rootfiles fleet targets                                   # print file_sd JSON for the whole inventory
+rootfiles fleet targets --group gpu                       # only the selected hosts
 rootfiles fleet targets --push monitor01 --yes            # replace the hub's targets file
-rootfiles fleet targets --push monitor01 --yes --dry-run  # show the path only
+rootfiles fleet targets --push monitor01 --dry-run        # show the path only
 ```
 
 - One target per host with an `address` and an enabled exporter in its site config; labels are described in [monitoring.md](monitoring.md#targets-and-labels).
-- `--push` needs `--yes` and a hub host whose site config enables `modules.monitoring.hub`. It replaces the targets file atomically; Prometheus re-reads it without a restart. `--timeout` applies to the push.
+- `--host`, `--group` and `--all` narrow the rendered targets; without them every host is rendered. The hub of `--push` is looked up in the whole inventory.
+- `--push` needs `--yes` (or `--dry-run`, which prints the path only) and a hub host whose site config enables `modules.monitoring.hub`. It replaces the targets file atomically; Prometheus re-reads it without a restart. `--timeout` applies to the push.

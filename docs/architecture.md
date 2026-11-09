@@ -7,7 +7,7 @@ How the code is laid out and how a run flows through it. The contracts behind th
 | Path | Role |
 |---|---|
 | `cmd/rootfiles/` | Entry point. Cancels the run on SIGINT/SIGTERM and maps errors to exit codes. |
-| `internal/cli/` | Cobra commands: `apply`, `backup`, `check`, `config`, `doctor`, `fleet`, `gpu`, `rollback`, `schedule`, `status`, `tenant`, `tunnel`, `update` (alias `upgrade`), `user`. `runtime.go` holds the root and lock preflight for native mutating commands, the audit logger and the runner factory. |
+| `internal/cli/` | Cobra commands ([commands.md](commands.md)): `apply`, `backup`, `check`, `config`, `doctor`, `fleet`, `gpu`, `rollback`, `schedule`, `status`, `tenant`, `tunnel`, `update` (alias `upgrade`), `user`. `runtime.go` holds the root and lock preflight for native mutating commands, the audit logger and the runner factory. |
 | `internal/config/` | Config structs, embedded profiles (`profiles/*.yaml`, merged as YAML trees through `extends`), validation, config fingerprints and host detection. |
 | `internal/module/` | The `Module` interface, the 14 modules, the registry and execution order, and the `doctor` checks. |
 | `internal/exec/` | Shell runner (dry-run aware, saves files before it changes them) and the APT and DNF/RPM package backends. |
@@ -38,7 +38,7 @@ type Module interface {
 
 ## Apply and check flow
 
-1. The command loads the configuration: `--config`, `--profile` or `ROOTFILES_PROFILE`, with environment and flag overrides on top.
+1. The command loads the configuration: `--config`, `--profile` or `ROOTFILES_PROFILE`, with environment and flag overrides on top ([configuration.md](configuration.md#which-config-a-command-uses)).
 2. A native mutating command checks that it runs as root on Linux and takes the global lock (`/run/rootfiles.lock`). `--dry-run` skips this.
 3. The registry resolves the enabled modules in `defaultOrder`, filtered by `--module`.
 4. For each module, `Check` runs first. A satisfied module is skipped. Otherwise its pending changes are printed; a dry run stops there, a real run calls `Apply`.

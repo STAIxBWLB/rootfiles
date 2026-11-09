@@ -21,6 +21,8 @@ make lint     # golangci-lint run ./...
 | Scenario | `tests/scenarios/` | End-to-end flows against a built binary, such as backup and restore, rollback and lock, fleet over SSH, tenant lifecycle, exporter firewall and the monitoring hub. |
 | Rocky | `tests/run-rocky.sh` | Native Rocky core profile, SSH and installer. |
 
+Documentation drift tests run with the unit tests: `go test ./internal/cli ./internal/config -run Docs` fails when a command, flag or config key is missing from [commands.md](commands.md) or [configuration.md](configuration.md). Add the entry in the same change.
+
 ## CI jobs
 
 The Test workflow (`.github/workflows/test.yaml`) runs on every push to `main` and every pull request.

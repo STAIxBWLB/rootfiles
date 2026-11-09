@@ -42,7 +42,7 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 
 - `rootfiles config show [--reveal]`: prints the merged config for the same target `check` would use (`loadForInspection` via `resolveTarget`), with env and flag overrides; the tunnel token is masked unless `--reveal`.
 - `rootfiles config validate`: same loading, prints the source and exits non-zero on any error. On Rocky it also runs `ValidateCapabilities`.
-- `rootfiles config init [--extends P] [--file F] [--force] [--from-system]`: writes a template extending the suggested profile, or a snapshot of the running host (`SnapshotCurrent` in `internal/config/snapshot.go`, works on hosts not set up by rootfiles); files are written 0600 because a capture may hold the tunnel token; an existing file needs `--force`.
+- `rootfiles config init [--extends P] [--file F] [--overwrite] [--from-system]`: writes a template extending the suggested profile, or a snapshot of the running host (`SnapshotCurrent` in `internal/config/snapshot.go`, works on hosts not set up by rootfiles); files are written 0600 because a capture may hold the tunnel token; an existing file needs `--overwrite` (`--force` is a deprecated alias).
 
 ## Distro support
 
@@ -58,11 +58,10 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 
 - `internal/config/loader_test.go`: `TestResolveProfile_*`, `TestMergeTrees`, `TestLoad_CustomFileExtendsProfileAndDisables`, `TestLoad_CustomFileExtendsRelativeFile`, `TestLoad_ExtendsCycle`, `TestLoad_UnknownKeyRejected`, `TestValidate`, `TestAllProfilesValid`, `TestApplyEnvOverrides`, `TestIsModuleEnabled`, `TestLoad_TunnelTokenFile`, `TestDefaultHomeBase*`, `TestLoad_AmbiguousHomeBase`, `TestLoad_HomeBaseDetectionOnlyWhenUnset`, `TestLoadSite_RequiresExplicitHomeBase`, `TestLoad_DoctorDiskThresholds`.
 - `internal/config/fingerprint_test.go`: `TestFingerprintIgnoresRuntimeAndSecretButDetectsIntent`, `TestFingerprintStableAcrossReleases` (pins the digest of a config that sets no new keys), `TestLoadSiteIgnoresControllerEnvironmentAndResolvesFiles`.
+- `internal/config/docs_test.go`: `TestDocsConfigurationCoversEveryKey` (every YAML key path of `Config` appears in `docs/configuration.md`).
 - `internal/config/snapshot_test.go`; `internal/cli/configcmd_test.go`: `TestConfigTemplateIsValidForEveryProfile`, `TestConfigShowMasksToken`, `TestConfigValidateFailsOnBadConfig`.
 - `tests/scenarios/dry-run-all-profiles.sh` (CI job `scenario`) and `tests/integration/run-profile.sh` (CI job `integration`) apply each profile.
 
 ## Open issues
 
-- [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `config init --overwrite` replaces `--force` (kept as a deprecated alias).
 - [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): `config.ModuleNames()` shared by `IsModuleEnabled`, distro and configcmd (which hard-codes 14 names); `UsersConfig.Base()`; one `maskSecret`.
-- [#96](https://github.com/STAIxBWLB/rootfiles/issues/96): a config test that every YAML key appears in `docs/configuration.md`; README profile table matched to the YAML.

@@ -42,10 +42,12 @@ The users database (`<home_base>/.rootfiles/users.json`) and the GPU ledger (`<h
 - `status`, `user list`, `user audit`, `gpu list` and `gpu status` warn on stderr and still report.
 - No database write follows a symlink.
 
+A file (not a directory) at `<home_base>/.rootfiles`, left by versions before v0.1, is refused, dry runs included; rootfiles no longer moves it. To keep its records: move the file aside, create `<home_base>/.rootfiles` as a root-owned directory, put the file back as `<home_base>/.rootfiles/users.json` with mode 0600, then retry.
+
 ## Accounts
 
 ```bash
-sudo rootfiles user add alice --pubkey "ssh-ed25519 AAAA..."   # --groups dev,ops, --no-docker
+sudo rootfiles user add alice --ssh-pubkey "ssh-ed25519 AAAA..."   # --groups dev,ops, --no-docker
 sudo rootfiles user list                  # managed users; --names prints names only
 sudo rootfiles user list --system         # all accounts with UID 1000-65533
 sudo rootfiles user id alice              # UID, GID and groups
@@ -55,7 +57,7 @@ sudo rootfiles user group-add alice --groups dev,ops
 sudo rootfiles user group-del alice --docker
 ```
 
-`user add` takes the name from the argument, `--user` or `ROOTFILES_USER`, and the key from `--pubkey`, `--ssh-pubkey` or `ROOTFILES_SSH_PUBKEY`.
+`user add` takes the name from the argument, `--user` or `ROOTFILES_USER`, and the key from `--ssh-pubkey` or `ROOTFILES_SSH_PUBKEY`. `--pubkey` still works as a deprecated alias of `--ssh-pubkey`.
 
 Accounts can also be declared in the config under `users.accounts`; the `users` module creates them and adds missing keys and groups, and never removes anything.
 
@@ -63,13 +65,12 @@ Accounts can also be declared in the config under `users.accounts`; the `users` 
 
 ```bash
 sudo rootfiles user passwd alice bob --expire          # random password per user, printed once
-sudo rootfiles user passwd alice bob --suffix '!@'     # legacy: username + suffix
 sudo rootfiles user passwd alice bob --password 'shared-pass'
 sudo rootfiles user passwd --file users.txt            # usernames, or username,password per line
 sudo rootfiles user passwd --all --dry-run
 ```
 
-Passwords reach `chpasswd` on stdin, never on a command line. `--expire` forces a change at the next login. `--password` values are redacted in the audit log ([operations.md](operations.md#lock-and-audit-log)).
+Passwords reach `chpasswd` on stdin, never on a command line. `--expire` forces a change at the next login. `--password` values are redacted in the audit log ([operations.md](operations.md#lock-and-audit-log)). `--suffix` (password = username + suffix) is deprecated because it makes predictable passwords, and goes away in the next minor release.
 
 ## Lifecycle
 
@@ -108,7 +109,7 @@ The limit is recorded and applied again by `user restore`.
 
 ```bash
 sudo rootfiles user backup                   # rootfiles-users-<hostname>-<YYYYMMDD>.json in the current directory
-sudo rootfiles user backup -o users.json
+sudo rootfiles user backup --file users.json
 sudo rootfiles user restore                  # reads <home_base>/.rootfiles/users.json
 sudo rootfiles user restore users.json
 ```
@@ -126,7 +127,7 @@ After reinstalling the OS on a host whose homes live on a separate data drive:
    sudo rootfiles user restore
    ```
 
-3. Preview, then apply the config snapshot from the system backup ([operations.md](operations.md#system-backup)):
+3. Preview, then apply the config snapshot from the system backup, here one written with `rootfiles backup --dir /raid/backup` before the reinstall ([operations.md](operations.md#system-backup)):
 
    ```bash
    sudo rootfiles apply --config /raid/backup/rootfiles-backup-*/config-snapshot.yaml --dry-run

@@ -12,14 +12,8 @@ make test         # go test ./... -race
 ## Architecture
 
 - Contracts live in `docs/specs/<id>.md` (index: `docs/specs/architecture.md`; `ahub specs covers <file>` names the owner). A change to a stated contract updates that spec in the same PR.
-- `cmd/rootfiles/` — entry point
-- `internal/cli/` — cobra commands (apply, backup, check, config, doctor, gpu, rollback, schedule, status, tenant, tunnel, update, user); `update` keeps `upgrade` as an alias. `fleet` is the operator-side controller; `runtime.go` holds the native-host root/lock preflight (native mutating commands are listed in `mutatingCommands`), audit logger and `newRunner`
-- `internal/config/` — config structs, YAML profile loader (profiles merged as YAML trees, strict keys), `Validate()`, system detector
-- `internal/module/` — Module interface + 14 implementations (locale, system, packages, users, ssh, security, docker, nvidia, gpu, cloudflared, storage, network, monitoring, tenant), plus `doctor.go`
-- `internal/tenant/` — `rootfiles tenant` specs, containers, volumes, passwords, import and audit; it must not import `internal/module` (module imports it). Spec: `docs/specs/tenant.md`
-- `internal/exec/` — shell runner (dry-run aware; `Runner.Backup` preserves files before WriteFile/Remove/Rename/Symlink), APT and RPM/DNF package-manager backends
-- `internal/state/` — `/var/lib/rootfiles/state.json` + history, global flock
-- `internal/ui/` — interactive prompts (Charm huh) + shared output styling: `styles.go` (lipgloss palette), `markers.go` (✓ ✗ → ⚠), `format.go` (WriteHeader/Section/KV/Hint/Bullet). lipgloss auto-detects TTY and honours `NO_COLOR`; all status-style reports must go through these helpers.
+- Package map and run flow: `docs/architecture.md`; contracts: `docs/specs/`.
+- The gpu module is toggled by modules.nvidia.gpu_allocation.enabled; the module list must match in defaultOrder, NewRegistry, config/distro.go and IsModuleEnabled.
 
 ## Module Interface
 

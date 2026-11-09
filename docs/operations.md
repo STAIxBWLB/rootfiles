@@ -34,6 +34,7 @@ sudo rootfiles rollback 20260926-101500
 
 - Rollback restores the saved files and removes files the run created. It asks for confirmation unless `--yes` or `ROOTFILES_YES=true` is set.
 - Packages, accounts and running services are not reverted. Restart affected services (for example `ssh`, `docker`) afterwards.
+- Backup sessions can hold the original managed configuration, credentials included; keep the state directory root-only. Backup notes redact tokens and passwords like the audit log.
 - Any rollback deletes the kept `applied-config.yaml`, because the host no longer matches it. Until the next `apply`, subcommands fall back to the `minimal` profile with the detected home base.
 
 ## System backup
@@ -41,13 +42,16 @@ sudo rootfiles rollback 20260926-101500
 `rootfiles backup` captures what you need to rebuild a host after an OS reinstall. It needs root and the lock, unless run with `--dry-run`.
 
 ```bash
-sudo rootfiles backup                    # writes under /raid/backup
-sudo rootfiles backup -o /data/backup
-sudo rootfiles backup --skip-docker      # no Docker image list
-sudo rootfiles backup --skip-etc         # no /etc archive
+sudo rootfiles backup --dir /raid/backup     # on a disk the reinstall keeps
+sudo rootfiles backup                        # default: /var/lib/rootfiles/system-backup
+sudo rootfiles backup --skip-docker          # no Docker image list
+sudo rootfiles backup --skip-etc             # no /etc archive
 ```
 
-The backup directory is `rootfiles-backup-<hostname>-<YYYYMMDD>/` under the output directory. It is created with mode 0700 and its files with 0600, because it holds SSH keys and configs. A directory that someone other than root could control is refused.
+- The default directory is `<state dir>/system-backup` on the root filesystem, which an OS reinstall erases. Before a reinstall, pass `--dir` on a disk that survives it, or copy the result off the host.
+- `-o/--output` is a deprecated alias of `--dir`.
+
+The backup directory is `rootfiles-backup-<hostname>-<YYYYMMDD>/` under that directory. It is created with mode 0700 and its files with 0600, because it holds SSH keys and configs. A directory that someone other than root could control is refused.
 
 | File | Content |
 |---|---|
@@ -69,6 +73,7 @@ Restoring after a reinstall: [users.md](users.md#os-reinstall-recovery).
 ```bash
 sudo rootfiles schedule enable                          # daily
 sudo rootfiles schedule enable --on-calendar hourly     # any systemd OnCalendar expression
+rootfiles schedule status                               # timer state and report age; no root needed
 sudo rootfiles schedule disable
 ```
 
@@ -76,7 +81,10 @@ sudo rootfiles schedule disable
 - Each run writes `/var/lib/rootfiles/check.json` and `doctor.json`. When `/var/lib/prometheus/node-exporter` exists (the `monitoring` module creates it), it also writes `rootfiles.prom` there for the node exporter textfile collector.
 - Exit code 2 (drift or findings) counts as a successful run of the service; the report carries the result.
 - When no report exists yet, `enable` also starts the service once, so a new host does not raise the stale-report alert ([monitoring.md](monitoring.md#alerts)) before the first timer run.
+- `enable` rewrites a unit only when its content changed, and reloads systemd only then.
+- `status` shows whether the units are installed, the timer's enabled and active state, its OnCalendar expression and the age of each report. A report older than 48 hours is marked stale, the same limit the hub's stale-report alert uses.
 - `disable` stops the timer and removes both units.
+- For a fleet: `rootfiles fleet schedule enable --all --yes --on-calendar hourly` ([fleet.md](fleet.md#rollouts)).
 
 ## Self-update
 

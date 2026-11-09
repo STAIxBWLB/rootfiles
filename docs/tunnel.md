@@ -8,7 +8,7 @@ The `cloudflared` module installs the Cloudflare Tunnel connector as a systemd s
 - `cloudflared.service`, which reads the token from `/etc/cloudflared/tunnel.env` (mode 0600). The token never appears in the unit file or on a command line.
 - With a private network address: a systemd-networkd dummy interface (`vlan0` by default) carrying that address, in `/etc/systemd/network/10-cloudflared-vlan.netdev` and `.network`.
 
-Without a token, the module installs only the binary.
+Without a token, the module installs only the binary, plus the private network address when one is configured.
 
 ## Token sources
 
@@ -48,20 +48,24 @@ modules:
       address: 203.0.113.10/32      # a CIDR
 ```
 
-- `apply` configures the interface only when `private_network.enabled` is true and an address is set. `--vlan-address` and `ROOTFILES_VLAN_ADDRESS` set the address; `ROOTFILES_VLAN_INTERFACE` sets the interface.
-- `tunnel setup --vlan-address` configures the address directly, without the config toggle.
+- No built-in profile sets a private network; the address belongs in the site config of the host that owns it (for example one that `extends: dgx`).
+- `private_network.enabled: true` without an address is a validation error that names `modules.cloudflared.private_network.address`. Add the address, pass `--vlan-address`, or set `enabled: false`.
+- `--vlan-address` and `ROOTFILES_VLAN_ADDRESS` set the address before validation; `ROOTFILES_VLAN_INTERFACE` sets the interface. `apply`, `check`, `config show`, `config validate` and `tunnel setup` read `--vlan-address`; `status` and `doctor` refuse it.
+- `tunnel setup --vlan-address` (or `ROOTFILES_VLAN_ADDRESS`) also turns the private network on for that run, without the config toggle.
+- Removing the block from a config leaves an existing interface in place; `tunnel uninstall` removes it.
 
 ## Commands
 
 ```bash
 sudo rootfiles tunnel setup "$TOKEN" --vlan-address 203.0.113.10/32   # address, binary, service
-sudo rootfiles tunnel install            # runs the cloudflared module: binary, plus service and address when configured
 rootfiles tunnel status                  # service and private network
 sudo rootfiles tunnel restart
 sudo rootfiles tunnel uninstall          # removes the service, the interface and the binary
 ```
 
-`tunnel setup` also takes the token from `--tunnel-token` or `ROOTFILES_TUNNEL_TOKEN`, and the address from `ROOTFILES_VLAN_ADDRESS`. Its token argument is redacted in the audit log ([operations.md](operations.md#lock-and-audit-log)).
+- `tunnel setup` takes the token from its argument, `--tunnel-token`, `ROOTFILES_TUNNEL_TOKEN` or the config, and the address from `--vlan-address`, `ROOTFILES_VLAN_ADDRESS` or the config. Without a token it manages only the binary and a configured address.
+- `tunnel install` is an alias of `tunnel setup`.
+- The token argument is redacted in the audit log ([operations.md](operations.md#lock-and-audit-log)).
 
 ## Update cloudflared
 
