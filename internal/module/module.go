@@ -3,6 +3,7 @@ package module
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // Module is the interface that all rootfiles modules must implement.
@@ -21,6 +23,8 @@ type Module interface {
 
 // RunContext carries config and runtime options to all modules.
 type RunContext struct {
+	// Out receives command text; nil preserves the traditional stdout default.
+	Out    io.Writer
 	Config *config.Config
 	Runner *exec.Runner
 	APT    exec.PackageManager
@@ -32,6 +36,14 @@ type RunContext struct {
 	// run maps the modules of the current RunAll or CheckAll to whether
 	// they have failed so far; nil outside one.
 	run map[string]bool
+}
+
+// Output returns the command writer, retaining stdout for callers without one.
+func (rc *RunContext) Output() io.Writer {
+	if rc.Out != nil {
+		return rc.Out
+	}
+	return os.Stdout
 }
 
 // moduleSucceeding reports whether module name is part of the current run
@@ -153,14 +165,14 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		check, err := m.Check(ctx, rc)
 		if err != nil {
 			rc.run[m.Name()] = true
-			fmt.Printf("  ⚠ %s: check error: %v\n", m.Name(), err)
+			ui.WriteBullet(rc.Output(), ui.WarnMark(), fmt.Sprintf("%s: check error: %v", m.Name(), err))
 			out.Status, out.Error = "failed", "check: "+err.Error()
 			errors = append(errors, fmt.Sprintf("%s: check: %v", m.Name(), err))
 			outcomes = append(outcomes, out)
 			continue
 		}
 		if check.Satisfied {
-			fmt.Printf("  ✓ %s: already satisfied\n", m.Name())
+			ui.WriteBullet(rc.Output(), ui.OKMark(), fmt.Sprintf("%s: already satisfied", m.Name()))
 			out.Status = "satisfied"
 			outcomes = append(outcomes, out)
 			continue
@@ -170,11 +182,11 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		var blocked []string
 		for _, c := range check.Changes {
 			if c.State == ChangeBlocked {
-				fmt.Printf("  ✗ %s: blocked: %s\n", m.Name(), c.Description)
+				ui.WriteBullet(rc.Output(), ui.FailMark(), fmt.Sprintf("%s: blocked: %s", m.Name(), c.Description))
 				blocked = append(blocked, c.Description)
 				continue
 			}
-			fmt.Printf("  → %s: %s\n", m.Name(), c.Description)
+			ui.WriteBullet(rc.Output(), ui.PendingMark(), fmt.Sprintf("%s: %s", m.Name(), c.Description))
 		}
 
 		if rc.DryRun {
@@ -192,7 +204,7 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		result, err := m.Apply(ctx, rc)
 		if err != nil {
 			rc.run[m.Name()] = true
-			fmt.Printf("  ✗ %s: %v\n", m.Name(), err)
+			ui.WriteBullet(rc.Output(), ui.FailMark(), fmt.Sprintf("%s: %v", m.Name(), err))
 			out.Status, out.Error = "failed", err.Error()
 			errors = append(errors, fmt.Sprintf("%s: %v", m.Name(), err))
 			outcomes = append(outcomes, out)
@@ -202,11 +214,11 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		if result.Changed {
 			out.Status = "changed"
 			for _, msg := range result.Messages {
-				fmt.Printf("  ✓ %s: %s\n", m.Name(), msg)
+				ui.WriteBullet(rc.Output(), ui.OKMark(), fmt.Sprintf("%s: %s", m.Name(), msg))
 			}
 		}
 		for _, w := range result.Warnings {
-			fmt.Printf("  ⚠ %s: %s\n", m.Name(), w)
+			ui.WriteBullet(rc.Output(), ui.WarnMark(), fmt.Sprintf("%s: %s", m.Name(), w))
 		}
 		out.Messages, out.Warnings = result.Messages, result.Warnings
 		outcomes = append(outcomes, out)

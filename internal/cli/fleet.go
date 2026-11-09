@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -117,7 +116,7 @@ func newFleetReadCmd(op string) *cobra.Command {
 			return err
 		}
 		if !allOK(results) {
-			return &ExitError{Code: 2}
+			return &ExitError{Code: exitDrift}
 		}
 		return nil
 	}}
@@ -150,9 +149,7 @@ func runReadPool(ctx context.Context, r fleet.SSHRunner, hosts []fleet.NamedHost
 
 func writeFleetResults(w io.Writer, results []fleet.Result, format string) error {
 	if format == "json" {
-		enc := json.NewEncoder(w)
-		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]any{"hosts": results})
+		return writeJSONEscaping(w, map[string]any{"hosts": results}, true)
 	}
 	if format != "text" {
 		return fmt.Errorf("output must be text or json")
@@ -264,7 +261,7 @@ func finishFleetMutation(c *cobra.Command, op string, args []string, results []f
 		fmt.Fprintf(c.ErrOrStderr(), "%d host(s) updated but still need apply; review with 'rootfiles fleet check', then run 'rootfiles fleet apply' for: %s\n", len(pending), strings.Join(pending, ", "))
 	}
 	if !allOK(results) {
-		return &ExitError{Code: 2}
+		return &ExitError{Code: exitDrift}
 	}
 	return nil
 }
@@ -447,7 +444,7 @@ func newFleetTargetsCmd() *cobra.Command {
 			return fmt.Errorf("writing fleet run log: %w", err)
 		}
 		if res.State != "ok" {
-			return &ExitError{Code: 2}
+			return &ExitError{Code: exitDrift}
 		}
 		return nil
 	}}

@@ -38,6 +38,8 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
 
 ## Behaviour
 
+- Allocation/status tables and assignment/revoke messages use the context writer. Existing columns, spacing and payload bytes are retained; output routing introduces no GPU or service operation.
+
 - `rootfiles gpu assign USER --gpus 0,1 [--method env|cgroup|both]`, `gpu revoke USER` (both in `mutatingCommands`), `gpu list`, `gpu status` (all physical GPUs with `nvidia-smi` data where visible, `(restricted)` otherwise), `gpu mig status`.
 - `parseGPUList` requires at least one non-negative integer index.
 - Assign and revoke apply their method side effects immediately; `apply --module gpu` re-converges every user entry.
@@ -65,4 +67,3 @@ Per-user GPU assignment on shared GPU hosts. One ledger records which physical G
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `gpu assign`/`revoke` skip capability validation and always build an APT backend.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining output through `ui`; equivalent home-base defaults use `UsersConfig.Base()`, while unknown-base guards remain separate. Shared ordinary-file/systemd helpers are in place.

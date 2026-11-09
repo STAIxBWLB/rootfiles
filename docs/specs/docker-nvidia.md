@@ -55,7 +55,3 @@ The `docker` module installs Docker CE with the compose and buildx plugins and m
 - `internal/module/agreement_test.go`: complete Docker/NVIDIA installation package lists, pending/current/failed Docker service work, and continued Rocky capability rejection.
 - `internal/module/nvidia_test.go`: `TestNvidiaRuntimeRegistrationReloadsDocker`.
 - No CI `module` matrix entry exists for `docker` or `nvidia`; they run only under the `unit` job and in profile dry-runs (`tests/scenarios/dry-run-all-profiles.sh`).
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): shared write-if-changed and `systemdReload` helpers.

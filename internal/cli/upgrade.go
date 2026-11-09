@@ -20,6 +20,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 const (
@@ -34,6 +35,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 		Aliases: []string{"upgrade"},
 		Short:   "Self-update rootfiles to the latest (or specified) version",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			out := cmd.OutOrStdout()
 			checkOnly, _ := cmd.Flags().GetBool("check")
 			targetVersion, _ := cmd.Flags().GetString("version")
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -43,26 +45,26 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 
 			// Resolve target version
 			if targetVersion == "" {
-				fmt.Print("Checking latest version... ")
+				ui.WriteRaw(out, "Checking latest version... ")
 				latest, err := fetchLatestVersion(ctx)
 				if err != nil {
 					return fmt.Errorf("fetching latest version: %w", err)
 				}
 				targetVersion = latest
-				fmt.Println(targetVersion)
+				ui.WriteLine(out, targetVersion)
 			}
 
 			current := normalizeVersion(currentVersion)
 			target := normalizeVersion(targetVersion)
 
 			if current == target {
-				fmt.Printf("Already at version %s, nothing to do.\n", targetVersion)
+				ui.WriteText(out, "Already at version %s, nothing to do.\n", targetVersion)
 				return nil
 			}
-			fmt.Printf("Current: %s → Target: %s\n", currentVersion, targetVersion)
+			ui.WriteText(out, "Current: %s "+ui.MarkPending+" Target: %s\n", currentVersion, targetVersion)
 
 			if checkOnly {
-				fmt.Println("Update available. Run `sudo rootfiles update` to install.")
+				ui.WriteLine(out, "Update available. Run `sudo rootfiles update` to install.")
 				return &ExitError{Code: exitDrift}
 			}
 
@@ -79,30 +81,30 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			}
 			defer os.RemoveAll(tmpDir)
 
-			fmt.Print("Downloading... ")
+			ui.WriteRaw(out, "Downloading... ")
 			archivePath, err := downloadRelease(ctx, targetVersion, osName, arch, tmpDir)
 			if err != nil {
 				return fmt.Errorf("download failed: %w", err)
 			}
-			fmt.Println("OK")
+			ui.WriteLine(out, "OK")
 
 			// Verify checksum
-			fmt.Print("Verifying checksum... ")
+			ui.WriteRaw(out, "Verifying checksum... ")
 			if err := verifyChecksum(ctx, archivePath, targetVersion); err != nil {
 				return fmt.Errorf("checksum verification failed: %w", err)
 			}
-			fmt.Println("OK")
+			ui.WriteLine(out, "OK")
 
 			// Extract
-			fmt.Print("Extracting... ")
+			ui.WriteRaw(out, "Extracting... ")
 			newBinary, err := extractBinary(archivePath, tmpDir)
 			if err != nil {
 				return fmt.Errorf("extraction failed: %w", err)
 			}
-			fmt.Println("OK")
+			ui.WriteLine(out, "OK")
 
 			if dryRun {
-				fmt.Printf("Dry-run: would replace binary with %s\n", newBinary)
+				ui.WriteText(out, "Dry-run: would replace binary with %s\n", newBinary)
 				return nil
 			}
 
@@ -116,11 +118,11 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 				return fmt.Errorf("resolving symlinks: %w", err)
 			}
 
-			fmt.Printf("Replacing %s... ", currentBinary)
+			ui.WriteText(out, "Replacing %s... ", currentBinary)
 			if err := replaceBinary(newBinary, currentBinary); err != nil {
 				return fmt.Errorf("replace failed: %w", err)
 			}
-			fmt.Println("OK")
+			ui.WriteLine(out, "OK")
 
 			// Ensure the `root` alias symlink exists next to the binary. The
 			// installer creates this on fresh installs; users upgrading from
@@ -131,10 +133,10 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			// (rare, but possible) doesn't turn a successful upgrade into a
 			// failed one.
 			if link, err := ensureRootAlias(currentBinary); err == nil && link != "" {
-				fmt.Printf("Symlink:  %s -> %s\n", link, filepath.Base(currentBinary))
+				ui.WriteText(out, "Symlink:  %s -> %s\n", link, filepath.Base(currentBinary))
 			}
 
-			fmt.Printf("Updated to %s\n", targetVersion)
+			ui.WriteText(out, "Updated to %s\n", targetVersion)
 			// Updating replaces only the binary; a release that changes
 			// generated files still needs apply. Check exits 2 when it plans changes.
 			checkCtx, cancelCheck := context.WithTimeout(cmd.Context(), 2*time.Minute)
@@ -142,7 +144,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			check := osexec.CommandContext(checkCtx, currentBinary, "check")
 			var exitErr *osexec.ExitError
 			if err := check.Run(); errors.As(err, &exitErr) && exitErr.ExitCode() == exitDrift {
-				fmt.Println("Apply pending: this release plans changes on this host. Review with `sudo rootfiles check`, then run `sudo rootfiles apply`.")
+				ui.WriteLine(out, "Apply pending: this release plans changes on this host. Review with `sudo rootfiles check`, then run `sudo rootfiles apply`.")
 			}
 			return nil
 		},

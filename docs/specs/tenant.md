@@ -86,6 +86,8 @@ Single-port SSH (sshpiper)
 
 ## Behaviour
 
+- CLI-created managers keep the command writer. NewTenantManager honors an explicit writer (including io.Discard); a nil argument inherits rc.Output. The tenant package uses UI marker constants without changing its existing text, data or command strings.
+
 - `tenant passwd` is the single password command; `reset` resolves as its alias with the same mutation preflight. Help shows one password command and lists positional arguments separately from flags.
 
 - Module Check (`tenantChanges`) lists: managed files that differ (guard script `/usr/local/sbin/rootfiles-gpu-guard`, guard and sync units and timers), timers not enabled (`rootfiles-gpu-guard.timer` every minute, `rootfiles-tenant-sync.timer` every 2 minutes, `fstrim.timer`), missing operator group, sudoers rule content or file mode drift, stale or disabled mount units of existing tenants, and sshpiper changes. Apply does exactly these, reloads systemd once when a unit changed (reload failure is a warning), and reports `Changed=false` in dry-run.
@@ -118,5 +120,4 @@ Single-port SSH (sshpiper)
 
 ## Open issues
 
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining output routing. Password generation is shared through `tenant.GeneratePassword`; its alphabet, lengths and stdin-only delivery stay unchanged. Host prep uses shared ordinary-file/systemd helpers; tenant runtime atomic writeIfChanged remains a distinct concern.
 - Not tracked: the 2026-10-20 design stored GPU UUIDs and checked OCI `linux.devices`; the code stores indices and verifies with `nvidia-smi -L`.

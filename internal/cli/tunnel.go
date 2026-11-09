@@ -101,7 +101,7 @@ the binary and any configured VLAN are managed. "install" is an alias of setup.`
 			if err != nil {
 				return fmt.Errorf("restarting cloudflared: %w", err)
 			}
-			fmt.Println("cloudflared service restarted.")
+			ui.WriteLine(cmd.OutOrStdout(), "cloudflared service restarted.")
 			return nil
 		},
 	})
@@ -166,24 +166,25 @@ func tunnelUpdateCheck(ctx context.Context, rc *module.RunContext) error {
 		return fmt.Errorf("fetching latest cloudflared release: %w", err)
 	}
 
-	ui.WriteSection(os.Stdout, "Cloudflared update check")
+	out := rc.Output()
+	ui.WriteSection(out, "Cloudflared update check")
 
 	current := module.InspectCloudflared(ctx, rc.Runner, cloudflaredPath).Version
 	if current == "" {
-		ui.WriteKV(os.Stdout, "Current", ui.StyleHint.Render("(not installed)"))
+		ui.WriteKV(out, "Current", ui.StyleHint.Render("(not installed)"))
 	} else {
-		ui.WriteKV(os.Stdout, "Current", current)
+		ui.WriteKV(out, "Current", current)
 	}
-	ui.WriteKV(os.Stdout, "Latest", latest)
+	ui.WriteKV(out, "Latest", latest)
 
 	switch {
 	case current == "":
-		ui.WriteHint(os.Stdout, "run `sudo rootfiles tunnel setup` to install.")
+		ui.WriteHint(out, "run `sudo rootfiles tunnel setup` to install.")
 		return &ExitError{Code: exitDrift}
 	case normalizeVersion(current) == normalizeVersion(latest):
-		fmt.Println("  " + ui.StyleSuccess.Render(ui.MarkOK+" up to date."))
+		ui.WriteLine(out, "  "+ui.StyleSuccess.Render(ui.MarkOK+" up to date."))
 	default:
-		ui.WriteHint(os.Stdout, "run `sudo rootfiles tunnel update` to upgrade.")
+		ui.WriteHint(out, "run `sudo rootfiles tunnel update` to upgrade.")
 		return &ExitError{Code: exitDrift}
 	}
 	return nil
@@ -247,6 +248,7 @@ func loadRunContext(cmd *cobra.Command, tolerateLoadErr bool, modules []string) 
 
 	return &module.RunContext{
 		Config: cfg,
+		Out:    cmd.OutOrStdout(),
 		Runner: runner,
 		APT:    pm,
 		DryRun: dryRun,

@@ -41,6 +41,8 @@ paths:
 
 ## Behaviour
 
+- Doctor passes the command writer into its run context and uses the shared marker constant for hints. JSON/Prometheus goldens and schedule command/unit bytes stay unchanged.
+
 - Schedule enable writes only units with real content changes, preserving old headers. It runs daemon-reload only after an actual unit write; already enabled/active timers skip enable; a necessary enable uses `--no-reload` to prevent an implicit daemon-reload. First-report behavior is unchanged.
 - `rootfiles schedule status` reads the timer file and read-only systemctl state, showing installation, enabled/active status, OnCalendar and report ages (stale after 48 hours). It loads no profile, detects no distro, takes no root lock and refuses ignored profile/config/home-base inputs.
 
@@ -72,4 +74,3 @@ paths:
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `doctor` ignores `--module`; reject it.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining UI/writer routing; capability validation and read-only context construction are shared without changing report findings or schedule command bytes.

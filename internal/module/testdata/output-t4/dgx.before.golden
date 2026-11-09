@@ -1,0 +1,21 @@
+  ✓ locale: already satisfied
+  → system: Cap journald at 2G
+  → packages: Install 21 packages: [ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban]
+  ✓ users: already satisfied
+  → ssh: Deploy custom sshd configuration (blocked: disabling password auth and root login, but no non-root account has an SSH authorized key)
+  → security: Install [unattended-upgrades fail2ban python3-systemd systemd-timesyncd]
+  → security: Enable security-only unattended upgrades (no reboot, NVIDIA stack excluded)
+  → security: Configure fail2ban sshd jail
+  → docker: Set Docker daemon data-root = <fixture>/site/docker
+  → docker: Enable and start Docker service
+  → docker: Restart Docker after daemon configuration changes
+  → nvidia: Install NVIDIA Container Toolkit
+  → nvidia: Configure Docker nvidia runtime
+  → nvidia: Enable nvidia-persistenced
+  → nvidia: Enable nvidia-fabricmanager
+  ✓ gpu: already satisfied
+  → cloudflared: Install cloudflared binary
+  → storage: Create data directory <fixture>/site/data
+  → storage: Create symlink <fixture>/site/data-link → <fixture>/site/data
+  → storage: Create Docker storage directory <fixture>/site/docker
+  ✗ network: blocked: Firewall verification (blocked: firewalld is active; choose one firewall manager and disable modules.network.ufw or stop firewalld through the host firewall change process before applying)

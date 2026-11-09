@@ -56,11 +56,13 @@ The Module interface, the registry and execution order, and the three commands t
 
 - Check must stay side-effect free: no writes, no installs, no metadata refresh; Runner writes are dry-run gated but `Runner.Query` is not, so a Check must only query.
 - `ensureMetaDir` refuses a legacy `<home_base>/.rootfiles` file without moving it, including in dry run, and names the manual relocation to `.rootfiles/users.json`. Shared JSON ledger reads distinguish absence from corruption; atomic sibling writes and destination replacement go through Runner so dry-run and backups apply.
-- Status lines in `RunAll` are printed to stdout with literal glyphs, not through `internal/ui` (see #94).
+- `RunContext.Out` receives command text through `Output()`; nil retains stdout for existing callers. `RunAll` status rows use shared UI bullets (two spaces after the marker); outcome statuses, service calls and dry-run policy are unchanged. Text-only routing never decorates machine payloads.
 
 - Not planned (retired 2026-11-10, from the 2026-09 improvement plan): a common disk-space and network-reachability preflight. `doctor` already reports disk use against thresholds, and package or download failures already stop with their error. A refusal on low disk would block `apply` on converged hosts whose root filesystem is close to full, which contract #115 forbids.
 
 ## Tests that pin it
+
+- `internal/module/output_profiles_test.go` loads all six real profiles and runs actual Check/RunAll with private paths and QueryGuard; pending/satisfied/blocked outcomes and zero filesystem/backup mutation are checked against reviewed before/after text captures. `tests/scenarios/capture-output-routing.py` separately captures full CLI previews in a disposable dev container using the existing detector/path seams; all six profiles reach RunAll and exit 0, with identical stderr except query-log clocks and only marker spacing changed.
 
 - `internal/cli/report_machine_contract_test.go` pins pre-refactor check/doctor JSON and Prometheus bytes, field/metric ordering, HTML/quote/newline escaping, empty check modules as null, and exit codes. A test clock and synthetic doctor findings keep captures deterministic without host reads.
 
@@ -77,4 +79,3 @@ The Module interface, the registry and execution order, and the three commands t
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `status` honours `--module`; `ROOTFILES_YES` read in one helper.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining module output through `internal/ui` and `rc.Out`; status text/JSON already share one collector.

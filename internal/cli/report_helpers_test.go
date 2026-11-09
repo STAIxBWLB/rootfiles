@@ -117,7 +117,7 @@ func captureApplySummary(t *testing.T, cfg *config.Config) string {
 	old := os.Stdout
 	os.Stdout = out
 	defer func() { os.Stdout = old; _ = out.Close() }()
-	printApplySummary(cfg)
+	printApplySummary(out, cfg)
 	if err := out.Close(); err != nil {
 		t.Fatal(err)
 	}

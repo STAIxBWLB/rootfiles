@@ -220,7 +220,7 @@ func AssignGPUs(ctx context.Context, rc *RunContext, username string, gpus []int
 		return err
 	}
 
-	fmt.Printf("Assigned GPUs %s to %s (method: %s)\n", gpuListStr(gpus), username, method)
+	ui.WriteText(rc.Output(), "Assigned GPUs %s to %s (method: %s)\n", gpuListStr(gpus), username, method)
 	return nil
 }
 
@@ -263,7 +263,7 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 	if method == "env" || method == "both" {
 		scriptPath := profileDScriptPath(username)
 		if rc.DryRun {
-			fmt.Printf("[dry-run] would remove %s\n", scriptPath)
+			ui.WriteText(rc.Output(), "[dry-run] would remove %s\n", scriptPath)
 		} else {
 			if err := rc.Runner.Remove(scriptPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("removing %s: %w", scriptPath, err)
@@ -278,7 +278,7 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 			slicePath := cgroupSlicePath(u.Uid)
 			sliceDir := filepath.Dir(slicePath)
 			if rc.DryRun {
-				fmt.Printf("[dry-run] would remove %s\n", sliceDir)
+				ui.WriteText(rc.Output(), "[dry-run] would remove %s\n", sliceDir)
 			} else {
 				// Remove only our drop-in; the slice dir may hold others.
 				if err := rc.Runner.Remove(slicePath); err != nil && !os.IsNotExist(err) {
@@ -286,7 +286,7 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 				}
 				_ = rc.Runner.Remove(sliceDir) // only succeeds when empty
 				if w := systemdReload(ctx, rc); w != "" {
-					fmt.Println("  " + ui.MarkWarn + " " + w)
+					ui.WriteLine(rc.Output(), "  "+ui.MarkWarn+" "+w)
 				}
 			}
 		}
@@ -302,7 +302,7 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 		}
 	}
 
-	fmt.Printf("Revoked GPU allocation for %s\n", username)
+	ui.WriteText(rc.Output(), "Revoked GPU allocation for %s\n", username)
 	return nil
 }
 
@@ -311,28 +311,28 @@ func ListGPUAllocations(rc *RunContext) error {
 	WarnUntrustedMetadata(rc)
 	db, err := loadGPUDB(rc)
 	if err != nil || len(db.Allocations) == 0 {
-		ui.WriteSection(os.Stdout, "GPU Allocations")
-		ui.WriteHint(os.Stdout, "No GPU allocations configured.")
+		ui.WriteSection(rc.Output(), "GPU Allocations")
+		ui.WriteHint(rc.Output(), "No GPU allocations configured.")
 		return nil
 	}
 
-	ui.WriteSection(os.Stdout, "GPU Allocations")
+	ui.WriteSection(rc.Output(), "GPU Allocations")
 	if db.TotalGPUs > 0 {
 		totalLabel := fmt.Sprintf("%d", db.TotalGPUs)
 		if db.GPUModel != "" {
 			totalLabel = fmt.Sprintf("%d (%s)", db.TotalGPUs, db.GPUModel)
 		}
-		ui.WriteKV(os.Stdout, "Total GPUs", totalLabel)
+		ui.WriteKV(rc.Output(), "Total GPUs", totalLabel)
 	}
 
 	// Preserve the fixed-width table so integration scenarios can still grep
 	// for usernames and GPU indices. Header is coloured; value rows are plain
 	// to keep column alignment predictable.
-	fmt.Fprintln(os.Stdout)
-	fmt.Fprintln(os.Stdout, "  "+ui.StyleSection.Render(fmt.Sprintf("%-15s %-15s %-10s %s", "USER", "GPUs", "METHOD", "UPDATED")))
-	fmt.Fprintln(os.Stdout, "  "+ui.StyleHint.Render(fmt.Sprintf("%-15s %-15s %-10s %s", "----", "----", "------", "-------")))
+	ui.WriteLine(rc.Output())
+	ui.WriteLine(rc.Output(), "  "+ui.StyleSection.Render(fmt.Sprintf("%-15s %-15s %-10s %s", "USER", "GPUs", "METHOD", "UPDATED")))
+	ui.WriteLine(rc.Output(), "  "+ui.StyleHint.Render(fmt.Sprintf("%-15s %-15s %-10s %s", "----", "----", "------", "-------")))
 	for _, a := range db.Allocations {
-		fmt.Fprintf(os.Stdout, "  %-15s %-15s %-10s %s\n",
+		ui.WriteText(rc.Output(), "  %-15s %-15s %-10s %s\n",
 			a.Username, gpuListStr(a.GPUs), a.Method, a.UpdatedAt)
 	}
 	return nil
@@ -402,9 +402,9 @@ func ShowGPUStatus(ctx context.Context, rc *RunContext) error {
 		}
 	}
 
-	ui.WriteSection(os.Stdout, "GPU Status")
-	fmt.Fprintln(os.Stdout, "  "+ui.StyleSection.Render(fmt.Sprintf("%-5s %-25s %-15s %-6s %s", "GPU", "MODEL", "MEMORY", "UTIL", "ASSIGNED TO")))
-	fmt.Fprintln(os.Stdout, "  "+ui.StyleHint.Render(fmt.Sprintf("%-5s %-25s %-15s %-6s %s", "---", "-----", "------", "----", "-----------")))
+	ui.WriteSection(rc.Output(), "GPU Status")
+	ui.WriteLine(rc.Output(), "  "+ui.StyleSection.Render(fmt.Sprintf("%-5s %-25s %-15s %-6s %s", "GPU", "MODEL", "MEMORY", "UTIL", "ASSIGNED TO")))
+	ui.WriteLine(rc.Output(), "  "+ui.StyleHint.Render(fmt.Sprintf("%-5s %-25s %-15s %-6s %s", "---", "-----", "------", "----", "-----------")))
 
 	for i := 0; i < totalGPUs; i++ {
 		assignedLabel := ui.StyleHint.Render("(unassigned)")
@@ -417,7 +417,7 @@ func ShowGPUStatus(ctx context.Context, rc *RunContext) error {
 			if len(name) > 24 {
 				name = name[:24]
 			}
-			fmt.Fprintf(os.Stdout, "  %-5d %-25s %5s/%-5s MB %4s%%  %s\n",
+			ui.WriteText(rc.Output(), "  %-5d %-25s %5s/%-5s MB %4s%%  %s\n",
 				i, name, info.MemUsed, info.MemTotal, info.Util, assignedLabel)
 		} else {
 			// GPU exists but not visible to nvidia-smi (cgroup restricted)
@@ -428,7 +428,7 @@ func ShowGPUStatus(ctx context.Context, rc *RunContext) error {
 			if len(name) > 24 {
 				name = name[:24]
 			}
-			fmt.Fprintf(os.Stdout, "  %-5d %-25s %s     ---   %s\n",
+			ui.WriteText(rc.Output(), "  %-5d %-25s %s     ---   %s\n",
 				i, name, ui.StyleWarning.Render("(restricted)"), assignedLabel)
 		}
 	}
@@ -570,7 +570,7 @@ func installDockerWrapper(rc *RunContext) error {
 		return nil
 	}
 	if rc.DryRun {
-		fmt.Printf("[dry-run] would write %s\n", dockerWrapperPath)
+		ui.WriteText(rc.Output(), "[dry-run] would write %s\n", dockerWrapperPath)
 		return nil
 	}
 	_, err := ensureFile(rc, dockerWrapperPath, expected, 0755)
@@ -580,11 +580,11 @@ func installDockerWrapper(rc *RunContext) error {
 // removeDockerWrapper removes the Docker wrapper script if it exists.
 func removeDockerWrapper(ctx context.Context, rc *RunContext) {
 	if rc.DryRun {
-		fmt.Printf("[dry-run] would remove %s\n", dockerWrapperPath)
+		ui.WriteText(rc.Output(), "[dry-run] would remove %s\n", dockerWrapperPath)
 		return
 	}
 	if err := rc.Runner.Remove(dockerWrapperPath); err != nil && !os.IsNotExist(err) {
-		fmt.Printf("  %s removing %s: %v\n", ui.MarkWarn, dockerWrapperPath, err)
+		ui.WriteText(rc.Output(), "  %s removing %s: %v\n", ui.MarkWarn, dockerWrapperPath, err)
 	}
 }
 
@@ -698,7 +698,7 @@ func applyAllocationMethods(ctx context.Context, rc *RunContext, username string
 		scriptPath := profileDScriptPath(username)
 		content := buildProfileDScript(username, gpus)
 		if rc.DryRun {
-			fmt.Printf("[dry-run] would write %s\n", scriptPath)
+			ui.WriteText(rc.Output(), "[dry-run] would write %s\n", scriptPath)
 		} else {
 			if err := rc.Runner.WriteFile(scriptPath, []byte(content), 0644); err != nil {
 				return fmt.Errorf("writing profile.d script: %w", err)
@@ -714,7 +714,7 @@ func applyAllocationMethods(ctx context.Context, rc *RunContext, username string
 		slicePath := cgroupSlicePath(u.Uid)
 		content := buildCgroupConf(gpus)
 		if rc.DryRun {
-			fmt.Printf("[dry-run] would write %s\n", slicePath)
+			ui.WriteText(rc.Output(), "[dry-run] would write %s\n", slicePath)
 		} else {
 			sliceDir := filepath.Dir(slicePath)
 			if err := rc.Runner.MkdirAll(sliceDir, 0755); err != nil {
@@ -724,7 +724,7 @@ func applyAllocationMethods(ctx context.Context, rc *RunContext, username string
 				return fmt.Errorf("writing cgroup conf: %w", err)
 			}
 			if w := systemdReload(ctx, rc); w != "" {
-				fmt.Println("  " + ui.MarkWarn + " " + w)
+				ui.WriteLine(rc.Output(), "  "+ui.MarkWarn+" "+w)
 			}
 		}
 	}

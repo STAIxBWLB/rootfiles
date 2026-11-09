@@ -20,12 +20,12 @@ paths:
 - **Package layering** (non-test imports on this branch). Keep it acyclic and do not add upward edges:
   - `internal/ui`, `internal/config`, `internal/state` import no other internal package.
   - `internal/exec` imports `config` only.
-  - `internal/tenant` imports `config` and `exec`. It must not import `internal/module` (module imports tenant).
+  - `internal/tenant` imports `config`, `exec` and the leaf `ui` package. It must not import `internal/module` (module imports tenant).
   - `internal/module` imports `config`, `exec`, `state`, `tenant`, `ui`.
   - `internal/fleet` imports `config` and `module` (`internal/fleet/rollout.go` resolves the enabled modules of a site config through `module.NewRegistry`).
   - `internal/cli` is the only package that imports `fleet` and the only one `cmd/rootfiles` imports.
 - **Entry point** (`cmd/rootfiles/main.go`): `main` builds a context cancelled on SIGINT/SIGTERM and calls `cli.Execute`. An error that unwraps to `*cli.ExitError` exits with its `Code`, printing `Error: <Msg>` to stderr only when `Msg` is non-empty (drift exit 2 is silent). Any other error is printed as `Error: <err>` and exits 1. Never let an error exit without output. `version` and `commit` are set by goreleaser ldflags (`-X main.version`, `-X main.commit`; see [self-update](self-update.md)).
-- **Output styling** (`internal/ui/styles.go`, `markers.go`, `format.go`): status-style reports go through `WriteHeader`, `WriteSection`, `WriteKV`, `WriteHint`, `WriteBullet` and the `OKMark`/`FailMark`/`PendingMark`/`WarnMark` helpers, writing to an `io.Writer`. lipgloss degrades to plain text when stdout is not a TTY or `NO_COLOR` is set; do not add manual colour gating. Use the `Mark*` constants instead of glyph literals. Several packages still print literal glyphs or raw `fmt` (`internal/module/users.go`, `ssh.go`, `module.go`, `internal/cli/rollback.go`, `upgrade.go`, `doctor.go`, `internal/tenant/manager.go` and others); that is known debt tracked in #94, not a pattern to copy.
+- **Output styling** (`internal/ui/styles.go`, `markers.go`, `format.go`): status-style reports go through `WriteHeader`, `WriteSection`, `WriteKV`, `WriteHint`, `WriteBullet` and the `OKMark`/`FailMark`/`PendingMark`/`WarnMark` helpers, writing to an `io.Writer`. lipgloss degrades to plain text when stdout is not a TTY or `NO_COLOR` is set; do not add manual colour gating. Use the `Mark*` constants instead of glyph literals. Module and CLI text use an explicit command/context writer. Plain tables and payloads use `WriteText`, `WriteLine` or `WriteRaw` without extra styling; names-only output stays byte-exact. Glyph literals live only in `ui`; machine-facing descriptions use unstyled marker constants. Tenant output keeps its existing Manager.Out and marker bytes.
 - **Display fallback** (`ui.FirstNonEmpty`): returns the first nonempty string verbatim; shared by native status and cloudflared update text without trimming or formatting changes.
 - **Prompts** (`internal/ui/prompt.go`, Charm huh): every prompt helper takes `unattended` and returns its default (`Confirm` returns true) without reading the terminal when it is true. `--yes` must reach every prompt as `unattended`, so unattended runs never block.
 
@@ -54,10 +54,8 @@ paths:
 
 ## Tests that pin it
 
+- `internal/ui/output_boundary_test.go` guards against stdout-only fmt.Print calls in module/CLI code and glyph literals outside ui. Writer tests cover payload bytes and the RunContext nil fallback.
+
 - `internal/ui/format_test.go`: header, section, KV and bullet layout with a forced plain colour profile.
 - Exit-code handling is exercised through the CLI tests listed in [cli-runtime](cli-runtime.md) and [engine](engine.md).
 - No test enforces the package layering; `go build` rejects import cycles only.
-
-## Open issues
-
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94) route module and CLI output through `internal/ui` and an injected writer; remove literal glyphs outside `internal/ui`.

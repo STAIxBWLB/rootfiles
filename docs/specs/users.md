@@ -41,6 +41,8 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 
 ## Behaviour
 
+- User reports and lifecycle/quota text use the context writer. Names-only lists and raw id/groups/quota tool output retain their bytes, including percent signs and missing final newlines; metadata trust warnings stay on warnOut/stderr.
+
 - New metadata databases use `CreatedBy: rootfiles`. Existing databases retain their recorded value, including `rootfiles-v2`; marker cleanup alone never rewrites a ledger.
 - `user add` uses the inherited `--ssh-pubkey`; deprecated `--pubkey` remains an alias, including username fallback via `--user` or environment. Prefix root flags retain their values. `user backup --file` keeps deprecated `-o/--output` aliases with a replacement notice.
 
@@ -74,4 +76,3 @@ The `users` module and the `rootfiles user` command group manage human accounts 
 ## Open issues
 
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): `user passwd --password` lands in the audit log and backup note.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining direct stdout prints in `users.go`, `lifecycle.go`, `quota.go`.

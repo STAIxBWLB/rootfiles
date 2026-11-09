@@ -234,7 +234,7 @@ func auditf(cmd *cobra.Command, msg string, args ...any) {
 // newLogger returns the operator-facing logger (stderr text) teed into the
 // audit log for real (non-dry-run) mutating runs.
 func newLogger(cmd *cobra.Command, dryRun bool, level slog.Level) *slog.Logger {
-	console := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	console := slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level})
 	if dryRun || readOnlyFlagSet(cmd) || cmd.Annotations[annotMutates] != "true" {
 		return slog.New(console)
 	}

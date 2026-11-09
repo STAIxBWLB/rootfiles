@@ -50,6 +50,8 @@ Invariants an agent must keep:
 
 ## Behaviour
 
+- JSON results use the shared CLI encoder with HTML escaping enabled, retaining the previous bytes. Native reports keep HTML escaping disabled. Controller findings use shared exitDrift (still 2); remote command lines are unchanged.
+
 - `fleet targets` honors explicit host/group/all selectors; an omitted selector retains whole-inventory rendering. Explicit empty/unmatched selectors never fall back to all hosts.
 - `fleet schedule enable --on-calendar EXPR` passes a validated, shell-quoted expression; omitted calendar keeps the prior remote enable/disable command bytes. Disable refuses a calendar. Read-only/native report and apply/update wire flags remain accepted.
 - Fleet dry-run skips the real-rollout yes requirement but retains explicit rollout selection; real mutations still require confirmation.
@@ -114,4 +116,3 @@ Verification evidence (folded from the 2026-10-03 rollout checklist):
 ## Open issues
 
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): fleet commands accept and ignore `--module`, `--profile`, `--config`, `--force`, `--tunnel-token`; `-o` is validated only after the SSH work; sudoers and remote command strings must stay unchanged.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): remaining JSON encoder and hardcoded exit 2. Quoting is shared by `fleet.ShellQuote`; run logs intentionally use XDG state storage while inventory uses XDG config storage.

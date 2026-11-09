@@ -31,6 +31,8 @@ What rootfiles remembers on a host and how an operator undoes it: the recorded a
 
 ## Behaviour
 
+- Backup/rollback text uses the command writer. Rollback symlink previews use the ASCII ` -> ` separator; restore actions and manifest fields are unchanged.
+
 - `rootfiles rollback [BACKUP_ID] [--dry-run] [--yes]`.
 - `rootfiles backup [--dir DIR] [--skip-docker] [--skip-etc] [--dry-run]`: all writes go through the Runner, so a dry run writes nothing. Restore is manual: `rootfiles apply --config <dir>/config-snapshot.yaml`, plus `rootfiles user restore` for accounts.
 
@@ -56,4 +58,3 @@ What rootfiles remembers on a host and how an operator undoes it: the recorded a
 
 - [#88](https://github.com/STAIxBWLB/rootfiles/issues/88): redact secrets from the backup-session note that `rollback` prints.
 - [#91](https://github.com/STAIxBWLB/rootfiles/issues/91): `backup` becomes a mutating command (lock and audit); `rollback` honours `ROOTFILES_YES`.
-- [#94](https://github.com/STAIxBWLB/rootfiles/issues/94): backup prints through `internal/ui` and `cmd.OutOrStdout()`. Tar scripts already use shared `fleet.ShellQuote`, preserving their command bytes.
