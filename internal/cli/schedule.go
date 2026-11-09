@@ -142,7 +142,7 @@ func scheduleTimerReady(ctx context.Context, runner *exec.Runner) bool {
 		return false
 	}
 	state := strings.TrimSpace(enabled.Stdout)
-	if state != "enabled" && state != "enabled-runtime" {
+	if state != "enabled" {
 		return false
 	}
 	active, err := runner.Query(ctx, "systemctl", "is-active", scheduleName+".timer")
