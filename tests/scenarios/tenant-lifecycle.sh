@@ -143,7 +143,27 @@ echo "--- AC8: volume comes back after a unit restart ---"
 check "mount unit ordered before docker" bash -c 'systemctl show -p Before srv-tenants-t1-vol.mount | grep -q docker.service'
 docker stop tenant-t1 >/dev/null
 sudo systemctl restart srv-tenants-t1-vol.mount
-docker start tenant-t1 >/dev/null
+# A successful systemctl job alone does not prove that the image is mounted
+# in the namespace Docker uses. Never create /vol/data on a bare mountpoint.
+if ! sudo mountpoint -q /srv/tenants/t1/vol || ! sudo test -d /srv/tenants/t1/vol/data; then
+    sudo systemctl show srv-tenants-t1-vol.mount -p ActiveState -p SubState -p Result -p What -p Where
+    sudo journalctl -u srv-tenants-t1-vol.mount --no-pager -n 60
+    sudo findmnt -T /srv/tenants/t1/vol || true
+    sudo losetup -j /srv/tenants/t1/volume.img || true
+    fail "tenant volume is not mounted with its data directory after restart"
+    exit 1
+fi
+if ! docker start tenant-t1 >/dev/null; then
+    sudo systemctl show srv-tenants-t1-vol.mount -p ActiveState -p SubState -p Result -p What -p Where
+    sudo findmnt -T /srv/tenants/t1/vol/data || true
+    docker_pid=$(pgrep -xo dockerd || true)
+    if [ -n "$docker_pid" ]; then
+        sudo nsenter -t "$docker_pid" -m -- findmnt -T /srv/tenants/t1/vol/data || true
+        sudo nsenter -t "$docker_pid" -m -- stat /srv/tenants/t1/vol/data || true
+    fi
+    fail "Docker cannot see the remounted tenant data volume"
+    exit 1
+fi
 check "data intact after remount" docker exec tenant-t1 test -f /data/hello
 
 echo "--- AC6: operator delegation ---"

@@ -150,8 +150,8 @@ func TestAgreementTimeSyncPartialFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.queryFail {
-				if planned.Satisfied || len(planned.Changes) != 1 || planned.Changes[0].State != ChangeBlocked || !strings.Contains(planned.Changes[0].Description, "repair") {
-					t.Fatalf("failed query was hidden: %+v", planned)
+				if !planned.Satisfied || len(planned.Changes) != 0 {
+					t.Fatalf("warning-only query failure blocks preview: %+v", planned)
 				}
 			} else if tc.query == "yes" {
 				if !planned.Satisfied {

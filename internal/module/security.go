@@ -157,9 +157,9 @@ func (m *SecurityModule) Check(ctx context.Context, rc *RunContext) (*CheckResul
 	}
 	if cfg.TimeSync {
 		res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value")
-		if err != nil {
-			changes = append(changes, Change{Description: "Cannot determine NTP time sync: " + firstLine(err.Error()) + "; run timedatectl show -p NTP --value and repair the time-sync service", State: ChangeBlocked})
-		} else if strings.TrimSpace(res.Stdout) != "yes" {
+		// Apply only warns when this query is unavailable; it does not refuse.
+		// Do not make dry-run block work that real Apply can complete.
+		if err == nil && strings.TrimSpace(res.Stdout) != "yes" {
 			_, unit := timeSyncPackage(rc)
 			changes = append(changes,
 				Change{Description: "Enable time-sync service " + unit, Command: "systemctl enable --now " + unit},
