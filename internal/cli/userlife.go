@@ -18,7 +18,7 @@ func newUserDelCmd() *cobra.Command {
 			"then removed) or --remove-home is given.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -53,7 +53,7 @@ func newUserLockCmd() *cobra.Command {
 		Short: "Block all logins (password and SSH key)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -68,7 +68,7 @@ func newUserUnlockCmd() *cobra.Command {
 		Short: "Re-enable logins for a locked user",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -83,7 +83,7 @@ func newUserExpireCmd() *cobra.Command {
 		Short: "Set or clear the account expiry date",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -103,7 +103,7 @@ func newUserKeyCmd() *cobra.Command {
 			Short: "List authorized keys (numbered)",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				rc, err := buildRunContext(cmd)
+				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
 					return err
 				}
@@ -115,7 +115,7 @@ func newUserKeyCmd() *cobra.Command {
 			Short: "Add an authorized key",
 			Args:  cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				rc, err := buildRunContext(cmd)
+				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
 					return err
 				}
@@ -127,7 +127,7 @@ func newUserKeyCmd() *cobra.Command {
 			Short: "Remove authorized key(s) by list index, key or comment",
 			Args:  cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				rc, err := buildRunContext(cmd)
+				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
 					return err
 				}
@@ -143,7 +143,7 @@ func newUserDuCmd() *cobra.Command {
 		Use:   "du",
 		Short: "Show home directory disk usage per user (largest first)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -168,7 +168,7 @@ func newUserAuditCmd() *cobra.Command {
 		Use:   "audit",
 		Short: "Compare users.json metadata with the accounts on this system",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -213,7 +213,7 @@ func newUserQuotaCmd() *cobra.Command {
 			Short: "Set a hard limit, e.g. 500G (recorded and re-applied on user restore)",
 			Args:  cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				rc, err := buildRunContext(cmd)
+				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
 					return err
 				}
@@ -225,7 +225,7 @@ func newUserQuotaCmd() *cobra.Command {
 			Short: "Remove a user's limit",
 			Args:  cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
-				rc, err := buildRunContext(cmd)
+				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
 					return err
 				}
@@ -236,7 +236,7 @@ func newUserQuotaCmd() *cobra.Command {
 			Use:   "show",
 			Short: "Show the quota report",
 			RunE: func(cmd *cobra.Command, _ []string) error {
-				rc, err := buildRunContext(cmd)
+				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
 					return err
 				}

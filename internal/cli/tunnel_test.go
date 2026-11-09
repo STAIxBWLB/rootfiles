@@ -147,7 +147,7 @@ func TestConfigFreeCommandsRunWithoutProfile(t *testing.T) {
 }
 
 // runContextFor builds the run context of the subcommand at path with flags.
-func runContextFor(t *testing.T, build func(*cobra.Command) (*module.RunContext, error), path []string, flags ...string) (*module.RunContext, error) {
+func runContextFor(t *testing.T, build func(*cobra.Command, ...string) (*module.RunContext, error), path []string, flags ...string) (*module.RunContext, error) {
 	t.Helper()
 	root := NewRootCmd("test", "abc")
 	sub, _, err := root.Find(path)

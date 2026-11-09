@@ -47,6 +47,17 @@ func TestBackupCmd_Flags(t *testing.T) {
 // the progress report and the runner log stay out of the test output.
 func runBackup(t *testing.T, args ...string) error {
 	t.Helper()
+	oldEUID, oldOS, oldLock, oldAudit := geteuid, nativeHostOS, heldLock, auditLogger
+	geteuid = func() int { return 0 }
+	nativeHostOS = "linux"
+	heldLock, auditLogger = nil, nil
+	t.Setenv("ROOTFILES_LOCK_FILE", filepath.Join(t.TempDir(), "lock"))
+	t.Setenv("ROOTFILES_LOG_FILE", filepath.Join(t.TempDir(), "audit"))
+	t.Cleanup(func() {
+		heldLock.Release()
+		geteuid, nativeHostOS, heldLock, auditLogger = oldEUID, oldOS, oldLock, oldAudit
+	})
+
 	dir := t.TempDir()
 	stdout, err := os.Create(filepath.Join(dir, "stdout"))
 	if err != nil {

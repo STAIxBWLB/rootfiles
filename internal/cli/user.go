@@ -47,7 +47,7 @@ func newUserAddCmd() *cobra.Command {
 		Short: "Create a user with custom home directory",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -98,7 +98,7 @@ func newUserListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List managed users (or system users with --system)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -126,7 +126,7 @@ func newUserBackupCmd() *cobra.Command {
 		Use:   "backup",
 		Short: "Backup user list and metadata to JSON",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -144,7 +144,7 @@ func newUserRestoreCmd() *cobra.Command {
 		Short: "Restore users from backup (reconnect existing home dirs)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -165,7 +165,7 @@ func newUserRehomeCmd() *cobra.Command {
 			"leave a symlink at the old path. The original is kept as <old>.rootfiles-bak-<ts> unless --remove-old.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -183,7 +183,7 @@ func newUserIDCmd() *cobra.Command {
 		Short: "Show UID, GID, and groups for a user",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -198,7 +198,7 @@ func newUserGroupsCmd() *cobra.Command {
 		Short: "List groups (all groups or for a specific user)",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -216,7 +216,7 @@ func newUserGroupAddCmd() *cobra.Command {
 		Short: "Add a user to groups",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -237,7 +237,7 @@ func newUserGroupDelCmd() *cobra.Command {
 		Short: "Remove a user from groups",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}
@@ -277,7 +277,7 @@ func newUserPasswdCmd() *cobra.Command {
 		Use:   "passwd [USERNAME...]",
 		Short: "Set passwords for users (batch)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
 				return err
 			}

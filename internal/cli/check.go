@@ -24,6 +24,7 @@ func newCheckCmd() *cobra.Command {
 			"the last applied profile (or the detected suggestion) is used.",
 		RunE: runCheck,
 	}
+	cmd.Flags().StringSlice("module", nil, "Check specific modules only")
 	cmd.Flags().BoolP("verbose", "v", false, "Show commands that will be executed")
 	addOutputFlagWithMetrics(cmd)
 	return cmd

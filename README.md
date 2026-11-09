@@ -257,6 +257,15 @@ rootfiles status --profile dgx
 
 Output uses terminal colour via lipgloss. Colour is stripped automatically for non-TTY output (`rootfiles status | less`, CI logs) and when `NO_COLOR=1` is set.
 
+### Flag scope and host capabilities
+
+- `--module` belongs to `apply`, `check` and `status`; `status` filters module checks and the users/GPU/tunnel sections. `doctor` rejects it.
+- `apply --force` overrides the SSH lockout guard. Use `config init --overwrite` to replace a config file; its local `--force` alias is deprecated.
+- Fleet commands reject native-host settings such as `--module`, `--profile`, `--config`, `--force` and `--tunnel-token` before SSH. Set them in inventory or each remote site config instead. Fleet report output must be `text` or `json`.
+- Native confirmation prompts use `--yes` or `ROOTFILES_YES=true`, including rollback. Fleet rollouts still require explicit `--yes`.
+- `backup` requires root and the host lock, and writes a command audit record; `--dry-run` remains unprivileged and writes nothing.
+- Native mutation contexts validate the capabilities of the modules they touch before running commands, including dry runs. GPU and tunnel mutations refuse unsupported Rocky capabilities; supported contexts select APT or DNF from the detected distribution.
+
 ### Self-update
 
 Update to the latest GitHub release:
