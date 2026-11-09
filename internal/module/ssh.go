@@ -53,7 +53,8 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 		}
 	}
 
-	if cfg.Port > 0 && !config.IsRocky(rc.Config.System) {
+	existing, _ := rc.Runner.ReadFile(sshdDropInPath)
+	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
 		needsAllow, err := sshFirewallPlan(ctx, rc, cfg.Port)
 		if err != nil {
 			return nil, err
@@ -64,7 +65,6 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 	}
 
 	desired := m.buildConfig(cfg)
-	existing, _ := rc.Runner.ReadFile(sshdDropInPath)
 
 	if strings.TrimSpace(string(existing)) != strings.TrimSpace(desired) {
 		desc := "Deploy custom sshd configuration"
@@ -86,13 +86,7 @@ func (m *SSHModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, er
 func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 	cfg := rc.Config.SSH
 	needsUFWAllow := false
-	if cfg.Port > 0 && !config.IsRocky(rc.Config.System) {
-		var err error
-		needsUFWAllow, err = sshFirewallPlan(ctx, rc, cfg.Port)
-		if err != nil {
-			return nil, err
-		}
-	}
+
 	var originalMain, updatedMain []byte
 	var originalMainMode os.FileMode
 	mainIncludeChanged := false
@@ -117,6 +111,13 @@ func (m *SSHModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult, er
 	existing, readErr := rc.Runner.ReadFile(sshdDropInPath)
 	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
 		return nil, fmt.Errorf("reading sshd drop-in %s: %w", sshdDropInPath, readErr)
+	}
+	if !config.IsRocky(rc.Config.System) && managedSSHPortChanges(existing, cfg.Port) {
+		var err error
+		needsUFWAllow, err = sshFirewallPlan(ctx, rc, cfg.Port)
+		if err != nil {
+			return nil, err
+		}
 	}
 	configChanged := readErr != nil || strings.TrimSpace(string(existing)) != strings.TrimSpace(content) || mainIncludeChanged
 	if configChanged {
@@ -389,6 +390,19 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+// managedSSHPortChanges compares an explicit requested port with the managed
+// drop-in, defaulting to SSH's port 22 when no Port directive exists.
+func managedSSHPortChanges(existing []byte, requested int) bool {
+	if requested <= 0 {
+		return false
+	}
+	current := 22
+	if ports := parsePortDirectives(string(existing)); len(ports) > 0 {
+		current = ports[0]
+	}
+	return current != requested
 }
 
 // portLine returns the "Port N" directive of a drop-in, or "" if none.
