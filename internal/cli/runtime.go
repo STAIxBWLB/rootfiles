@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
@@ -20,6 +21,7 @@ import (
 var nativeHostOS = runtime.GOOS
 
 const annotMutates = "rootfiles/mutates"
+const annotReadOnly = "rootfiles/readonly"
 
 // mutatingCommands change the system; they need root and the global lock.
 var mutatingCommands = [][]string{
@@ -60,15 +62,75 @@ var heldLock *state.Lock
 var geteuid = os.Geteuid
 
 // preflight enforces root and the global lock for mutating commands.
-// Dry runs are exempt: they only read the system.
+// Dry runs and annotated read-only flags are exempt.
 func preflight(cmd *cobra.Command, _ []string) error {
 	if cmd.Annotations[annotMutates] != "true" {
 		return nil
 	}
-	if f := cmd.Flag("dry-run"); f != nil && f.Value.String() == "true" {
+	if readOnlyFlagSet(cmd) {
 		return nil
 	}
 	return requireRootAndLock(cmd)
+}
+
+// readOnlyFlagSet accepts only enabled boolean flags explicitly marked read-only.
+func readOnlyFlagSet(cmd *cobra.Command) bool {
+	readonly := false
+	visit := func(flag *pflag.Flag) {
+		if len(flag.Annotations[annotReadOnly]) > 0 && flag.Annotations[annotReadOnly][0] == "true" &&
+			flag.Value.Type() == "bool" && flag.Value.String() == "true" {
+			readonly = true
+		}
+	}
+	cmd.Flags().VisitAll(visit)
+	cmd.InheritedFlags().VisitAll(visit)
+	return readonly
+}
+
+// redactArgs copies command arguments (without the executable), hiding named
+// secret values and the first positional operand of tunnel setup.
+func redactArgs(args []string) []string {
+	out := append([]string(nil), args...)
+	flags := newRootFlags()
+	positional := 0
+	tunnelSetup := true
+	flagsEnded := false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !flagsEnded && arg == "--" {
+			flagsEnded = true
+			continue
+		}
+		if !flagsEnded && strings.HasPrefix(arg, "--") {
+			name, _, inline := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
+			if name == "tunnel-token" || name == "password" {
+				if inline {
+					out[i] = "--" + name + "=***"
+				} else if i+1 < len(args) {
+					i++
+					out[i] = "***"
+				}
+			} else if flag := flags.Lookup(name); flag != nil && !inline && flag.NoOptDefVal == "" && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		if !flagsEnded && strings.HasPrefix(arg, "-") && arg != "-" {
+			continue
+		}
+		switch positional {
+		case 0:
+			tunnelSetup = arg == "tunnel"
+		case 1:
+			tunnelSetup = tunnelSetup && arg == "setup"
+		default:
+			if tunnelSetup {
+				out[i] = "***"
+			}
+		}
+		positional++
+	}
+	return out
 }
 
 // requireRootAndLock checks for root and takes the global lock.
@@ -85,7 +147,7 @@ func requireRootAndLock(cmd *cobra.Command) error {
 		return err
 	}
 	heldLock = lock
-	auditf(cmd, "start", "args", strings.Join(os.Args[1:], " "))
+	auditf(cmd, "start", "args", strings.Join(redactArgs(os.Args[1:]), " "))
 	return nil
 }
 
@@ -116,7 +178,7 @@ func auditf(cmd *cobra.Command, msg string, args ...any) {
 // audit log for real (non-dry-run) mutating runs.
 func newLogger(cmd *cobra.Command, dryRun bool, level slog.Level) *slog.Logger {
 	console := slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
-	if dryRun || cmd.Annotations[annotMutates] != "true" {
+	if dryRun || readOnlyFlagSet(cmd) || cmd.Annotations[annotMutates] != "true" {
 		return slog.New(console)
 	}
 	audit := openAudit()
@@ -130,8 +192,8 @@ func newLogger(cmd *cobra.Command, dryRun bool, level slog.Level) *slog.Logger {
 // session so overwritten files can be rolled back.
 func newRunner(cmd *cobra.Command, dryRun bool) *exec.Runner {
 	r := exec.NewRunner(dryRun, newLogger(cmd, dryRun, slog.LevelInfo))
-	if !dryRun && cmd.Annotations[annotMutates] == "true" && geteuid() == 0 {
-		r.Backup = exec.NewBackup(state.BackupsDir(), strings.Join(os.Args, " "))
+	if !dryRun && !readOnlyFlagSet(cmd) && cmd.Annotations[annotMutates] == "true" && geteuid() == 0 {
+		r.Backup = exec.NewBackup(state.BackupsDir(), strings.Join(append([]string{os.Args[0]}, redactArgs(os.Args[1:])...), " "))
 	}
 	return r
 }

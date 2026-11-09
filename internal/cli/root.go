@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // buildVersion is recorded in state and audit entries.
@@ -21,20 +22,7 @@ func NewRootCmd(version, commit string) *cobra.Command {
 	}
 	root.Version = version + " (" + commit + ")"
 
-	// Persistent flags for all subcommands
-	root.PersistentFlags().Bool("yes", false, "Unattended mode (skip all prompts)")
-	root.PersistentFlags().Bool("dry-run", false, "Show what would be done without executing")
-	root.PersistentFlags().Bool("force", false, "Override safety guards (e.g. SSH lockout protection)")
-	root.PersistentFlags().String("profile", "", "Profile name (base, minimal, dgx, gpu-server, full, rocky)")
-	root.PersistentFlags().StringSlice("module", nil, "Run specific modules only")
-	root.PersistentFlags().String("config", "", "Path to custom config YAML")
-
-	// Flags for unattended mode
-	root.PersistentFlags().String("home-base", "", "Custom home base directory (e.g., /raid/home)")
-	root.PersistentFlags().String("user", "", "Username to create")
-	root.PersistentFlags().String("ssh-pubkey", "", "SSH public key for the user")
-	root.PersistentFlags().String("tunnel-token", "", "Cloudflare tunnel token")
-	root.PersistentFlags().String("vlan-address", "", "VLAN private network address (e.g., 172.16.229.32/32)")
+	root.PersistentFlags().AddFlagSet(newRootFlags())
 
 	root.AddCommand(newApplyCmd())
 	root.AddCommand(newBackupCmd())
@@ -60,4 +48,26 @@ func NewRootCmd(version, commit string) *cobra.Command {
 func Execute(ctx context.Context, version, commit string) error {
 	defer heldLock.Release()
 	return NewRootCmd(version, commit).ExecuteContext(ctx)
+}
+
+// newRootFlags shares flag arity with argument redaction.
+func newRootFlags() *pflag.FlagSet {
+	flags := pflag.NewFlagSet("rootfiles", pflag.ContinueOnError)
+	// Persistent flags for all subcommands
+	flags.Bool("yes", false, "Unattended mode (skip all prompts)")
+	flags.Bool("dry-run", false, "Show what would be done without executing")
+	_ = flags.SetAnnotation("dry-run", annotReadOnly, []string{"true"})
+	flags.Bool("force", false, "Override safety guards (e.g. SSH lockout protection)")
+	flags.String("profile", "", "Profile name (base, minimal, dgx, gpu-server, full, rocky)")
+	flags.StringSlice("module", nil, "Run specific modules only")
+	flags.String("config", "", "Path to custom config YAML")
+
+	// Flags for unattended mode
+	flags.String("home-base", "", "Custom home base directory (e.g., /raid/home)")
+	flags.String("user", "", "Username to create")
+	flags.String("ssh-pubkey", "", "SSH public key for the user")
+	flags.String("tunnel-token", "", "Cloudflare tunnel token")
+	flags.String("vlan-address", "", "VLAN private network address (e.g., 172.16.229.32/32)")
+
+	return flags
 }

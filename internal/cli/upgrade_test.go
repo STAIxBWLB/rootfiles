@@ -3,6 +3,10 @@ package cli
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,5 +189,93 @@ func TestReplaceBinary_CleansStagingOnCopyFailure(t *testing.T) {
 		if strings.HasPrefix(e.Name(), ".rootfiles.") {
 			t.Errorf("staging file %q not cleaned up after failure", e.Name())
 		}
+	}
+}
+
+type updateCheckTransport func(*http.Request) (*http.Response, error)
+
+func (f updateCheckTransport) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func TestUpdateCheck(t *testing.T) {
+	tests := []struct {
+		name, current, latest string
+		args                  []string
+		code, status          int
+	}{
+		{"new rootfiles", "v0.1.0", "v0.2.0", []string{"update", "--check"}, 2, 200},
+		{"current rootfiles", "v0.2.0", "v0.2.0", []string{"update", "--check"}, 0, 200},
+		{"upgrade alias", "v0.1.0", "v0.2.0", []string{"upgrade", "--check"}, 2, 200},
+		{"new cloudflared", "2026.1.0", "2026.2.0", []string{"tunnel", "update", "--check", "--profile=minimal"}, 2, 200},
+		{"current cloudflared", "2026.2.0", "2026.2.0", []string{"tunnel", "update", "--check", "--profile=minimal"}, 0, 200},
+		{"tag prefix", "2026.2.0", "v2026.2.0", []string{"tunnel", "update", "--check", "--profile=minimal"}, 0, 200},
+		{"missing cloudflared", "", "2026.2.0", []string{"tunnel", "update", "--check", "--profile=minimal"}, 2, 200},
+		{"rootfiles lookup error", "v0.1.0", "", []string{"update", "--check"}, 1, 503},
+		{"cloudflared lookup error", "2026.1.0", "", []string{"tunnel", "update", "--check", "--profile=minimal"}, 1, 503},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			noHostCommands(t)
+			dir := t.TempDir()
+			t.Setenv("ROOTFILES_STATE_DIR", dir)
+			t.Setenv("ROOTFILES_LOCK_FILE", filepath.Join(dir, "lock"))
+			t.Setenv("ROOTFILES_LOG_FILE", filepath.Join(dir, "audit"))
+			oldEUID, oldOS, oldLock, oldAudit, oldPath, oldTransport := geteuid, nativeHostOS, heldLock, auditLogger, cloudflaredPath, http.DefaultTransport
+			t.Cleanup(func() {
+				geteuid, nativeHostOS, heldLock, auditLogger, cloudflaredPath, http.DefaultTransport = oldEUID, oldOS, oldLock, oldAudit, oldPath, oldTransport
+			})
+			geteuid = func() int { return 1000 }
+			nativeHostOS = "darwin"
+			heldLock, auditLogger = nil, nil
+			cloudflaredPath = filepath.Join(dir, "cloudflared")
+			binary := "#!/bin/sh\nprintf 'cloudflared version " + tt.current + " (built test)\\n'\n"
+			if tt.current != "" {
+				if err := os.WriteFile(cloudflaredPath, []byte(binary), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			calls := 0
+			http.DefaultTransport = updateCheckTransport(func(req *http.Request) (*http.Response, error) {
+				calls++
+				expected := "/repos/STAIxBWLB/rootfiles/releases/latest"
+				if tt.args[0] == "tunnel" {
+					expected = "/repos/cloudflare/cloudflared/releases/latest"
+				}
+				if req.Method != http.MethodGet || req.URL.Host != "api.github.com" || req.URL.Path != expected {
+					return nil, fmt.Errorf("unexpected request: %s %s", req.Method, req.URL)
+				}
+				return &http.Response{StatusCode: tt.status, Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"tag_name":%q}`, tt.latest))), Header: make(http.Header)}, nil
+			})
+			root := NewRootCmd(tt.current, "test")
+			root.SetArgs(tt.args)
+			err := root.Execute()
+			code := 0
+			if err != nil {
+				code = 1
+				var exit *ExitError
+				if errors.As(err, &exit) {
+					code = exit.Code
+				}
+			}
+			if code != tt.code {
+				t.Fatalf("exit=%d, want %d: %v", code, tt.code, err)
+			}
+			if calls != 1 {
+				t.Fatalf("lookup requests=%d, want 1", calls)
+			}
+			if heldLock != nil || auditLogger != nil {
+				t.Fatal("check took lock or opened audit")
+			}
+			for _, name := range []string{"lock", "audit", "backups"} {
+				if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+					t.Fatalf("check created %s: %v", name, err)
+				}
+			}
+			if tt.current != "" {
+				got, err := os.ReadFile(cloudflaredPath)
+				if err != nil || string(got) != binary {
+					t.Fatalf("binary changed: %v", err)
+				}
+			}
+		})
 	}
 }

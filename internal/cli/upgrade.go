@@ -65,8 +65,8 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			fmt.Printf("Current: %s → Target: %s\n", currentVersion, targetVersion)
 
 			if checkOnly {
-				fmt.Println("Update available. Run `rootfiles update` to install.")
-				return nil
+				fmt.Println("Update available. Run `sudo rootfiles update` to install.")
+				return &ExitError{Code: exitDrift}
 			}
 
 			osName := runtime.GOOS
@@ -150,7 +150,8 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().Bool("check", false, "Only check if an update is available")
+	cmd.Flags().Bool("check", false, "Only check if an update is available (exit 2 when available)")
+	_ = cmd.Flags().SetAnnotation("check", annotReadOnly, []string{"true"})
 	cmd.Flags().String("version", "", "Update to a specific version (e.g., v0.9.0)")
 	return cmd
 }
