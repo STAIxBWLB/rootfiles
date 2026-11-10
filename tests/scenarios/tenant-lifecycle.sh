@@ -157,9 +157,9 @@ docker exec tenant-t1 rm -f /data/fill
 # data/home/tmp or repair a mount here: those would hide the failure.
 mount_diagnostics() {
     local phase=$1 service daemon_pid
+    echo "--- mount diagnostics: $phase ---"
     sudo readlink /proc/1/ns/mnt "/proc/$$/ns/mnt" || true
     sudo nsenter -t 1 -m -- findmnt --mountpoint /srv/tenants/t1/vol || true
-    echo "--- mount diagnostics: $phase ---"
     sudo systemctl show srv-tenants-t1-vol.mount -p ActiveState -p SubState -p Result -p What -p Where -p Job -p BindsTo -p Requires -p After -p StopPropagatedFrom -p StateChangeTimestampMonotonic || true
     sudo journalctl -u srv-tenants-t1-vol.mount --no-pager -n 160 -o short-monotonic || true
     sudo findmnt --mountpoint /srv/tenants/t1/vol -o TARGET,SOURCE,MAJ:MIN,FSTYPE,PROPAGATION || true
@@ -191,7 +191,19 @@ fi
 # Transient manager logging in this disposable runner only, restored by cleanup.
 sudo systemd-analyze log-level debug
 mount_diagnostics before-restarts
+# Pacing avoids making a new start-limit failure with the stress harness.
+# Keep the first post-growth restart immediate, preserving the original race.
+unit_object=$(busctl call org.freedesktop.systemd1 /org/freedesktop/systemd1 org.freedesktop.systemd1.Manager GetUnit s srv-tenants-t1-vol.mount | python3 -c 'import shlex,sys; value=shlex.split(sys.stdin.read()); assert len(value)==2 and value[0]=="o"; print(value[1])')
+read -r interval_type interval_us < <(busctl get-property org.freedesktop.systemd1 "$unit_object" org.freedesktop.systemd1.Unit StartLimitIntervalUSec)
+if [[ "$interval_type" != t || ! "$interval_us" =~ ^[0-9]{1,9}$ ]] || (( interval_us > 30000000 )); then
+    fail "cannot bound the mount start-limit window; inspect the unit properties before rerunning CI"
+    exit 1
+fi
+pause_seconds=$(( (interval_us + 999999) / 1000000 + 1 ))
+sudo systemctl show srv-tenants-t1-vol.mount -p StartLimitIntervalUSec -p StartLimitBurst
+echo "Pacing later trials by ${pause_seconds}s without changing the unit or resetting failed state"
 for ((cycle=1; cycle<=REMOUNT_CYCLES; cycle++)); do
+    if (( cycle > 1 )); then sleep "$pause_seconds"; fi
     echo "--- remount trial $cycle/$REMOUNT_CYCLES ---"
     docker stop tenant-t1 >/dev/null
     if ! sudo systemctl restart srv-tenants-t1-vol.mount; then
