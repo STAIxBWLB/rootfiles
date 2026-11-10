@@ -3,7 +3,9 @@ package cli
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -131,11 +133,7 @@ func newConfigInitCmd() *cobra.Command {
 				_, err := cmd.OutOrStdout().Write(data)
 				return err
 			}
-			if _, err := os.Stat(file); err == nil && !overwrite {
-				return fmt.Errorf("%s already exists (use --overwrite to replace it)", file)
-			}
-			// 0600: captured configs may contain the tunnel token.
-			if err := os.WriteFile(file, data, 0600); err != nil {
+			if err := writePrivateConfig(file, data, overwrite); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s — check it with: rootfiles config validate --config %s\n", file, file)
@@ -184,4 +182,51 @@ extends: %s
 #     # tunnel_token_file: /etc/rootfiles/tunnel-token
 `, extends)
 	return b.String()
+}
+
+// writePrivateConfig writes a config that may hold the tunnel token. The file
+// always ends 0600 and owned by the caller: data goes to a new temp file in the
+// same directory and is renamed over the destination, so a failed write keeps
+// the previous file and a symlink is replaced, never followed.
+func writePrivateConfig(file string, data []byte, overwrite bool) error {
+	if fi, err := os.Lstat(file); err == nil {
+		if !overwrite {
+			return fmt.Errorf("%s already exists (use --overwrite to replace it)", file)
+		}
+		if !fi.Mode().IsRegular() {
+			return fmt.Errorf("%s is not a regular file (symlink or special file); remove it or choose another --file", file)
+		}
+		if st, ok := fi.Sys().(*syscall.Stat_t); ok && int(st.Uid) != os.Geteuid() && st.Uid != 0 {
+			return fmt.Errorf("%s is owned by uid %d, not the user running this command; remove it or choose another --file", file, st.Uid)
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("checking %s: %w", file, err)
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(file), ".rootfiles-config.*.tmp")
+	if err != nil {
+		return fmt.Errorf("creating a temporary file next to %s: %w (check the directory exists and is writable)", file, err)
+	}
+	tmpPath := tmp.Name()
+	fail := func(step string, err error) error {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("%s for %s: %w; the previous file, if any, is unchanged", step, file, err)
+	}
+	if err := tmp.Chmod(0600); err != nil {
+		return fail("setting mode 0600", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		return fail("writing config", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fail("syncing config", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fail("closing config", err)
+	}
+	if err := os.Rename(tmpPath, file); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("replacing %s: %w; the previous file, if any, is unchanged", file, err)
+	}
+	return nil
 }
