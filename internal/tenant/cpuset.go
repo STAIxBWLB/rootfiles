@@ -159,7 +159,7 @@ func (m *Manager) UpdateCpuset(ctx context.Context, s *Spec) error {
 		return err
 	}
 	if st.Digest != s.Digest() {
-		m.printf("Container settings are still pending; `rootfiles tenant apply %s` is needed and will recreate the tenant to apply them. Cpuset was updated without a restart.\n", s.Name)
+		m.printf("Container settings are still pending; `rootfiles tenant apply %s` is needed and will recreate the tenant to apply them.\n", s.Name)
 	}
 	return nil
 }

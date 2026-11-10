@@ -388,7 +388,8 @@ func newTenantCpusetCmd() *cobra.Command {
 		Use:   "cpuset TENANT",
 		Short: "Save CPU/NUMA pinning and update the existing container without restarting",
 		Long: `Changes only CPU/NUMA pinning, leaving other pending settings for tenant apply.
-Empty or omitted keys are unmanaged. --clear removes the spec field and resets
+Empty or absent spec keys are unmanaged; omitted flags retain existing spec keys.
+--clear removes the spec field and resets
 both container settings to the host's full lists. On cgroup v2, changing memory
 nodes migrates existing memory pages and can take time for large processes.`,
 		Args: cobra.ExactArgs(1),

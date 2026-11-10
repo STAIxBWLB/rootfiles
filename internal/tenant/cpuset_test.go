@@ -41,7 +41,7 @@ inspect)
     printf '%s\n' "$CPUSET_INSPECT" ;;
 update)
     if [ "$CPUSET_FAIL" = 1 ]; then echo 'cpuset update rejected by fixture' >&2; exit 1; fi ;;
-exec) : ;;
+exec|start) : ;;
 *) echo "unexpected docker mutation: $*" >&2; exit 1 ;;
 esac
 `
@@ -135,6 +135,7 @@ func TestCpusetConvergeContainer(t *testing.T) {
 		pin           *Cpuset
 		current, want string
 	}{
+		{"stopped", "false", &Cpuset{CPUs: "2-3"}, "0-1|0", "update --cpuset-cpus 2-3 tenant-est\nstart tenant-est\n"},
 		{"live", "true", &Cpuset{CPUs: "2-3", Mems: "1"}, "0-1|0", "update --cpuset-cpus 2-3 --cpuset-mems 1 tenant-est\nexec tenant-est /bin/sh /etc/tenant-system/init.sh users\n"},
 		{"matching", "true", &Cpuset{CPUs: "0-1", Mems: "0"}, "0,1|0", "exec tenant-est /bin/sh /etc/tenant-system/init.sh users\n"},
 		{"unmanaged", "true", nil, "16-23|1", "exec tenant-est /bin/sh /etc/tenant-system/init.sh users\n"},
@@ -340,5 +341,25 @@ esac
 	}
 	if !strings.Contains(log.String(), "--cpuset-cpus 2-3 --cpuset-mems 1") {
 		t.Fatalf("import run lost pin: %s", &log)
+	}
+}
+
+func TestRecreateWarnsBeforeLosingUnmanagedPin(t *testing.T) {
+	m, log, out := cpusetManager(t)
+	s := validSpec()
+	// The previous container does not exist. Docker mutations beyond the warning
+	// fail in the private stub, so no actual recreate or readiness probing occurs.
+	t.Setenv("CPUSET_INSPECT", "")
+	err := m.recreate(context.Background(), s, containerState{Exists: true, Cpuset: Cpuset{CPUs: "2-3", Mems: "1"}})
+	if err == nil {
+		t.Fatal("fixture should stop at refused Docker stop")
+	}
+	for _, want := range []string{"unmanaged cpuset", "lose their pin", "rootfiles tenant cpuset est"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing warning %s: %s", want, out)
+		}
+	}
+	if strings.Contains(calls(t, log), "run -d") {
+		t.Fatal("fixture reached docker run")
 	}
 }
