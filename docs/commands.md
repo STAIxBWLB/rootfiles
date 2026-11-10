@@ -160,7 +160,7 @@ Write a site config: a commented template that extends a profile, or a capture o
 | Flag | Default | Purpose |
 |---|---|---|
 | `--extends` | detected suggestion | Profile the template extends. |
-| `--file` | stdout | Write to this file instead of stdout. A new file is created with mode 0600; an existing file overwritten with `--overwrite` keeps its current mode and owner, so restrict it (`chmod 600`) first, because a `--from-system` capture can hold the tunnel token (#119). |
+| `--file` | stdout | Write to this file instead of stdout. The file ends with mode 0600 and owned by you, new or overwritten, because a `--from-system` capture can hold the tunnel token. A symlink, special file or file owned by another non-root user is refused; a failed write leaves the previous file unchanged. |
 | `--from-system` | `false` | Capture the running host's settings instead of the template; works on hosts not set up by rootfiles. |
 | `--overwrite` | `false` | Replace an existing `--file`. |
 

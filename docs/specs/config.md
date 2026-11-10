@@ -44,7 +44,7 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 
 - `rootfiles config show [--reveal]`: prints the merged config for the same target `check` would use (`loadForInspection` via `resolveTarget`), with env and flag overrides; the tunnel token is masked unless `--reveal`.
 - `rootfiles config validate`: same loading, prints the source and exits non-zero on any error. On Rocky it also runs `ValidateCapabilities`.
-- `rootfiles config init [--extends P] [--file F] [--overwrite] [--from-system]`: writes a template extending the suggested profile, or a snapshot of the running host (`SnapshotCurrent` in `internal/config/snapshot.go`, works on hosts not set up by rootfiles); a new file is created 0600 because a capture may hold the tunnel token, while an existing destination keeps its mode and owner (`os.WriteFile` semantics; hardening tracked in #119); an existing file needs `--overwrite` (`--force` is a deprecated alias).
+- `rootfiles config init [--extends P] [--file F] [--overwrite] [--from-system]`: writes a template extending the suggested profile, or a snapshot of the running host (`SnapshotCurrent` in `internal/config/snapshot.go`, works on hosts not set up by rootfiles); a capture may hold the tunnel token, so the file always ends 0600 and owned by the caller, new or overwritten; an existing file needs `--overwrite` (`--force` is a deprecated alias), and a symlink, special file or file owned by another non-root user is refused.
 
 ## Distro support
 
@@ -55,7 +55,7 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 - Secrets: config show and interactive apply summaries share `maskSecret` (short values fully hidden, long values reveal at most four leading bytes).
 - Secrets: the inline `tunnel_token` never enters the fingerprint, the applied copy or `config show` output (masked); prefer `tunnel_token_file`.
 - Detection reads the host; tests redirect `useraddDefaultsPath`, `hostRoot` and `rootUID` instead of reading `/etc`.
-- `config init --file` writes with `os.WriteFile` directly; it is an operator file, not a managed host file.
+- `config init --file` writes a temp file in the destination directory and renames it over the destination (`writePrivateConfig` in `internal/cli/configcmd.go`), so a failed write leaves the previous file unchanged and a symlink is never followed; it is an operator file, not a managed host file, so it does not go through the Runner or backups.
 
 ## Tests that pin it
 
