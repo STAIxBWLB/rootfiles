@@ -316,6 +316,9 @@ jobs:
           name: rootfiles-binary
           path: .
       - name: Tenant lifecycle on the runner's Docker and systemd
+        env:
+          ROOTFILES_TENANT_SCENARIO_CI: '1'
+          ROOTFILES_TENANT_REMOUNT_CYCLES: '25'
         run: |
           chmod +x rootfiles
           ROOTFILES_TEST_BINARY="$PWD/rootfiles" bash tests/scenarios/tenant-lifecycle.sh

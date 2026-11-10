@@ -6,6 +6,16 @@
 # GPU steps (runtime=nvidia, reload safety) need a GPU host and are not run.
 set -euo pipefail
 
+if [[ "${GITHUB_ACTIONS:-}" != true || "${GITHUB_JOB:-}" != tenant-scenario || "${ROOTFILES_TENANT_SCENARIO_CI:-}" != 1 ]]; then
+    echo "tenant-lifecycle changes host services and volumes; run it only through the disposable CI tenant-scenario job" >&2
+    exit 1
+fi
+REMOUNT_CYCLES="${ROOTFILES_TENANT_REMOUNT_CYCLES:-1}"
+if [[ ! "$REMOUNT_CYCLES" =~ ^[1-9][0-9]?$ ]] || (( REMOUNT_CYCLES < 1 || REMOUNT_CYCLES > 50 )); then
+    echo "invalid remount cycle count; set ROOTFILES_TENANT_REMOUNT_CYCLES to 1..50 in the CI job" >&2
+    exit 1
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$REPO_ROOT/tests/integration/assert.sh"
 
@@ -19,7 +29,11 @@ command -v sshpass >/dev/null || sudo apt-get install -y -qq sshpass >/dev/null
 
 TMP="$(mktemp -d)"
 KH="$TMP/known_hosts"
+SYSTEMD_LOG_LEVEL_BEFORE=""
 cleanup() {
+    if [ -n "$SYSTEMD_LOG_LEVEL_BEFORE" ]; then
+        sudo systemd-analyze log-level "$SYSTEMD_LOG_LEVEL_BEFORE" || echo "could not restore systemd log level; inspect systemd-analyze log-level on this disposable runner" >&2
+    fi
     docker rm -f tenant-t1 tenant-t1-prev tenant-t2 tenant-t3 legacy >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
@@ -139,32 +153,76 @@ check "container kept running through growth" test "$started" = "$(docker inspec
 check "online shrink refused" bash -c "! $RF tenant volume resize t1 200M >/dev/null 2>&1"
 docker exec tenant-t1 rm -f /data/fill
 
+# Read-only evidence, also on the host-bare failure branch. Do not create
+# data/home/tmp or repair a mount here: those would hide the failure.
+mount_diagnostics() {
+    local phase=$1 service daemon_pid
+    sudo readlink /proc/1/ns/mnt "/proc/$$/ns/mnt" || true
+    sudo nsenter -t 1 -m -- findmnt --mountpoint /srv/tenants/t1/vol || true
+    echo "--- mount diagnostics: $phase ---"
+    sudo systemctl show srv-tenants-t1-vol.mount -p ActiveState -p SubState -p Result -p What -p Where -p Job -p BindsTo -p Requires -p After -p StopPropagatedFrom -p StateChangeTimestampMonotonic || true
+    sudo journalctl -u srv-tenants-t1-vol.mount --no-pager -n 160 -o short-monotonic || true
+    sudo findmnt --mountpoint /srv/tenants/t1/vol -o TARGET,SOURCE,MAJ:MIN,FSTYPE,PROPAGATION || true
+    sudo findmnt -T /srv/tenants/t1/vol/data || true
+    sudo losetup -j /srv/tenants/t1/volume.img || true
+    sudo blkid /srv/tenants/t1/volume.img || true
+    for service in docker containerd; do
+        daemon_pid=$(systemctl show "$service.service" -p MainPID --value 2>/dev/null || true)
+        echo "$service MainPID=${daemon_pid:-unknown}"
+        if [[ "$daemon_pid" =~ ^[1-9][0-9]*$ ]]; then
+            sudo readlink "/proc/$daemon_pid/ns/mnt" || true
+            sudo nsenter -t "$daemon_pid" -m -- findmnt --mountpoint /srv/tenants/t1/vol || true
+            sudo nsenter -t "$daemon_pid" -m -- stat /srv/tenants/t1/vol/data || true
+        fi
+    done
+}
+
 echo "--- AC8: volume comes back after a unit restart ---"
 check "mount unit ordered before docker" bash -c 'systemctl show -p Before srv-tenants-t1-vol.mount | grep -q docker.service'
-docker stop tenant-t1 >/dev/null
-sudo systemctl restart srv-tenants-t1-vol.mount
-# A successful systemctl job alone does not prove that the image is mounted
-# in the namespace Docker uses. Never create /vol/data on a bare mountpoint.
-if ! sudo mountpoint -q /srv/tenants/t1/vol || ! sudo test -d /srv/tenants/t1/vol/data; then
-    sudo systemctl show srv-tenants-t1-vol.mount -p ActiveState -p SubState -p Result -p What -p Where
-    sudo journalctl -u srv-tenants-t1-vol.mount --no-pager -n 60
-    sudo findmnt -T /srv/tenants/t1/vol || true
-    sudo losetup -j /srv/tenants/t1/volume.img || true
-    fail "tenant volume is not mounted with its data directory after restart"
+image_identity=$(sudo stat -c '%i:%s' /srv/tenants/t1/volume.img)
+image_uuid=$(sudo blkid -s UUID -o value /srv/tenants/t1/volume.img)
+check "existing filesystem UUID recorded" test -n "$image_uuid"
+SYSTEMD_LOG_LEVEL_BEFORE=$(sudo systemd-analyze log-level)
+if [[ ! "$SYSTEMD_LOG_LEVEL_BEFORE" =~ ^(emerg|alert|crit|err|warning|notice|info|debug)$ ]]; then
+    echo "cannot capture the systemd log level; inspect systemd-analyze log-level before rerunning the CI scenario" >&2
+    SYSTEMD_LOG_LEVEL_BEFORE=""
     exit 1
 fi
-if ! docker start tenant-t1 >/dev/null; then
-    sudo systemctl show srv-tenants-t1-vol.mount -p ActiveState -p SubState -p Result -p What -p Where
-    sudo findmnt -T /srv/tenants/t1/vol/data || true
-    docker_pid=$(pgrep -xo dockerd || true)
-    if [ -n "$docker_pid" ]; then
-        sudo nsenter -t "$docker_pid" -m -- findmnt -T /srv/tenants/t1/vol/data || true
-        sudo nsenter -t "$docker_pid" -m -- stat /srv/tenants/t1/vol/data || true
+# Transient manager logging in this disposable runner only, restored by cleanup.
+sudo systemd-analyze log-level debug
+mount_diagnostics before-restarts
+for ((cycle=1; cycle<=REMOUNT_CYCLES; cycle++)); do
+    echo "--- remount trial $cycle/$REMOUNT_CYCLES ---"
+    docker stop tenant-t1 >/dev/null
+    if ! sudo systemctl restart srv-tenants-t1-vol.mount; then
+        mount_diagnostics "restart-job-failed-trial-$cycle"
+        fail "mount restart job failed; inspect the unit and dependency journal above"
+        exit 1
     fi
-    fail "Docker cannot see the remounted tenant data volume"
-    exit 1
-fi
-check "data intact after remount" docker exec tenant-t1 test -f /data/hello
+    # A completed systemctl job is insufficient: a later device/dependency
+    # event may have stopped the mount again. Preserve the first failure.
+    if ! sudo mountpoint -q /srv/tenants/t1/vol || ! sudo test -d /srv/tenants/t1/vol/data; then
+        mount_diagnostics "host-mount-missing-trial-$cycle"
+        fail "tenant volume disappeared after restart; inspect the mount dependency journal above"
+        exit 1
+    fi
+    if ! docker start tenant-t1 >/dev/null; then
+        mount_diagnostics "container-start-failed-trial-$cycle"
+        fail "Docker cannot see the mounted tenant data; inspect the daemon namespace evidence above"
+        exit 1
+    fi
+    if ! outputs kept docker exec tenant-t1 cat /data/hello ||
+       [ "$image_identity" != "$(sudo stat -c '%i:%s' /srv/tenants/t1/volume.img)" ] ||
+       [ "$image_uuid" != "$(sudo blkid -s UUID -o value /srv/tenants/t1/volume.img)" ]; then
+        mount_diagnostics "data-identity-changed-trial-$cycle"
+        fail "existing image identity, UUID or data changed; preserve the image and inspect the evidence above"
+        exit 1
+    fi
+    pass "existing data, image identity and filesystem UUID intact after remount trial $cycle"
+done
+mount_diagnostics after-restarts
+sudo systemd-analyze log-level "$SYSTEMD_LOG_LEVEL_BEFORE"
+SYSTEMD_LOG_LEVEL_BEFORE=""
 
 echo "--- AC6: operator delegation ---"
 out2=$($RF tenant create t2 --image rootfiles-tenant-test:1 --ssh-port 2202 --size 64M --account carol:2100)
