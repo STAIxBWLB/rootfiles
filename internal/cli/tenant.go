@@ -27,7 +27,7 @@ host keys survive image changes. Specs live in <home_base>/.rootfiles/tenants.`,
 	cmd.AddCommand(
 		newTenantListCmd(), newTenantStatusCmd(), newTenantCreateCmd(), newTenantApplyCmd(),
 		newTenantUserCmd(), newTenantPasswdCmd(),
-		newTenantGPUCmd(), newTenantImageCmd(), newTenantPortCmd(), newTenantVolumeCmd(),
+		newTenantGPUCmd(), newTenantCpusetCmd(), newTenantImageCmd(), newTenantPortCmd(), newTenantVolumeCmd(),
 		newTenantRestartCmd(), newTenantLogsCmd(), newTenantImportCmd(), newTenantOpsCmd(),
 		newTenantSyncCmd(),
 	)
@@ -163,6 +163,11 @@ func newTenantCreateCmd() *cobra.Command {
 			s.Ports, _ = cmd.Flags().GetStringArray("port")
 			s.Operators, _ = cmd.Flags().GetStringArray("operator")
 			s.ExtraBinds, _ = cmd.Flags().GetStringArray("bind")
+			cpus, _ := cmd.Flags().GetString("cpus")
+			mems, _ := cmd.Flags().GetString("mems")
+			if cpus != "" || mems != "" {
+				s.Cpuset = &tenant.Cpuset{CPUs: cpus, Mems: mems}
+			}
 			if g, _ := cmd.Flags().GetString("gpus"); g != "" {
 				gpus, err := parseGPUList(g)
 				if err != nil {
@@ -210,6 +215,8 @@ func newTenantCreateCmd() *cobra.Command {
 	f.String("size", "", "Volume size, e.g. 500G or 2T")
 	f.String("fs", "ext4", "Volume filesystem: ext4 (can shrink offline) or xfs")
 	f.String("gpus", "", "Comma-separated GPU indices")
+	f.String("cpus", "", "Host CPU list (N or N-M, comma-separated; not a CPU quota)")
+	f.String("mems", "", "NUMA memory-node list (N or N-M, comma-separated)")
 	f.StringArray("account", nil, "Account NAME[:UID[:GID]] (repeatable; uid defaults to 1000, 1001, ...)")
 	f.Bool("sudo", false, "Give the accounts sudo inside the container")
 	f.StringArray("port", nil, "Extra published port HOST:CONTAINER[/udp] (repeatable)")
@@ -373,6 +380,55 @@ func newTenantGPUCmd() *cobra.Command {
 	}
 	cmd.Flags().String("gpus", "", "Comma-separated GPU indices, or none")
 	_ = cmd.MarkFlagRequired("gpus")
+	return cmd
+}
+
+func newTenantCpusetCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "cpuset TENANT",
+		Short: "Save CPU/NUMA pinning and update the existing container without restarting",
+		Long: `Changes only CPU/NUMA pinning, leaving other pending settings for tenant apply.
+Empty or omitted keys are unmanaged. --clear removes the spec field and resets
+both container settings to the host's full lists. On cgroup v2, changing memory
+nodes migrates existing memory pages and can take time for large processes.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cpus, _ := cmd.Flags().GetString("cpus")
+			mems, _ := cmd.Flags().GetString("mems")
+			clear, _ := cmd.Flags().GetBool("clear")
+			if clear && (cmd.Flags().Changed("cpus") || cmd.Flags().Changed("mems")) {
+				return fmt.Errorf("--clear cannot be combined with --cpus or --mems; use --clear alone to reset both settings")
+			}
+			if !clear && !cmd.Flags().Changed("cpus") && !cmd.Flags().Changed("mems") {
+				return fmt.Errorf("no cpuset change requested; pass --cpus LIST, --mems LIST or --clear")
+			}
+			return tenantDo(cmd, args[0], "cpuset", func(ctx context.Context, _ *module.RunContext, m *tenant.Manager) error {
+				s, err := m.Load(args[0])
+				if err != nil {
+					return err
+				}
+				if clear {
+					s.Cpuset = nil
+				} else {
+					pin := tenant.Cpuset{}
+					if s.Cpuset != nil {
+						pin = *s.Cpuset
+					}
+					if cmd.Flags().Changed("cpus") {
+						pin.CPUs = cpus
+					}
+					if cmd.Flags().Changed("mems") {
+						pin.Mems = mems
+					}
+					s.Cpuset = &pin
+				}
+				return m.ChangeCpuset(ctx, s, clear)
+			})
+		},
+	}
+	cmd.Flags().String("cpus", "", "Host CPU list (N or N-M, comma-separated; empty makes it unmanaged)")
+	cmd.Flags().String("mems", "", "NUMA memory-node list (N or N-M, comma-separated; empty makes it unmanaged)")
+	cmd.Flags().Bool("clear", false, "Remove cpuset from the spec and reset the container to the full host lists")
 	return cmd
 }
 

@@ -380,11 +380,25 @@ Long-lived tenant containers ([tenant.md](tenant.md)). Every subcommand except `
 | `--size` | required | Volume size, such as `500G` or `2T`. |
 | `--fs` | `ext4` | Volume filesystem: `ext4` (can shrink offline) or `xfs`. |
 | `--gpus` | none | Comma-separated GPU indices. |
+| `--cpus` | unmanaged | Host CPU list (`N` or `N-M`, comma-separated), not a CPU quota. |
+| `--mems` | unmanaged | NUMA memory-node list (`N` or `N-M`, comma-separated). |
 | `--account` | none | `NAME[:UID[:GID]]`, repeatable; UIDs default to 1000, 1001, ... |
 | `--sudo` | `false` | Give the accounts sudo inside the container. |
 | `--operator` | none | Host account allowed `sudo rootfiles tenant ops` on this tenant (repeatable). |
 | `--port` | none | Extra published port `HOST:CONTAINER[/udp]` (repeatable). |
 | `--bind` | none | Extra bind mount `SRC:DST[:ro\|rw]` outside the volume quota (repeatable). |
+
+### rootfiles tenant cpuset
+
+`rootfiles tenant cpuset TENANT --cpus 0-3 --mems 0`. Save CPU/NUMA pinning and update the existing running or stopped container in place, without restarting. Mutating.
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--cpus` | retain spec | Host CPU list (`N` or `N-M`, comma-separated); explicit empty makes the key unmanaged. |
+| `--mems` | retain spec | NUMA memory-node list; explicit empty makes the key unmanaged. |
+| `--clear` | `false` | Remove cpuset from the spec and reset both container keys to the full host lists. Exclusive with the list flags. |
+
+Absent or empty spec keys are unmanaged, so hand-set pins stay untouched. Other pending settings remain pending; run `rootfiles tenant apply TENANT` separately to recreate for them. A failed update restores the previous spec. On cgroup v2, changing memory nodes migrates existing pages and may take time for large processes. `tenant status` shows `update` for live drift and `status TENANT` shows spec and actual pins.
 
 ### rootfiles tenant gpu
 

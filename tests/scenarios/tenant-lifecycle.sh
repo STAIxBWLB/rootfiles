@@ -128,6 +128,22 @@ docker rm tenant-t1-prev >/dev/null
 # Back to the running container's settings: nothing to recreate.
 check "apply is idempotent" bash -c "$RF tenant port t1 2201 | grep -q 'up to date'"
 
+echo "--- #129 AC9: live CPU/NUMA pinning ---"
+online_cpus=$(cat /sys/devices/system/cpu/online)
+memory_nodes=$(cat /sys/devices/system/node/has_memory)
+first_cpu=${online_cpus%%[,-]*}
+first_node=${memory_nodes%%[,-]*}
+cpuset_identity=$(docker inspect -f '{{.Id}}|{{.State.StartedAt}}|{{.State.Pid}}' tenant-t1)
+$RF tenant cpuset t1 --cpus "$first_cpu" --mems "$first_node"
+check "cpuset pins requested CPU and memory node" outputs "$first_cpu|$first_node" docker inspect -f '{{.HostConfig.CpusetCpus}}|{{.HostConfig.CpusetMems}}' tenant-t1
+check "pin keeps container ID, start time and PID" outputs "$cpuset_identity" docker inspect -f '{{.Id}}|{{.State.StartedAt}}|{{.State.Pid}}' tenant-t1
+$RF tenant cpuset t1 --cpus "$online_cpus" --mems "$memory_nodes"
+check "cpuset changes live to full host lists" outputs "$online_cpus|$memory_nodes" docker inspect -f '{{.HostConfig.CpusetCpus}}|{{.HostConfig.CpusetMems}}' tenant-t1
+check "live change keeps container ID, start time and PID" outputs "$cpuset_identity" docker inspect -f '{{.Id}}|{{.State.StartedAt}}|{{.State.Pid}}' tenant-t1
+check "pinned tenant is still running" outputs true docker inspect -f '{{.State.Running}}' tenant-t1
+$RF tenant cpuset t1 --clear
+check "clear removes spec field" bash -c '! sudo grep -q "^cpuset:" /srv/home/.rootfiles/tenants/t1.yaml'
+
 echo "--- sshpiper routing (#80) ---"
 check "route file written" sudo test -f /etc/rootfiles/sshpiper/tenants/t1.yaml
 check "routed password login" outputs 2000 piper_as t1.alice Changed-Pass-42 "id -u"

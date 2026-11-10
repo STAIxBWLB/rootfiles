@@ -19,7 +19,7 @@ import (
 
 func TestMarkMutating(t *testing.T) {
 	root := NewRootCmd("test", "abc")
-	for _, path := range [][]string{{"apply"}, {"user", "add"}, {"gpu", "assign"}, {"tunnel", "setup"}} {
+	for _, path := range [][]string{{"apply"}, {"user", "add"}, {"gpu", "assign"}, {"tunnel", "setup"}, {"tenant", "cpuset"}} {
 		c, _, err := root.Find(path)
 		if err != nil || c.Annotations[annotMutates] != "true" {
 			t.Errorf("%v should be marked mutating", path)

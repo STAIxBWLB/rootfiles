@@ -41,6 +41,8 @@ Shared plumbing every native `rootfiles` command runs through: the cobra root an
 
 ## Behaviour
 
+- `tenant cpuset` is a native mutation: it uses the same root, Linux and global-lock preflight as the other tenant mutations.
+
 - Aliases resolve to one command object: `tenant reset` -> `passwd`, `tunnel install` -> `setup`. Reader and mutation annotations stay on that canonical command. Deprecated backup/user flags retain old invocations; `user passwd --suffix` remains accepted until the next minor release.
 - Root help includes Rocky/fleet and derives profile names from `config.AvailableProfiles()`. The audited commands carry examples; Use strings contain positional syntax only, checked against Args arity by `cli_surface_test.go`. VLAN help/prompt examples use `203.0.113.10/32`.
 

@@ -34,8 +34,9 @@ type legacyContainer struct {
 		Running bool
 	}
 	HostConfig struct {
-		PortBindings   map[string][]struct{ HostPort string }
-		DeviceRequests []struct {
+		CpusetCpus, CpusetMems string
+		PortBindings           map[string][]struct{ HostPort string }
+		DeviceRequests         []struct {
 			Driver    string
 			Count     int
 			DeviceIDs []string
@@ -81,6 +82,9 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 	}
 
 	s := &Spec{Name: o.Tenant, Image: old.Config.Image, Volume: Volume{Size: o.Size, FS: o.FS}, Operators: o.Operators}
+	if old.HostConfig.CpusetCpus != "" || old.HostConfig.CpusetMems != "" {
+		s.Cpuset = &Cpuset{CPUs: old.HostConfig.CpusetCpus, Mems: old.HostConfig.CpusetMems}
+	}
 	for port, binds := range old.HostConfig.PortBindings {
 		if len(binds) == 0 || binds[0].HostPort == "" {
 			continue
@@ -121,6 +125,10 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 		return nil, err
 	}
 	if err := s.Validate(); err != nil {
+		return nil, err
+	}
+
+	if err := validateHostCpuset(s.Cpuset); err != nil {
 		return nil, err
 	}
 
