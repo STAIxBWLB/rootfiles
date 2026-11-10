@@ -34,7 +34,7 @@ Any other distribution is refused before anything changes.
 curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash
 
 # a specific release
-curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash -s -- --version v0.18.1
+curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash -s -- --version v0.19.0
 
 # dev channel: build from source (needs Go)
 curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash -s -- --channel dev
