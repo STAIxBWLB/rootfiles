@@ -49,12 +49,19 @@ type Spec struct {
 	Users      []User   `yaml:"users"`
 	Operators  []string `yaml:"operators,omitempty"`
 	ExtraBinds []string `yaml:"extra_binds,omitempty"`
+	Cpuset     *Cpuset  `yaml:"cpuset,omitempty"`
 }
 
 // Volume is the tenant's size-capped volume.
 type Volume struct {
 	Size string `yaml:"size"`
 	FS   string `yaml:"fs,omitempty"` // ext4 (default) or xfs
+}
+
+// Cpuset contains live CPU and NUMA memory-node settings. Empty keys are unmanaged.
+type Cpuset struct {
+	CPUs string `yaml:"cpus,omitempty"`
+	Mems string `yaml:"mems,omitempty"`
 }
 
 // User is an account created inside the container on every start.
@@ -113,6 +120,13 @@ func (s *Spec) Validate() error {
 			add("gpus: invalid or duplicate index %d", g)
 		}
 		seenGPU[g] = true
+	}
+	if s.Cpuset != nil {
+		for _, field := range []struct{ name, value string }{{"cpus", s.Cpuset.CPUs}, {"mems", s.Cpuset.Mems}} {
+			if _, err := parseCPUList(field.value); err != nil {
+				add("cpuset.%s: invalid list %q; use comma-separated N or N-M with N <= M and no spaces", field.name, field.value)
+			}
+		}
 	}
 	if s.SSHPort < 1 || s.SSHPort > 65535 {
 		add("ssh_port: %d out of range", s.SSHPort)

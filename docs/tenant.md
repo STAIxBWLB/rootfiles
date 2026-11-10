@@ -69,6 +69,8 @@ sudo rootfiles tenant create lab \
 | `--size` | Volume size, such as `500G` or `2T` |
 | `--fs` | Volume filesystem: `ext4` (default; can shrink offline) or `xfs` |
 | `--gpus` | Comma-separated GPU indices |
+| `--cpus` | Host CPU list such as `0-3,8-11` (pinning, not a CPU quota) |
+| `--mems` | NUMA memory-node list such as `0` or `0-1` |
 | `--account NAME[:UID[:GID]]` | Account to create (repeatable); UIDs default to 1000, 1001, ... and the GID to the UID |
 | `--sudo` | Give the accounts sudo inside the container |
 | `--operator` | Host account allowed `sudo rootfiles tenant ops` on this tenant (repeatable) |
@@ -142,3 +144,29 @@ Import reads the running container: image, published ports (22 becomes the SSH p
 - One host per command; `fleet` only ships the module config.
 - The writable layer has no size limit on ext4 hosts.
 - Not supported on Rocky Linux.
+
+## CPU and NUMA pinning
+
+```yaml
+cpuset:
+  cpus: "0-3,8-11"
+  mems: "0"
+```
+
+Either key may be set alone. Absent or empty spec keys are unmanaged: apply leaves any hand-set pin untouched. CPU indices must be online (`/sys/devices/system/cpu/online`); memory nodes must have memory (`/sys/devices/system/node/has_memory`). Invalid or unavailable values are refused before any container changes. Several tenants may share the same CPUs/nodes.
+
+```bash
+sudo rootfiles tenant cpuset lab --cpus 0-3 --mems 0
+sudo rootfiles tenant status lab
+sudo rootfiles tenant cpuset lab --clear
+```
+
+`tenant cpuset` saves the spec and uses `docker update` on the same running or stopped container, without a restart. Omitted flags retain their existing spec keys. An explicit `--cpus ""` or `--mems ""` makes that key unmanaged and leaves the live setting alone. `--clear` instead removes the field and resets both live settings to the host's full lists. A failed Docker update restores the previous spec. Dry-run writes nothing.
+
+If the image, ports or other container settings have pending changes (including a container without a digest label), they remain pending. The command says when `rootfiles tenant apply lab` is still needed; apply may recreate for those other changes. Cpuset alone never changes the recreate digest. Create and recreate use the spec's managed pinning. Before recreating a container with unmanaged hand-set pins, rootfiles warns; adopt the values with `tenant cpuset` first if you want to keep them. `tenant import` carries existing pins into the new spec.
+
+`tenant status` shows `update` for live-only cpuset drift and `drift` for settings requiring recreation. Detailed status shows the spec and container values, including unmanaged pins.
+
+On cgroup v2, changing memory nodes migrates existing memory pages to the new nodes. This can take noticeable time for a large process.
+
+Rollback: older binaries strictly reject specs containing `cpuset`. Before downgrading, remove the field from each spec; the container keeps its current pinning. The release notes for the version introducing this feature must carry this step.

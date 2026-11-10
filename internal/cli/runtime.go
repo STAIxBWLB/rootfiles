@@ -37,7 +37,7 @@ var mutatingCommands = [][]string{
 	{"tunnel", "setup"}, {"tunnel", "restart"},
 	{"tunnel", "update"}, {"tunnel", "uninstall"},
 	{"tenant", "create"}, {"tenant", "apply"}, {"tenant", "user", "add"},
-	{"tenant", "passwd"}, {"tenant", "gpu"}, {"tenant", "image"},
+	{"tenant", "cpuset"}, {"tenant", "passwd"}, {"tenant", "gpu"}, {"tenant", "image"},
 	{"tenant", "port"}, {"tenant", "volume", "resize"}, {"tenant", "restart"},
 	{"tenant", "import"}, {"tenant", "ops"},
 }

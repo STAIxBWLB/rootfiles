@@ -95,18 +95,22 @@ type containerState struct {
 	Digest          string
 	Restart         string
 	GPUs            string // the GPUs the container was started with
+	Cpuset          Cpuset
 }
 
 func (m *Manager) inspect(ctx context.Context, name string) containerState {
 	res, err := m.Runner.Query(ctx, "docker", "inspect", "-f",
-		`{{.State.Running}}|{{index .Config.Labels "rootfiles.tenant.spec"}}|{{.HostConfig.RestartPolicy.Name}}|{{index .Config.Labels "rootfiles.tenant.gpus"}}`, name)
+		`{{.State.Running}}|{{index .Config.Labels "rootfiles.tenant.spec"}}|{{.HostConfig.RestartPolicy.Name}}|{{index .Config.Labels "rootfiles.tenant.gpus"}}|{{.HostConfig.CpusetCpus}}|{{.HostConfig.CpusetMems}}`, name)
 	if err != nil {
 		return containerState{}
 	}
 	f := strings.Split(strings.TrimSpace(res.Stdout), "|")
 	st := containerState{Exists: true}
-	if len(f) == 4 {
+	if len(f) >= 4 {
 		st.Running, st.Digest, st.Restart, st.GPUs = f[0] == "true", f[1], f[2], f[3]
+	}
+	if len(f) >= 6 {
+		st.Cpuset = Cpuset{CPUs: f[4], Mems: f[5]}
 	}
 	return st
 }
@@ -122,6 +126,7 @@ func (m *Manager) RunArgs(s *Spec) []string {
 		"--label", "rootfiles.tenant.spec=" + s.Digest(),
 		"--label", "rootfiles.tenant.gpus=" + intList(s.GPUs),
 	}
+	args = append(args, cpusetArgs(s.Cpuset, Cpuset{})...)
 	if len(s.GPUs) > 0 {
 		ids := make([]string, len(s.GPUs))
 		for i, g := range s.GPUs {
@@ -165,6 +170,9 @@ func (m *Manager) Apply(ctx context.Context, s *Spec) error {
 	if err := s.Validate(); err != nil {
 		return err
 	}
+	if err := validateHostCpuset(s.Cpuset); err != nil {
+		return err
+	}
 	if m.ReserveGPUs != nil {
 		if err := m.ReserveGPUs(ctx, s.Name, s.GPUs); err != nil {
 			return err
@@ -200,8 +208,17 @@ func (m *Manager) converge(ctx context.Context, s *Spec) error {
 	if err := m.writeSystem(ctx, s); err != nil {
 		return err
 	}
+	return m.convergeContainer(ctx, s)
+}
+
+func (m *Manager) convergeContainer(ctx context.Context, s *Spec) error {
 	name := ContainerName(s.Name)
 	st := m.inspect(ctx, name)
+	if st.Exists && st.Digest == s.Digest() {
+		if err := m.updateCpuset(ctx, s, st); err != nil {
+			return err
+		}
+	}
 	switch {
 	case !st.Exists:
 		return m.start(ctx, s)
@@ -234,6 +251,10 @@ func (m *Manager) recreate(ctx context.Context, s *Spec, st containerState) erro
 	prev := name + "-prev"
 	if m.inspect(ctx, prev).Exists {
 		return fmt.Errorf("%s still holds the previous container; check it and remove it (docker rm %s) before recreating", prev, prev)
+	}
+	if (st.Cpuset.CPUs != "" && (s.Cpuset == nil || s.Cpuset.CPUs == "")) ||
+		(st.Cpuset.Mems != "" && (s.Cpuset == nil || s.Cpuset.Mems == "")) {
+		m.printf(ui.MarkWarn+" %s has an unmanaged cpuset (cpus=%q mems=%q); unmanaged keys will lose their pin on recreate. Before recreating, adopt them with `rootfiles tenant cpuset %s --cpus LIST --mems LIST`\n", name, st.Cpuset.CPUs, st.Cpuset.Mems, s.Name)
 	}
 	if st.Running {
 		if err := m.SyncShadow(ctx, s); err != nil {
@@ -635,6 +656,8 @@ func (m *Manager) Status(ctx context.Context, names []string, detail bool) error
 		drift := "current"
 		if st.Exists && st.Digest != s.Digest() {
 			drift = "drift"
+		} else if st.Exists && len(cpusetArgs(s.Cpuset, st.Cpuset)) > 0 {
+			drift = "update"
 		}
 		vol := "unmounted/" + s.Volume.Size
 		if u := m.usage(n); u.Mounted {
@@ -647,6 +670,16 @@ func (m *Manager) Status(ctx context.Context, names []string, detail bool) error
 		fmt.Fprintf(m.Out, "%-14s %-9s %-7d %-6s %-8s %-19s %s\n", n, state, s.SSHPort, gpus, drift, vol, s.Image)
 		for _, r := range m.Routes(s) {
 			fmt.Fprintf(m.Out, "  %s\n", r)
+		}
+		if detail {
+			pin := Cpuset{}
+			if s.Cpuset != nil {
+				pin = *s.Cpuset
+			}
+			m.printf("  cpuset spec: cpus=%s mems=%s (empty keys are unmanaged)\n", orDefault(pin.CPUs, "unmanaged"), orDefault(pin.Mems, "unmanaged"))
+			if st.Exists {
+				m.printf("  cpuset container: cpus=%q mems=%q\n", st.Cpuset.CPUs, st.Cpuset.Mems)
+			}
 		}
 		if detail && st.Exists {
 			if size := m.writableSize(ctx, ContainerName(n)); size != "" {

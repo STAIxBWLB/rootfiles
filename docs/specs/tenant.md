@@ -35,9 +35,9 @@ Package boundary
 
 Spec
 - One spec per tenant at `<home_base>/.rootfiles/tenants/<t>.yaml` (`SpecDir`), mode 0600, under the root-only metadata tree checked by `RequireTrustedMetadata`. `LoadSpec` decodes strictly (`KnownFields`) and rejects a file whose `name` differs from its file name.
-- Fields (`Spec` in `internal/tenant/spec.go`): `name`, `image`, `gpus` (GPU indices), `ssh_port`, `ports` (`HOST:CONTAINER[/tcp|udp]`), `volume.size` (min 64M), `volume.fs` (ext4 default, or xfs), `users` (name, uid/gid 1000-65533, sudo), `operators`, `extra_binds` (`SRC:DST[:ro|rw]`, absolute, not on `/data`, `/home`, `/tmp`, `/etc/tenant-system`).
+- Fields (`Spec` in `internal/tenant/spec.go`): `name`, `image`, `gpus` (GPU indices), `ssh_port`, `ports` (`HOST:CONTAINER[/tcp|udp]`), `volume.size` (min 64M), `volume.fs` (ext4 default, or xfs), `users` (name, uid/gid 1000-65533, sudo), `operators`, `extra_binds` (`SRC:DST[:ro|rw]`, absolute, not on `/data`, `/home`, `/tmp`, `/etc/tenant-system`), optional `cpuset.cpus` and `cpuset.mems` (comma-separated Linux indices `N` or ranges `N-M`, N <= M, no spaces). Empty or absent cpuset keys are unmanaged.
 - `Validate` reports every problem at once. Tenant names match `^[a-z][a-z0-9-]{0,30}$`, contain no `.` (so sshpiper route names `<tenant>.<user>` cannot collide) and never end in `-prev`.
-- `Spec.Digest` covers only settings a new container can change: name, image, sorted GPUs, SSH port, ports, extra binds. Users, operators and volume size converge without a recreate. Adding a field that needs a new container means adding it to the digest.
+- `Spec.Digest` covers only settings a new container can change: name, image, sorted GPUs, SSH port, ports, extra binds. Users, operators, volume size and cpuset converge without a recreate. Cpuset is excluded from the digest; absent or empty cpuset preserves the legacy digest, run arguments and converge steps byte for byte. Adding a field that needs a new container means adding it to the digest.
 
 Host layout (root `modules.tenant.root`, default `/raid/tenants`, must be a root-only path chain: `config.RootOnlyHomeBase` in `tenantEnv`)
 - `<root>/<t>/` is 0700 so host users cannot reach setuid files a tenant leaves in its volume.
@@ -47,6 +47,7 @@ Host layout (root `modules.tenant.root`, default `/raid/tenants`, must be a root
 
 Container (`Manager.RunArgs`)
 - Created with `docker run`, not compose: name `tenant-<t>`, hostname `<t>`, `--restart=always --init --ipc=host`, labels `rootfiles.tenant`, `rootfiles.tenant.spec=<digest>`, `rootfiles.tenant.gpus=<indices>`, `-p <ssh_port>:22`.
+- Managed cpuset keys add `--cpuset-cpus` / `--cpuset-mems` on create and recreate. Multiple tenants may share the same CPUs/nodes.
 - GPUs always attach with `--runtime=nvidia --gpus "device=<indices>"`. Evidence (verified 2026-10-20): runc plus `--gpus` loses device access on any `systemctl daemon-reload`, because its devices come only from the prestart hook; the nvidia runtime lists them in the OCI spec. The daemon `default-runtime` is not changed.
 - `/data`, `/home`, `/tmp` are `--mount type=bind` from `vol/data|home|tmp`; `system` is bound read-only at `/etc/tenant-system`. A bind fails on a missing source, so a container never starts on an unmounted volume and writes past the quota. Keep it a bind, never a named volume.
 - Entrypoint is `/bin/sh /etc/tenant-system/init.sh` (`InitScript`), the image-agnostic boot contract. The only image requirement is `openssh-server`. On every start it creates users and groups, restores password hashes and host keys, starts sshd (trusting `piper.pub` for every account when present), runs `/data/.tenant/autostart.sh` as the first user, then sleeps. `init.sh users` re-runs only the account step.
@@ -56,6 +57,16 @@ Passwords
 - `Manager.Passwd` generates a 16-character password, sends it only on stdin to `docker exec -i ... chpasswd`, runs `chage -d 0`, syncs the hash, and returns it once for printing. It is never logged, stored or put on a command line. `tenant passwd` and `tenant reset` are the same command.
 - `SyncShadow` copies usable hashes of spec users from the running container to `system/shadow`; a stopped container keeps the stored hashes. A direct bind of `/etc/shadow` is not used because `passwd` renames the file.
 - Reads from a tenant container go through `readInContainer`: `timeout 10 head -c 4194304`, inside the container so symlinks resolve against its root.
+
+Live settings (`Manager.UpdateCpuset`, `Manager.ChangeCpuset`)
+- Before Apply or Import changes anything, managed CPU and memory-node lists must be subsets of sysfs `cpu/online` and `node/has_memory`. Unreadable/invalid sources block managed changes. Unmanaged keys do not read sysfs.
+- Inspect reads `HostConfig.CpusetCpus` and `CpusetMems`. With a current digest, Apply updates only differing managed keys through one `docker update`, before starting a stopped container or syncing accounts. Equivalent list representations do not drift; unmanaged pins remain untouched.
+- `tenant cpuset TENANT --cpus LIST --mems LIST` saves the spec and updates the existing running or stopped container only. Omitted flags retain existing spec keys; explicit empty values make them unmanaged. The command never runs full converge, stop, rename, run or restart. A missing or mismatched digest label remains pending and the output points to `rootfiles tenant apply TENANT` for recreation.
+- `--clear` is exclusive with the two list flags. It removes the spec field and explicitly resets both live keys to the full host online CPU and memory-node lists.
+- A live-update failure restores the previous spec bytes, including comments, through Runner. Dry-run changes neither spec nor container.
+- `tenant status` reports `update` for live-only drift; detail shows both desired settings and actual container values, including unmanaged pins.
+- Import carries legacy cpuset values into the spec and new container. Before a recreate, unmanaged actual pins warn that they will be lost and name the command to adopt them.
+- On cgroup v2 a live memory-node change migrates existing pages and may take time. Older binaries strictly reject the new field; remove it before downgrading (the live pin remains).
 
 Recreate (`Manager.recreate`, on digest change)
 - Refuses while `tenant-<t>-prev` exists, so an earlier rollback copy is never discarded.
