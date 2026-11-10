@@ -200,7 +200,7 @@ func writePrivateConfig(file string, data []byte, overwrite bool) error {
 			return fmt.Errorf("%s is owned by uid %d, not the user running this command; remove it or choose another --file", file, st.Uid)
 		}
 	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("checking %s: %w", file, err)
+		return fmt.Errorf("checking %s: %w; check that its directory exists and you can read it, or choose another --file", file, err)
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(file), ".rootfiles-config.*.tmp")
 	if err != nil {
@@ -210,7 +210,7 @@ func writePrivateConfig(file string, data []byte, overwrite bool) error {
 	fail := func(step string, err error) error {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("%s for %s: %w; the previous file, if any, is unchanged", step, file, err)
+		return fmt.Errorf("%s for %s: %w; the previous file, if any, is unchanged; check free space and write permission in %s, then rerun", step, file, err, filepath.Dir(file))
 	}
 	if err := tmp.Chmod(0600); err != nil {
 		return fail("setting mode 0600", err)
@@ -226,7 +226,7 @@ func writePrivateConfig(file string, data []byte, overwrite bool) error {
 	}
 	if err := os.Rename(tmpPath, file); err != nil {
 		_ = os.Remove(tmpPath)
-		return fmt.Errorf("replacing %s: %w; the previous file, if any, is unchanged", file, err)
+		return fmt.Errorf("replacing %s: %w; the previous file, if any, is unchanged; check write permission in %s, then rerun or choose another --file", file, err, filepath.Dir(file))
 	}
 	return nil
 }
