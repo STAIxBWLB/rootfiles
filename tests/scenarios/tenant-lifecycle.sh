@@ -177,6 +177,36 @@ mount_diagnostics() {
     done
 }
 
+# The old loop association and systemd device state must both disappear
+# before reattaching the image. This never repairs or populates the mountpoint.
+wait_for_loop_release() {
+    local image=$1 device device_unit device_state associations
+    local deadline=$((SECONDS + 30)) remaining released
+    shift
+    while :; do
+        remaining=$((deadline - SECONDS))
+        if (( remaining <= 0 )); then return 1; fi
+        if ! sudo udevadm settle --timeout="$remaining"; then return 1; fi
+        if ! associations=$(sudo losetup -j "$image"); then return 1; fi
+        released=1
+        for device in "$@"; do
+            device_unit=$(systemd-escape --path --suffix=device "$device") || return 1
+            device_state=$(systemctl show "$device_unit" -p ActiveState --value) || return 1
+            case "$device_state" in
+                inactive|failed) ;;
+                active|activating|deactivating|reloading|maintenance|refreshing) released=0 ;;
+                *) echo "unknown state for old loop device $device_unit; inspect systemctl show before rerunning CI" >&2; return 1 ;;
+            esac
+        done
+        if [ -z "$associations" ] && (( released )); then
+            echo "Old loop association is empty and its device units are inactive after udev settle"
+            return 0
+        fi
+        if (( SECONDS >= deadline )); then return 1; fi
+        sleep 1
+    done
+}
+
 echo "--- AC8: volume comes back after a unit restart ---"
 check "mount unit ordered before docker" bash -c 'systemctl show -p Before srv-tenants-t1-vol.mount | grep -q docker.service'
 image_identity=$(sudo stat -c '%i:%s' /srv/tenants/t1/volume.img)
@@ -205,10 +235,35 @@ echo "Pacing later trials by ${pause_seconds}s without changing the unit or rese
 for ((cycle=1; cycle<=REMOUNT_CYCLES; cycle++)); do
     if (( cycle > 1 )); then sleep "$pause_seconds"; fi
     echo "--- remount trial $cycle/$REMOUNT_CYCLES ---"
+    if ! old_associations=$(sudo losetup -j /srv/tenants/t1/volume.img) || [ -z "$old_associations" ]; then
+        mount_diagnostics "old-loop-unknown-trial-$cycle"
+        fail "cannot identify the mounted image's old loop device; inspect its association before continuing"
+        exit 1
+    fi
+    old_loop_devices=()
+    while IFS=: read -r device _; do
+        if [[ ! "$device" =~ ^/dev/loop[0-9]+$ ]]; then
+            mount_diagnostics "old-loop-invalid-trial-$cycle"
+            fail "unexpected loop association; inspect losetup output before continuing"
+            exit 1
+        fi
+        old_loop_devices+=("$device")
+    done <<< "$old_associations"
+    echo "Old loop devices for trial $cycle: ${old_loop_devices[*]}"
     docker stop tenant-t1 >/dev/null
-    if ! sudo systemctl restart srv-tenants-t1-vol.mount; then
-        mount_diagnostics "restart-job-failed-trial-$cycle"
-        fail "mount restart job failed; inspect the unit and dependency journal above"
+    if ! sudo systemctl stop srv-tenants-t1-vol.mount; then
+        mount_diagnostics "stop-job-failed-trial-$cycle"
+        fail "mount stop job failed; inspect the unit and dependency journal above"
+        exit 1
+    fi
+    if ! wait_for_loop_release /srv/tenants/t1/volume.img "${old_loop_devices[@]}"; then
+        mount_diagnostics "loop-release-failed-trial-$cycle"
+        fail "could not confirm old loop release within 30 seconds; inspect udev, loop associations and device states above"
+        exit 1
+    fi
+    if ! sudo systemctl start srv-tenants-t1-vol.mount; then
+        mount_diagnostics "start-job-failed-trial-$cycle"
+        fail "mount start job failed; inspect the unit and dependency journal above"
         exit 1
     fi
     # A completed systemctl job is insufficient: a later device/dependency

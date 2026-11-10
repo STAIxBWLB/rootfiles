@@ -122,8 +122,8 @@ Single-port SSH (sshpiper)
 
 - Not tracked: the 2026-10-20 design stored GPU UUIDs and checked OCI `linux.devices`; the code stores indices and verifies with `nvidia-smi -L`.
 
-## Mount restart investigation
+## Scenario mount restarts
 
-- Issue [#117](https://github.com/STAIxBWLB/rootfiles/issues/117) is reproduced in CI job 129403022862: the host mount unit mounted and then unmounted again, leaving ActiveState=inactive/SubState=dead/Result=success; the path resolved to the parent filesystem before Docker start. The stop requester/device dependency is not yet identified. This evidence does not demonstrate a daemon-only namespace problem or data deletion.
-- Tenant lifecycle runs only through the disposable hosted tenant-scenario job. A bounded remount trial records mount dependencies, the unit journal and Docker/containerd namespace observations, and verifies the existing image inode/size, filesystem UUID and data marker. Temporary systemd debug logging is restored on exit. A bare mountpoint fails immediately; the scenario never formats or populates it as a workaround.
-- Production mount-unit generation/options remain unchanged pending the diagnostic result and the zero-disruption review. Native/GPU fleet rollout validation stays separate.
+- Tenant lifecycle runs only through the disposable hosted tenant-scenario job. Bounded trials retain mount/dependency/namespace diagnostics and restore temporary systemd logging on exit; pacing respects the configured start-limit window without changing unit settings or counters.
+- The CI scenario stops the mount, waits for udev and the old loop association/device to be released, then starts it; production ensureMountUnit only starts unmounted units and never restarts them.
+- Each trial verifies the existing image inode/size, filesystem UUID and data marker. Failure to confirm release or a bare mountpoint fails immediately; the scenario never formats or populates it as a workaround. Production mount-unit generation/options remain unchanged; native/GPU rollout validation stays separate.
