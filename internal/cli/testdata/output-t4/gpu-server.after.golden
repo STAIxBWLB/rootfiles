@@ -1,0 +1,24 @@
+Profile: gpu-server
+Mode: dry-run (no changes will be made)
+Modules: locale, system, packages, users, ssh, security, docker, nvidia, gpu, cloudflared, storage, network
+
+  →  locale: Install locale generation tools
+  →  locale: Generate locale en_US.UTF-8
+  →  locale: Set locale to en_US.UTF-8
+  →  locale: Set timezone to Asia/Seoul
+  →  system: Cap journald at 2G
+  →  packages: Install 21 packages: [ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common openssh-server ufw fail2ban]
+  →  users: Set default useradd HOME to /home
+  →  ssh: Deploy custom sshd configuration (blocked: disabling password auth and root login, but no non-root account has an SSH authorized key)
+  →  security: Install [unattended-upgrades fail2ban python3-systemd systemd-timesyncd]
+  →  security: Enable security-only unattended upgrades (no reboot, NVIDIA stack excluded)
+  →  security: Configure fail2ban sshd jail
+  →  docker: Install Docker CE
+  →  docker: Enable and start Docker service
+  →  nvidia: Install NVIDIA Container Toolkit
+  ✓  gpu: already satisfied
+  →  cloudflared: Install cloudflared binary
+  ✓  storage: already satisfied
+  →  network: Install UFW firewall
+  →  network: Allow port 22
+  →  network: Enable UFW firewall

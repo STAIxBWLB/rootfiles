@@ -2,15 +2,14 @@ package module
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
-	"math/big"
 	"os/user"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/tenant"
 )
 
 // Account helpers shared by user add/restore/passwd.
@@ -137,7 +136,7 @@ func installAuthorizedKeys(ctx context.Context, rc *RunContext, username, home s
 	if rc.DryRun {
 		return nil
 	}
-	u, err := user.Lookup(username)
+	u, err := lookupAccount(username)
 	if err != nil {
 		return fmt.Errorf("looking up %s: %w", username, err)
 	}
@@ -147,20 +146,9 @@ func installAuthorizedKeys(ctx context.Context, rc *RunContext, username, home s
 	return nil
 }
 
-const passwordAlphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-
-// generatePassword returns a random password without look-alike characters.
+// generatePassword shares the tenant password generator and its safer alphabet.
 func generatePassword(n int) (string, error) {
-	b := make([]byte, n)
-	max := big.NewInt(int64(len(passwordAlphabet)))
-	for i := range b {
-		idx, err := rand.Int(rand.Reader, max)
-		if err != nil {
-			return "", err
-		}
-		b[i] = passwordAlphabet[idx.Int64()]
-	}
-	return string(b), nil
+	return tenant.GeneratePassword(n)
 }
 
 // setPassword feeds "user:password" to chpasswd over stdin: no shell, and

@@ -233,6 +233,15 @@ type UsersConfig struct {
 	Accounts []AccountConfig `yaml:"accounts,omitempty"`
 }
 
+// Base returns the metadata/account fallback without detecting or normalizing
+// a home base. Callers that distinguish unknown must inspect HomeBase directly.
+func (u UsersConfig) Base() string {
+	if u.HomeBase == "" {
+		return "/home"
+	}
+	return u.HomeBase
+}
+
 // AccountConfig declares a login account.
 type AccountConfig struct {
 	Name       string   `yaml:"name"`
@@ -278,42 +287,6 @@ type SSHConfig struct {
 	// PasswordAuthUsers keep password login while disable_password_auth is
 	// on (a Match User block), so password auth can be retired per user.
 	PasswordAuthUsers []string `yaml:"password_auth_users,omitempty"`
-}
-
-// IsModuleEnabled returns whether a given module name is enabled in this config.
-func (c *Config) IsModuleEnabled(name string) bool {
-	switch name {
-	case "locale":
-		return c.Modules.Locale.Enabled
-	case "system":
-		return c.Modules.System.Enabled
-	case "security":
-		return c.Modules.Security.Enabled
-	case "monitoring":
-		return c.Modules.Monitoring.Enabled
-	case "packages":
-		return c.Modules.Packages.Enabled
-	case "ssh":
-		return c.Modules.SSH.Enabled
-	case "users":
-		return c.Modules.Users.Enabled
-	case "docker":
-		return c.Modules.Docker.Enabled
-	case "nvidia":
-		return c.Modules.Nvidia.Enabled
-	case "gpu":
-		return c.Modules.Nvidia.GPUAllocation.Enabled
-	case "cloudflared":
-		return c.Modules.Cloudflared.Enabled
-	case "storage":
-		return c.Modules.Storage.Enabled
-	case "network":
-		return c.Modules.Network.Enabled
-	case "tenant":
-		return c.Modules.Tenant.Enabled
-	default:
-		return false
-	}
 }
 
 // AllPackages returns the merged package list (base + extra).

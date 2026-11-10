@@ -1,0 +1,10 @@
+Profile: base
+Mode: dry-run (no changes will be made)
+Modules: locale, packages, ssh
+
+  →  locale: Install locale generation tools
+  →  locale: Generate locale en_US.UTF-8
+  →  locale: Set locale to en_US.UTF-8
+  →  locale: Set timezone to Asia/Seoul
+  →  packages: Install 18 packages: [ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common]
+  →  ssh: Deploy custom sshd configuration

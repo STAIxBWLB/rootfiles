@@ -28,10 +28,16 @@ const (
 
 func (m *MonitoringModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, error) {
 	if err := monitoringPreflight(ctx, rc); err != nil {
+		if isFirewallInspectionError(err) {
+			return blockedFirewallCheck(err), nil
+		}
 		return nil, err
 	}
 	changes, err := checkMonitoringExporters(ctx, rc)
 	if err != nil {
+		if isFirewallInspectionError(err) {
+			return blockedFirewallCheck(err), nil
+		}
 		return nil, err
 	}
 	hubChanges, err := checkMonitoringHub(ctx, rc)

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -26,7 +27,6 @@ func TestNewTunnelCmd_Subcommands(t *testing.T) {
 	}
 
 	want := map[string]bool{
-		"install":   false,
 		"setup":     false,
 		"status":    false,
 		"restart":   false,
@@ -38,6 +38,13 @@ func TestNewTunnelCmd_Subcommands(t *testing.T) {
 		if _, ok := want[name]; ok {
 			want[name] = true
 		}
+		// install is an alias of setup, not a command of its own.
+		if name == "install" {
+			t.Error("tunnel registers install as a command of its own")
+		}
+		if name == "setup" && !sub.HasAlias("install") {
+			t.Errorf("tunnel setup lost the install alias: %v", sub.Aliases)
+		}
 	}
 	for name, seen := range want {
 		if !seen {
@@ -46,10 +53,17 @@ func TestNewTunnelCmd_Subcommands(t *testing.T) {
 	}
 }
 
-// noHostCommands empties PATH so system detection in buildRunContext cannot
-// run host binaries such as nvidia-smi.
+// noHostCommands isolates PATH and status discovery, including absolute
+// cloudflared probes that an empty PATH would not block.
 func noHostCommands(t *testing.T) {
-	t.Setenv("PATH", t.TempDir())
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("PATH", dir)
+	oldBinary, oldScan, oldWarn := cloudflaredStatusBinary, scanStatusUsers, warnStatusMetadata
+	cloudflaredStatusBinary = filepath.Join(dir, "absent-cloudflared")
+	scanStatusUsers = func(context.Context, *module.RunContext) ([]module.UserMeta, error) { return nil, nil }
+	warnStatusMetadata = func(*module.RunContext) {}
+	t.Cleanup(func() { cloudflaredStatusBinary, scanStatusUsers, warnStatusMetadata = oldBinary, oldScan, oldWarn })
 }
 
 func TestBuildRunContext_LoadsWithoutFlags(t *testing.T) {
@@ -147,7 +161,7 @@ func TestConfigFreeCommandsRunWithoutProfile(t *testing.T) {
 }
 
 // runContextFor builds the run context of the subcommand at path with flags.
-func runContextFor(t *testing.T, build func(*cobra.Command) (*module.RunContext, error), path []string, flags ...string) (*module.RunContext, error) {
+func runContextFor(t *testing.T, build func(*cobra.Command, ...string) (*module.RunContext, error), path []string, flags ...string) (*module.RunContext, error) {
 	t.Helper()
 	root := NewRootCmd("test", "abc")
 	sub, _, err := root.Find(path)
@@ -335,6 +349,9 @@ func TestBuildConfigFreeRunContext_FallbackKeepsOverrides(t *testing.T) {
 // #36 AC2, AC3: status after a config load error reads the user and GPU
 // databases only under a home base it was given.
 func TestStatus_ConfigLoadErrorHomeBase(t *testing.T) {
+	oldDetect := detectSystem
+	detectSystem = func() (*config.SystemInfo, error) { return &config.SystemInfo{OS: "ubuntu", Version: "24.04"}, nil }
+	t.Cleanup(func() { detectSystem = oldDetect })
 	noHostCommands(t)
 	t.Setenv("ROOTFILES_HOME_BASE", "")
 	base := t.TempDir()

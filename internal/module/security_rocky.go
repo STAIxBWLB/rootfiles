@@ -108,7 +108,7 @@ else:
         print("rootfiles-updateinfo-coverage-gap:" + ",".join(sorted(set(coverage_gaps))))
 `
 
-const rockyAutomaticConfig = `# Managed by rootfiles-v2
+const rockyAutomaticConfig = `# Managed by rootfiles
 [commands]
 upgrade_type = security
 download_updates = yes
@@ -188,14 +188,17 @@ func rockySecurityApply(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 			if err := rc.Runner.MkdirAll(filepath.Dir(rockyAutomaticConfigPath), 0755); err != nil {
 				return nil, err
 			}
-			if err := rc.Runner.WriteFile(rockyAutomaticConfigPath, []byte(rockyAutomaticConfig), 0644); err != nil {
+			wrote, err := ensureFile(rc, rockyAutomaticConfigPath, rockyAutomaticConfig, 0644)
+			if err != nil {
 				return nil, fmt.Errorf("writing %s: %w", rockyAutomaticConfigPath, err)
 			}
-			messages = append(messages, "security-only automatic DNF updates configured for baseos/appstream; automatic reboot disabled")
-			changed = true
+			if wrote {
+				messages = append(messages, "security-only automatic DNF updates configured for baseos/appstream; automatic reboot disabled")
+				changed = true
+			}
 		}
 		if !rockyUnitActive(ctx, rc, rockyAutomaticTimer) {
-			if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", rockyAutomaticTimer); err != nil {
+			if err := enableUnit(ctx, rc, rockyAutomaticTimer, true); err != nil {
 				warnings = append(warnings, "enabling "+rockyAutomaticTimer+": "+firstLine(err.Error()))
 			} else {
 				messages = append(messages, rockyAutomaticTimer+" enabled")
@@ -204,7 +207,7 @@ func rockySecurityApply(ctx context.Context, rc *RunContext) (*ApplyResult, erro
 		}
 	}
 	if cfg.TimeSync && !rockyUnitActive(ctx, rc, "chronyd") {
-		if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", "chronyd"); err != nil {
+		if err := enableUnit(ctx, rc, "chronyd", true); err != nil {
 			warnings = append(warnings, "enabling chronyd: "+firstLine(err.Error()))
 		} else {
 			messages = append(messages, "chronyd enabled")

@@ -1,0 +1,6 @@
+{
+  "version": "report-contract",
+  "config_path": "<fixture>/site.yaml",
+  "satisfied": true,
+  "modules": null
+}

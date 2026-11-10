@@ -49,6 +49,17 @@ func addOutputFlagWithMetrics(cmd *cobra.Command) {
 	cmd.Annotations[annotPrometheus] = "true"
 }
 
+// stringFlagOrAlias reads flag, or the deprecated alias when only the alias
+// was set on the command line, so a renamed flag keeps working until removal.
+func stringFlagOrAlias(cmd *cobra.Command, flag, alias string) string {
+	if cmd.Flags().Changed(alias) && !cmd.Flags().Changed(flag) {
+		v, _ := cmd.Flags().GetString(alias)
+		return v
+	}
+	v, _ := cmd.Flags().GetString(flag)
+	return v
+}
+
 func outputFormat(cmd *cobra.Command) (string, error) {
 	f, _ := cmd.Flags().GetString("output")
 	switch {
@@ -70,10 +81,12 @@ func boolMetric(b bool) int {
 	return 0
 }
 
-func writeJSON(w io.Writer, v any) error {
+func writeJSON(w io.Writer, v any) error { return writeJSONEscaping(w, v, false) }
+
+func writeJSONEscaping(w io.Writer, v any, escapeHTML bool) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	enc.SetEscapeHTML(false)
+	enc.SetEscapeHTML(escapeHTML)
 	return enc.Encode(v)
 }
 

@@ -22,3 +22,19 @@ hosts:
     address: 192.0.2.31
     groups: [gpu, workstation]
     sudo: root # SSH connects directly as root; no sudo prefix is used.
+
+# Each host's `config` is a site config: a normal config file that extends a
+# profile. Site-specific values, the cloudflared private VLAN included, belong
+# there and never in the embedded profiles.
+#
+#   # site-configs/gpu01.yaml
+#   extends: dgx
+#   users:
+#     home_base: /raid/home
+#   modules:
+#     cloudflared:
+#       enabled: true
+#       private_network:
+#         enabled: true
+#         interface: vlan0
+#         address: 192.0.2.40/32   # TEST-NET-1 example; use this host's address

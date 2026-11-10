@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
-	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 func TestUsersModule_Name(t *testing.T) {
@@ -25,7 +24,7 @@ func TestUsersModule_CheckDefaultHomeBaseIsSatisfied(t *testing.T) {
 	sudoersDir = t.TempDir()
 	t.Cleanup(func() { sudoersDir = oldSudoersDir })
 	rc := newDryRunRC(t)
-	// HomeBase "" means no home-base setup.
+	useraddFixture(t, "HOME="+rc.Config.Users.HomeBase+"\n")
 	result, err := NewUsersModule().Check(context.Background(), rc)
 	if err != nil {
 		t.Fatalf("Check: %v", err)
@@ -67,9 +66,15 @@ func TestUsersModule_CheckSyncsUseraddHome(t *testing.T) {
 			t.Cleanup(func() { sudoersDir = oldSudoersDir })
 			// /raid stands for a data drive under the test's temp root.
 			raid := filepath.Join(t.TempDir(), "raid")
-			path := useraddFixture(t, strings.ReplaceAll(tc.useradd, "/raid", raid))
 			rc := newDryRunRC(t)
-			rc.Config.Users = config.UsersConfig{HomeBase: strings.ReplaceAll(tc.homeBase, "/raid", raid)}
+			body := strings.ReplaceAll(tc.useradd, "/raid", raid)
+			base := strings.ReplaceAll(tc.homeBase, "/raid", raid)
+			if base == "/home" {
+				base = rc.Config.Users.HomeBase
+				body = strings.ReplaceAll(body, "HOME=/home", "HOME="+base)
+			}
+			path := useraddFixture(t, body)
+			rc.Config.Users = config.UsersConfig{HomeBase: base}
 			result, err := NewUsersModule().Check(context.Background(), rc)
 			if err != nil {
 				t.Fatalf("Check: %v", err)
@@ -87,8 +92,7 @@ func TestUsersModule_CheckSyncsUseraddHome(t *testing.T) {
 	}
 }
 
-// Applying /home rewrites a stale HOME= so home-base detection keeps /home,
-// and writes nothing under /home itself.
+// Applying the chosen home base rewrites stale HOME= while preserving comments.
 func TestUsersModule_ApplyWritesHomeToUseradd(t *testing.T) {
 	oldSudoersDir := sudoersDir
 	sudoersDir = t.TempDir()
@@ -96,8 +100,9 @@ func TestUsersModule_ApplyWritesHomeToUseradd(t *testing.T) {
 	path := useraddFixture(t, "SHELL=/bin/sh\n# HOME=/home\nHOME=/data/home\n")
 	rc := newDryRunRC(t)
 	rc.DryRun = false
-	rc.Runner = exec.NewRunner(false, rc.Runner.Logger)
-	rc.Config.Users = config.UsersConfig{HomeBase: "/home"}
+	rc.Runner = guardedTestRunner(t, false, rc.Runner.Logger)
+	home := rc.Config.Users.HomeBase
+	rc.Config.Users = config.UsersConfig{HomeBase: home}
 	if _, err := NewUsersModule().Apply(context.Background(), rc); err != nil {
 		t.Fatalf("Apply: %v", err)
 	}
@@ -105,10 +110,10 @@ func TestUsersModule_ApplyWritesHomeToUseradd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := config.UseraddHome(data); got != "/home" {
-		t.Errorf("useradd HOME = %q, want /home:\n%s", got, data)
+	if got := config.UseraddHome(data); got != home {
+		t.Errorf("useradd HOME = %q, want %q:\n%s", got, home, data)
 	}
-	if want := "SHELL=/bin/sh\n# HOME=/home\nHOME=/home\n"; string(data) != want {
+	if want := "SHELL=/bin/sh\n# HOME=/home\nHOME=" + home + "\n"; string(data) != want {
 		t.Errorf("useradd = %q, want %q", data, want)
 	}
 	result, err := NewUsersModule().Check(context.Background(), rc)
@@ -130,8 +135,9 @@ func TestUsersModule_ApplyRefusesUnreadableUseradd(t *testing.T) {
 	t.Cleanup(func() { useraddDefaultsFile = old })
 	rc := newDryRunRC(t)
 	rc.DryRun = false
-	rc.Runner = exec.NewRunner(false, rc.Runner.Logger)
-	rc.Config.Users = config.UsersConfig{HomeBase: "/home"}
+	rc.Runner = guardedTestRunner(t, false, rc.Runner.Logger)
+	home := rc.Config.Users.HomeBase
+	rc.Config.Users = config.UsersConfig{HomeBase: home}
 	if _, err := NewUsersModule().Apply(context.Background(), rc); err == nil || !strings.Contains(err.Error(), "reading") {
 		t.Fatalf("Apply error = %v, want a read error", err)
 	}
@@ -145,7 +151,7 @@ func TestUsersModule_ApplySettlesUncleanHomeBase(t *testing.T) {
 	path := useraddFixture(t, "# HOME=/home\n")
 	rc := newDryRunRC(t)
 	rc.DryRun = false
-	rc.Runner = exec.NewRunner(false, rc.Runner.Logger)
+	rc.Runner = guardedTestRunner(t, false, rc.Runner.Logger)
 	base := t.TempDir()
 	rc.Config.Users = config.UsersConfig{HomeBase: base + "/"}
 	for i, wantChanged := range []bool{true, false} {
@@ -257,7 +263,7 @@ func TestUsersModule_RefusesUntrustedHomeBase(t *testing.T) {
 			base := tc.setup(t, parent)
 			rc := newDryRunRC(t)
 			rc.DryRun = false
-			rc.Runner = exec.NewRunner(false, rc.Runner.Logger)
+			rc.Runner = guardedTestRunner(t, false, rc.Runner.Logger)
 			rc.Config.Users = config.UsersConfig{HomeBase: base}
 			ctx := context.Background()
 			wantErr := func(what string, err error) {
@@ -314,7 +320,7 @@ func TestUsersModule_AcceptsRootOwnedHomeBase(t *testing.T) {
 		useraddFixture(t, "# HOME=/home\n")
 		rc := newDryRunRC(t)
 		rc.DryRun = false
-		rc.Runner = exec.NewRunner(false, rc.Runner.Logger)
+		rc.Runner = guardedTestRunner(t, false, rc.Runner.Logger)
 		rc.Config.Users = config.UsersConfig{HomeBase: base}
 		result, err := NewUsersModule().Apply(context.Background(), rc)
 		if err != nil || !result.Changed {
@@ -345,7 +351,7 @@ func TestListUserNames(t *testing.T) {
 	os.WriteFile(filepath.Join(metaDir, "users.json"), data, 0600)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(true, logger)
+	runner := guardedTestRunner(t, true, logger)
 	rc := &RunContext{
 		Config: &config.Config{
 			Users: config.UsersConfig{HomeBase: tmpDir},
@@ -380,7 +386,7 @@ func TestListUserNames(t *testing.T) {
 func TestListUserNames_NoDatabase(t *testing.T) {
 	tmpDir := t.TempDir()
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(true, logger)
+	runner := guardedTestRunner(t, true, logger)
 	rc := &RunContext{
 		Config: &config.Config{
 			Users: config.UsersConfig{HomeBase: tmpDir},
@@ -396,6 +402,7 @@ func TestListUserNames_NoDatabase(t *testing.T) {
 }
 
 func TestBackupUsers_MergesSystemUsers(t *testing.T) {
+	systemHome := fixtureSystemUsers(t)
 	tmpDir := t.TempDir()
 	metaDir := filepath.Join(tmpDir, ".rootfiles")
 	os.MkdirAll(metaDir, 0755)
@@ -413,7 +420,7 @@ func TestBackupUsers_MergesSystemUsers(t *testing.T) {
 	os.WriteFile(filepath.Join(metaDir, "users.json"), data, 0600)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(false, logger)
+	runner := guardedTestRunner(t, false, logger)
 	rc := &RunContext{
 		Config: &config.Config{
 			Users: config.UsersConfig{HomeBase: tmpDir},
@@ -461,14 +468,23 @@ func TestBackupUsers_MergesSystemUsers(t *testing.T) {
 		t.Error("managed user not found in backup output")
 	}
 
-	// System users (UID >= 1000) from /etc/passwd should also be present
-	// (count will vary by host, so just verify total >= 1)
-	if len(result.Users) < 1 {
-		t.Errorf("expected at least 1 user in backup, got %d", len(result.Users))
+	// The fixture's eligible system user is merged with the managed user.
+	if len(result.Users) != 2 {
+		t.Errorf("expected managed and fixture system users, got %+v", result.Users)
+	}
+	foundSystem := false
+	for _, u := range result.Users {
+		if u.Name == "fixture-user" && u.Home == systemHome && len(u.Groups) == 1 && u.Groups[0] == "sudo" {
+			foundSystem = true
+		}
+	}
+	if !foundSystem {
+		t.Errorf("fixture system user or supplementary groups missing: %+v", result.Users)
 	}
 }
 
 func TestRestoreUsers_RestoresSSHKeys(t *testing.T) {
+	fakeMonitoringCommand(t, "id", "#!/bin/sh\nexit 1\n")
 	tmpDir := t.TempDir()
 
 	// Create a backup file with SSH pubkeys
@@ -495,7 +511,7 @@ func TestRestoreUsers_RestoresSSHKeys(t *testing.T) {
 	os.MkdirAll(homeDir, 0755)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(true, logger) // dry-run: won't actually call useradd
+	runner := guardedTestRunner(t, true, logger) // dry-run: won't actually call useradd
 	rc := &RunContext{
 		Config: &config.Config{
 			Users: config.UsersConfig{HomeBase: tmpDir},
@@ -509,25 +525,24 @@ func TestRestoreUsers_RestoresSSHKeys(t *testing.T) {
 	_, w, _ := os.Pipe()
 	os.Stdout = w
 
-	_ = RestoreUsers(context.Background(), rc, backupPath)
+	err := RestoreUsers(context.Background(), rc, backupPath)
 
 	w.Close()
 	os.Stdout = old
 
-	// In dry-run, files won't actually be written, but we can verify the logic
-	// by checking that no error occurred. For a real test on Linux, dry-run=false
-	// would need a mock runner or root permissions.
+	if err != nil {
+		t.Fatalf("dry-run restore: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(homeDir, ".ssh")); !os.IsNotExist(err) {
+		t.Fatalf("dry-run restore wrote SSH keys: %v", err)
+	}
 }
 
 func TestScanSystemUsers_ParsesPasswd(t *testing.T) {
-	// Verify scanSystemUsers works on the current host
-	// (macOS uses a different format, so this test is Linux-only)
-	if _, err := os.Stat("/etc/passwd"); err != nil {
-		t.Skip("no /etc/passwd, skipping")
-	}
+	home := fixtureSystemUsers(t)
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	runner := exec.NewRunner(false, logger)
+	runner := guardedTestRunner(t, false, logger)
 	rc := &RunContext{
 		Config: &config.Config{},
 		Runner: runner,
@@ -538,6 +553,12 @@ func TestScanSystemUsers_ParsesPasswd(t *testing.T) {
 		t.Fatalf("scanSystemUsers failed: %v", err)
 	}
 
+	if len(users) != 1 || users[0].Name != "fixture-user" || users[0].Home != home || users[0].UID != 1001 || users[0].GID != 1001 {
+		t.Fatalf("parsed users = %+v, want only fixture-user", users)
+	}
+	if len(users[0].Groups) != 1 || users[0].Groups[0] != "sudo" {
+		t.Errorf("supplementary groups = %v, want [sudo]", users[0].Groups)
+	}
 	// Every returned user should have UID >= 1000
 	for _, u := range users {
 		if u.UID < 1000 || u.UID > 65533 {
@@ -574,4 +595,29 @@ func TestKeyComment(t *testing.T) {
 	if c := keyComment("ssh-rsa AAAAy"); c != "" {
 		t.Errorf("keyComment without comment = %q", c)
 	}
+}
+
+// fixtureSystemUsers isolates passwd records, homes and group lookup together.
+func fixtureSystemUsers(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	home := filepath.Join(dir, "fixture-user")
+	if err := os.MkdirAll(home, 0755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(dir, "passwd")
+	body := "# fixture accounts\nroot:x:0:0::" + dir + ":/bin/bash\n" +
+		"fixture-user:x:1001:1001::" + home + ":/bin/bash\n" +
+		"service:x:1002:1002::" + dir + ":/usr/sbin/nologin\n" +
+		"disabled:x:1003:1003::" + dir + ":/bin/false\n" +
+		"overflow:x:65534:65534::" + dir + ":/bin/bash\n" +
+		"malformed:x:not-a-uid:1004::" + dir + ":/bin/bash\n"
+	if err := os.WriteFile(p, []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	oldPasswd, oldSudoers := passwdPath, sudoersDir
+	passwdPath, sudoersDir = p, filepath.Join(dir, "sudoers.d")
+	t.Cleanup(func() { passwdPath, sudoersDir = oldPasswd, oldSudoers })
+	fakeMonitoringCommand(t, "id", "#!/bin/sh\nprintf 'fixture-user sudo\\n'\n")
+	return home
 }

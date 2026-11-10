@@ -2,7 +2,6 @@ package module
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -38,7 +38,7 @@ const cloudflaredService = "cloudflared"
 // by systemd, never in the (world-readable) unit file or on a command line.
 // `cloudflared tunnel run` picks it up from TUNNEL_TOKEN.
 func cloudflaredUnit() string {
-	return fmt.Sprintf(`# Managed by rootfiles-v2
+	return fmt.Sprintf(`# Managed by rootfiles
 [Unit]
 Description=cloudflared tunnel
 After=network-online.target
@@ -67,7 +67,7 @@ func vlanIface(cfg config.PrivateNetworkConfig) string {
 }
 
 func vlanNetdev(iface string) string {
-	return fmt.Sprintf(`# Managed by rootfiles-v2 — cloudflared private network
+	return fmt.Sprintf(`# Managed by rootfiles — cloudflared private network
 [NetDev]
 Name=%s
 Kind=dummy
@@ -75,18 +75,13 @@ Kind=dummy
 }
 
 func vlanNetwork(iface, addr string) string {
-	return fmt.Sprintf(`# Managed by rootfiles-v2 — cloudflared private network
+	return fmt.Sprintf(`# Managed by rootfiles — cloudflared private network
 [Match]
 Name=%s
 
 [Network]
 Address=%s
 `, iface, addr)
-}
-
-func fileEquals(rc *RunContext, path, want string) bool {
-	data, err := rc.Runner.ReadFile(path)
-	return err == nil && string(data) == want
 }
 
 // tunnelServiceDrift reports whether the unit or token file differs.
@@ -164,7 +159,7 @@ func (m *CloudflaredModule) Check(_ context.Context, rc *RunContext) (*CheckResu
 	if !rc.Runner.FileExists(cloudflaredBinary) {
 		changes = append(changes, Change{
 			Description: "Install cloudflared binary",
-			Command:     "download cloudflared → " + cloudflaredBinary,
+			Command:     "download cloudflared " + ui.MarkPending + " " + cloudflaredBinary,
 		})
 	}
 
@@ -235,20 +230,31 @@ func installTunnelService(ctx context.Context, rc *RunContext, token string) ([]
 	if strings.ContainsAny(token, "\n\r \"'") {
 		return nil, fmt.Errorf("tunnel token contains invalid characters")
 	}
-	if err := rc.Runner.MkdirAll(filepath.Dir(cloudflaredEnvPath), 0700); err != nil {
-		return nil, fmt.Errorf("creating %s: %w", filepath.Dir(cloudflaredEnvPath), err)
+	if !tunnelServiceDrift(rc, token) {
+		return nil, nil
 	}
-	if err := rc.Runner.WriteFile(cloudflaredEnvPath, []byte(cloudflaredEnv(token)), 0600); err != nil {
+	if !fileEquals(rc, cloudflaredEnvPath, cloudflaredEnv(token)) {
+		if err := rc.Runner.MkdirAll(filepath.Dir(cloudflaredEnvPath), 0700); err != nil {
+			return nil, fmt.Errorf("creating %s: %w", filepath.Dir(cloudflaredEnvPath), err)
+		}
+	}
+	envChanged, err := ensureFile(rc, cloudflaredEnvPath, cloudflaredEnv(token), 0600)
+	if err != nil {
 		return nil, fmt.Errorf("writing tunnel token: %w", err)
 	}
-	if err := rc.Runner.WriteFile(cloudflaredUnitPath, []byte(cloudflaredUnit()), 0644); err != nil {
+	unitChanged, err := ensureFile(rc, cloudflaredUnitPath, cloudflaredUnit(), 0644)
+	if err != nil {
 		return nil, fmt.Errorf("writing cloudflared unit: %w", err)
 	}
+	if !envChanged && !unitChanged {
+		return nil, nil
+	}
+
 	var warnings []string
 	if w := systemdReload(ctx, rc); w != "" {
 		return append(warnings, w), nil
 	}
-	if _, err := rc.Runner.Run(ctx, "systemctl", "enable", cloudflaredService); err != nil {
+	if err := enableUnit(ctx, rc, cloudflaredService, false); err != nil {
 		warnings = append(warnings, "enabling cloudflared: "+firstLine(err.Error()))
 	}
 	if _, err := rc.Runner.Run(ctx, "systemctl", "restart", cloudflaredService); err != nil {
@@ -304,14 +310,22 @@ func (m *CloudflaredModule) setupVLAN(ctx context.Context, rc *RunContext) ([]st
 	cfg := rc.Config.Modules.Cloudflared.PrivateNetwork
 	iface := vlanIface(cfg)
 
+	if !vlanDrift(rc, cfg) {
+		return nil, nil
+	}
 	if err := rc.Runner.MkdirAll(filepath.Dir(vlanNetdevPath), 0755); err != nil {
 		return nil, fmt.Errorf("creating systemd-networkd dir: %w", err)
 	}
-	if err := rc.Runner.WriteFile(vlanNetdevPath, []byte(vlanNetdev(iface)), 0644); err != nil {
+	netdevChanged, err := ensureFile(rc, vlanNetdevPath, vlanNetdev(iface), 0644)
+	if err != nil {
 		return nil, fmt.Errorf("writing netdev: %w", err)
 	}
-	if err := rc.Runner.WriteFile(vlanNetworkPath, []byte(vlanNetwork(iface, cfg.Address)), 0644); err != nil {
+	networkChanged, err := ensureFile(rc, vlanNetworkPath, vlanNetwork(iface, cfg.Address), 0644)
+	if err != nil {
 		return nil, fmt.Errorf("writing network: %w", err)
+	}
+	if !netdevChanged && !networkChanged {
+		return nil, nil
 	}
 
 	var warnings []string
@@ -336,71 +350,32 @@ func (m *CloudflaredModule) setupVLAN(ctx context.Context, rc *RunContext) ([]st
 	return warnings, nil
 }
 
-// TunnelSetup configures VLAN, installs cloudflared and the tunnel service.
-// Called from CLI `rootfiles tunnel setup`.
-func TunnelSetup(ctx context.Context, rc *RunContext, token, vlanAddr string) error {
-	m := NewCloudflaredModule()
-	var warnings []string
-
-	// VLAN first: it does not depend on the binary.
-	if vlanAddr != "" {
-		fmt.Println("Configuring VLAN private network...")
-		rc.Config.Modules.Cloudflared.PrivateNetwork.Address = vlanAddr
-		w, err := m.setupVLAN(ctx, rc)
-		if err != nil {
-			return err
-		}
-		warnings = append(warnings, w...)
-	}
-
-	if !rc.Runner.FileExists(cloudflaredBinary) {
-		fmt.Println("Installing cloudflared...")
-		if err := m.installBinary(ctx, rc); err != nil {
-			return err
-		}
-	}
-
-	if token != "" {
-		fmt.Println("Setting up tunnel service...")
-		w, err := installTunnelService(ctx, rc, token)
-		if err != nil {
-			return err
-		}
-		warnings = append(warnings, w...)
-	}
-
-	for _, w := range warnings {
-		fmt.Println("  " + ui.MarkWarn + " " + w)
-	}
-	fmt.Println("Tunnel setup complete.")
-	return nil
-}
-
 // TunnelStatus shows cloudflared and VLAN status.
 func TunnelStatus(ctx context.Context, rc *RunContext) error {
-	ui.WriteSection(os.Stdout, "Tunnel")
+	ui.WriteSection(rc.Output(), "Tunnel")
 
 	// Binary version
-	if rc.Runner.FileExists(cloudflaredBinary) {
-		if res, err := rc.Runner.Query(ctx, cloudflaredBinary, "--version"); err == nil {
-			ui.WriteKV(os.Stdout, "Binary", strings.TrimSpace(res.Stdout))
+	observation := InspectCloudflared(ctx, rc.Runner, "")
+	if observation.Installed {
+		if observation.QueryError == nil {
+			ui.WriteKV(rc.Output(), "Binary", strings.TrimSpace(observation.RawOutput))
 		} else {
-			ui.WriteKV(os.Stdout, "Binary", ui.StyleHint.Render("installed (version unknown)"))
+			ui.WriteKV(rc.Output(), "Binary", ui.StyleHint.Render("installed (version unknown)"))
 		}
 	} else {
-		ui.WriteKV(os.Stdout, "Binary", ui.StyleHint.Render("not installed"))
+		ui.WriteKV(rc.Output(), "Binary", ui.StyleHint.Render("not installed"))
 	}
 
 	// Service status
 	res, err := rc.Runner.Query(ctx, "systemctl", "is-active", cloudflaredService)
 	if err != nil {
-		ui.WriteKV(os.Stdout, "Service", ui.StyleHint.Render("inactive"))
+		ui.WriteKV(rc.Output(), "Service", ui.StyleHint.Render("inactive"))
 	} else {
 		state := strings.TrimSpace(res.Stdout)
 		if state == "active" {
-			ui.WriteKV(os.Stdout, "Service", ui.StyleSuccess.Render("active"))
+			ui.WriteKV(rc.Output(), "Service", ui.StyleSuccess.Render("active"))
 		} else {
-			ui.WriteKV(os.Stdout, "Service", ui.StyleHint.Render(state))
+			ui.WriteKV(rc.Output(), "Service", ui.StyleHint.Render(state))
 		}
 	}
 
@@ -412,19 +387,19 @@ func TunnelStatus(ctx context.Context, rc *RunContext) error {
 	}
 	res, err = rc.Runner.Query(ctx, "ip", "addr", "show", iface)
 	if err != nil {
-		ui.WriteKV(os.Stdout, fmt.Sprintf("VLAN (%s)", iface), ui.StyleHint.Render("not configured"))
+		ui.WriteKV(rc.Output(), fmt.Sprintf("VLAN (%s)", iface), ui.StyleHint.Render("not configured"))
 	} else {
 		// Extract address line
 		found := false
 		for _, line := range strings.Split(res.Stdout, "\n") {
 			if strings.Contains(line, "inet ") {
-				ui.WriteKV(os.Stdout, fmt.Sprintf("VLAN (%s)", iface), strings.TrimSpace(line))
+				ui.WriteKV(rc.Output(), fmt.Sprintf("VLAN (%s)", iface), strings.TrimSpace(line))
 				found = true
 				break
 			}
 		}
 		if !found {
-			ui.WriteKV(os.Stdout, fmt.Sprintf("VLAN (%s)", iface), ui.StyleHint.Render("up (no inet)"))
+			ui.WriteKV(rc.Output(), fmt.Sprintf("VLAN (%s)", iface), ui.StyleHint.Render("up (no inet)"))
 		}
 	}
 
@@ -442,23 +417,23 @@ func TunnelUpdate(ctx context.Context, rc *RunContext, version string) error {
 	if target == "" {
 		latest, err := FetchLatestCloudflaredVersion(ctx)
 		if err != nil {
-			fmt.Printf("Warning: could not resolve latest cloudflared release (%v); using /latest/download/ alias.\n", err)
+			ui.WriteText(rc.Output(), "Warning: could not resolve latest cloudflared release (%v); using /latest/download/ alias.\n", err)
 		} else {
 			target = latest
 		}
 	}
 
-	ui.WriteSection(os.Stdout, "Cloudflared update")
-	ui.WriteKV(os.Stdout, "Current", firstNonEmptyCloudflared(current, "(not installed)"))
-	ui.WriteKV(os.Stdout, "Target", firstNonEmptyCloudflared(target, "latest"))
+	ui.WriteSection(rc.Output(), "Cloudflared update")
+	ui.WriteKV(rc.Output(), "Current", ui.FirstNonEmpty(current, "(not installed)"))
+	ui.WriteKV(rc.Output(), "Target", ui.FirstNonEmpty(target, "latest"))
 
 	if target != "" && current == target {
-		ui.WriteHint(os.Stdout, "already on target version — nothing to do.")
+		ui.WriteHint(rc.Output(), "already on target version — nothing to do.")
 		return nil
 	}
 
-	fmt.Println()
-	fmt.Printf("Downloading cloudflared %s ...\n", firstNonEmptyCloudflared(target, "latest"))
+	ui.WriteLine(rc.Output())
+	ui.WriteText(rc.Output(), "Downloading cloudflared %s ...\n", ui.FirstNonEmpty(target, "latest"))
 	if err := m.installBinaryVersion(ctx, rc, target); err != nil {
 		return err
 	}
@@ -470,74 +445,74 @@ func TunnelUpdate(ctx context.Context, rc *RunContext, version string) error {
 		if _, err := rc.Runner.Run(ctx, "systemctl", "restart", cloudflaredService); err != nil {
 			return fmt.Errorf("restarting cloudflared: %w", err)
 		}
-		fmt.Println(ui.StyleSuccess.Render(ui.MarkOK + " cloudflared updated and service restarted."))
+		ui.WriteLine(rc.Output(), ui.StyleSuccess.Render(ui.MarkOK+" cloudflared updated and service restarted."))
 	} else {
-		fmt.Println(ui.StyleSuccess.Render(ui.MarkOK + " cloudflared binary updated (service not installed, skip restart)."))
+		ui.WriteLine(rc.Output(), ui.StyleSuccess.Render(ui.MarkOK+" cloudflared binary updated (service not installed, skip restart)."))
 	}
 	return nil
 }
 
 // FetchLatestCloudflaredVersion queries GitHub's release API for the current
-// upstream tag of cloudflared/cloudflare. Surfaced publicly so the cli can
+// upstream tag of cloudflare/cloudflared. Surfaced publicly so the cli can
 // call it for `--check` without duplicating the HTTP plumbing.
 func FetchLatestCloudflaredVersion(ctx context.Context) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"https://api.github.com/repos/cloudflare/cloudflared/releases/latest", nil)
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Accept", "application/vnd.github+json")
-
 	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
+	tag, err := FetchLatestGitHubTag(ctx, client, "https://api.github.com", "cloudflare", "cloudflared")
+	var status *GitHubStatusError
+	switch {
+	case errors.As(err, &status):
+		return "", fmt.Errorf("github API returned %d", status.StatusCode)
+	case errors.Is(err, ErrGitHubTagMissing):
+		return "", errors.New("no tag_name in response")
+	default:
+		return tag, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("github API returned %d", resp.StatusCode)
-	}
-
-	var info struct {
-		TagName string `json:"tag_name"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return "", err
-	}
-	if info.TagName == "" {
-		return "", fmt.Errorf("no tag_name in response")
-	}
-	return info.TagName, nil
 }
 
-// currentCloudflaredVersion parses `cloudflared --version` output. Returns
-// the empty string when the binary is missing or the output cannot be parsed.
-// Example output: "cloudflared version 2024.9.1 (built 2024-09-13-10:42 UTC)".
-func currentCloudflaredVersion(ctx context.Context, rc *RunContext) string {
-	if !rc.Runner.FileExists(cloudflaredBinary) {
-		return ""
+// CloudflaredObservation keeps executable presence, command output and parsed
+// version separate so each report can preserve its existing display policy.
+type CloudflaredObservation struct {
+	Path       string
+	Installed  bool
+	RawOutput  string
+	Version    string
+	QueryError error
+}
+
+// InspectCloudflared only reads the selected binary and queries --version.
+// Empty binaryOverride uses the module's installed path; tests may point it at
+// a private fixture without changing where native installation writes files.
+func InspectCloudflared(ctx context.Context, runner *exec.Runner, binaryOverride string) CloudflaredObservation {
+	binary := binaryOverride
+	if binary == "" {
+		binary = cloudflaredBinary
 	}
-	res, err := rc.Runner.Query(ctx, cloudflaredBinary, "--version")
+	observation := CloudflaredObservation{Path: binary, Installed: runner.FileExists(binary)}
+	if !observation.Installed {
+		return observation
+	}
+	result, err := runner.Query(ctx, binary, "--version")
+	observation.QueryError = err
+	if result != nil {
+		observation.RawOutput = result.Stdout
+	}
 	if err != nil {
-		return ""
+		return observation
 	}
-	for _, token := range strings.Fields(res.Stdout) {
-		// Versions look like "YYYY.M.P" — leading digit followed by a dot.
+	for _, token := range strings.Fields(observation.RawOutput) {
+		// Preserve the existing first numeric, dotted token heuristic.
 		if len(token) > 3 && token[0] >= '0' && token[0] <= '9' && strings.Contains(token, ".") {
-			return token
+			observation.Version = token
+			break
 		}
 	}
-	return ""
+	return observation
 }
 
-func firstNonEmptyCloudflared(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
+// currentCloudflaredVersion retains the native update's parsed-version policy:
+// missing binaries, failed queries and unparseable output all mean unknown.
+func currentCloudflaredVersion(ctx context.Context, rc *RunContext) string {
+	return InspectCloudflared(ctx, rc.Runner, "").Version
 }
 
 // TunnelUninstall removes tunnel service, VLAN, and binary.
@@ -575,8 +550,8 @@ func TunnelUninstall(ctx context.Context, rc *RunContext) error {
 	}
 
 	for _, w := range warnings {
-		fmt.Println("  " + ui.MarkWarn + " " + w)
+		ui.WriteLine(rc.Output(), "  "+ui.MarkWarn+" "+w)
 	}
-	fmt.Println("Tunnel uninstalled (service, VLAN, binary removed).")
+	ui.WriteLine(rc.Output(), "Tunnel uninstalled (service, VLAN, binary removed).")
 	return nil
 }

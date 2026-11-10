@@ -1,0 +1,31 @@
+{
+  "version": "status-contract",
+  "system": {
+    "os": "ubuntu",
+    "version": "24.04",
+    "codename": "noble",
+    "arch": "amd64",
+    "is_dgx": false,
+    "has_nvidia_gpu": false,
+    "gpu_count": 0,
+    "gpu_model": "",
+    "cpu_cores": 8,
+    "memory_gb": 32,
+    "storage_layout": []
+  },
+  "hostname": "<hostname>",
+  "config_path": "<fixture>/site.yaml",
+  "config_error": "parsing config <fixture>/site.yaml: yaml: line 1: did not find expected ',' or ']'",
+  "last_apply": null,
+  "modules": [],
+  "tunnel": {
+    "binary": "cloudflared version 2026.11.10 <fixture>&\"quoted\"",
+    "service": "active",
+    "vlan": "203.0.113.7/32"
+  },
+  "users": {
+    "home_base": "",
+    "managed": 0,
+    "system": 2
+  }
+}

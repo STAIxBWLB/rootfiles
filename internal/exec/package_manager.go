@@ -8,13 +8,17 @@ import (
 )
 
 // PackageManager is the package operation contract shared by distro
-// backends. Repo/key methods remain for existing Ubuntu modules and fail
-// explicitly on backends that do not implement APT source semantics.
+// backends. APT repository operations are a separate optional capability.
 type PackageManager interface {
 	Update(context.Context) error
 	Install(context.Context, []string) error
 	IsInstalled(string) bool
 	Installed([]string) map[string]bool
+}
+
+// APTRepositoryManager configures APT keys and repository sources. Only
+// backends that implement APT repository semantics provide this capability.
+type APTRepositoryManager interface {
 	AddKeyring(context.Context, string, string) error
 	AddSourceList(context.Context, string, string) error
 }

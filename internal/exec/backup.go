@@ -203,7 +203,7 @@ func RestoreBackup(root, id string, dryRun bool) ([]string, error) {
 				}
 			}
 		case e.Kind == "symlink":
-			actions = append(actions, fmt.Sprintf("symlink %s → %s", e.Path, e.Target))
+			actions = append(actions, fmt.Sprintf("symlink %s -> %s", e.Path, e.Target))
 			if !dryRun {
 				_ = os.Remove(e.Path)
 				if err := os.Symlink(e.Target, e.Path); err != nil {

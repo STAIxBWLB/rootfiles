@@ -1,0 +1,67 @@
+locale: en_US.UTF-8
+timezone: Asia/Seoul
+modules:
+    locale:
+        enabled: true
+    system:
+        enabled: true
+        journald_max_use: 2G
+    packages:
+        enabled: true
+    ssh:
+        enabled: true
+    users:
+        enabled: true
+    security:
+        enabled: true
+        unattended_upgrades: true
+        fail2ban: false
+        time_sync: true
+    docker:
+        enabled: false
+    nvidia:
+        enabled: false
+    cloudflared:
+        enabled: false
+    storage:
+        enabled: false
+    network:
+        enabled: false
+        ufw: false
+    monitoring:
+        enabled: false
+        node_exporter: false
+        dcgm_exporter: false
+        perimeter_firewall: false
+        hub:
+            enabled: false
+packages:
+    - ca-certificates
+    - curl
+    - wget
+    - gnupg2
+    - git
+    - vim-enhanced
+    - tmux
+    - tree
+    - jq
+    - unzip
+    - zip
+    - gcc
+    - gcc-c++
+    - make
+    - glibc-langpack-en
+    - zsh
+    - openssh-server
+    - chrony
+    - dnf-automatic
+packages_extra: []
+users:
+    home_base: ""
+    default_shell: /usr/bin/zsh
+    default_groups:
+        - wheel
+    sudo_nopasswd: true
+ssh:
+    disable_root_login: true
+    disable_password_auth: false

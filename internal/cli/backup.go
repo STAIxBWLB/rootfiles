@@ -13,6 +13,10 @@ import (
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/state"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
+
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 )
 
 // What `backup` archives and where the config snapshot comes from; tests
@@ -40,7 +44,8 @@ func newBackupCmd() *cobra.Command {
 		Short: "Full system backup for OS upgrade / restore",
 		Long:  "Captures system info, user metadata, config files, and a rootfiles-compatible config snapshot.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			outputBase, _ := cmd.Flags().GetString("output")
+			out := cmd.OutOrStdout()
+			outputBase := stringFlagOrAlias(cmd, "dir", "output")
 			skipDocker, _ := cmd.Flags().GetBool("skip-docker")
 			skipEtc, _ := cmd.Flags().GetBool("skip-etc")
 
@@ -73,84 +78,84 @@ func newBackupCmd() *cobra.Command {
 			if _, err := rc.Runner.Run(ctx, "chmod", "0700", backupDir); err != nil {
 				return fmt.Errorf("securing backup directory: %w", err)
 			}
-			fmt.Printf("Backup directory: %s\n\n", backupDir)
+			ui.WriteText(out, "Backup directory: %s\n\n", backupDir)
 
 			var errors []string
 
 			// 1. system-info.json
-			fmt.Print("  system-info.json ... ")
+			ui.WriteRaw(out, "  system-info.json ... ")
 			if err := backupSystemInfo(rc, backupDir, hostname); err != nil {
 				errors = append(errors, fmt.Sprintf("system-info: %v", err))
-				fmt.Println("FAIL")
+				ui.WriteLine(out, "FAIL")
 			} else {
-				fmt.Println("OK")
+				ui.WriteLine(out, "OK")
 			}
 
 			// 2. users.json
-			fmt.Print("  users.json ... ")
+			ui.WriteRaw(out, "  users.json ... ")
 			if err := backupUsersJSON(rc, backupDir); err != nil {
 				errors = append(errors, fmt.Sprintf("users: %v", err))
-				fmt.Println("SKIP (no user database)")
+				ui.WriteLine(out, "SKIP (no user database)")
 			} else {
-				fmt.Println("OK")
+				ui.WriteLine(out, "OK")
 			}
 
 			// 3. etc-config.tar.gz
 			if !skipEtc {
-				fmt.Print("  etc-config.tar.gz ... ")
+				ui.WriteRaw(out, "  etc-config.tar.gz ... ")
 				if err := backupEtcConfig(ctx, rc, backupDir); err != nil {
 					errors = append(errors, fmt.Sprintf("etc-config: %v", err))
-					fmt.Println("FAIL")
+					ui.WriteLine(out, "FAIL")
 				} else {
-					fmt.Println("OK")
+					ui.WriteLine(out, "OK")
 				}
 			}
 
 			// 4. crontab-root.txt
-			fmt.Print("  crontab-root.txt ... ")
+			ui.WriteRaw(out, "  crontab-root.txt ... ")
 			if err := backupCrontab(ctx, rc, backupDir); err != nil {
 				errors = append(errors, fmt.Sprintf("crontab: %v", err))
-				fmt.Println("SKIP (no crontab)")
+				ui.WriteLine(out, "SKIP (no crontab)")
 			} else {
-				fmt.Println("OK")
+				ui.WriteLine(out, "OK")
 			}
 
 			// 5. root-ssh.tar.gz
-			fmt.Print("  root-ssh.tar.gz ... ")
+			ui.WriteRaw(out, "  root-ssh.tar.gz ... ")
 			if err := backupRootSSH(ctx, rc, backupDir); err != nil {
 				errors = append(errors, fmt.Sprintf("root-ssh: %v", err))
-				fmt.Println("SKIP")
+				ui.WriteLine(out, "SKIP")
 			} else {
-				fmt.Println("OK")
+				ui.WriteLine(out, "OK")
 			}
 
 			// 6. usr-local-bin.tar.gz
-			fmt.Print("  usr-local-bin.tar.gz ... ")
+			ui.WriteRaw(out, "  usr-local-bin.tar.gz ... ")
 			if err := backupUsrLocalBin(ctx, rc, backupDir); err != nil {
 				errors = append(errors, fmt.Sprintf("usr-local-bin: %v", err))
-				fmt.Println("FAIL")
+				ui.WriteLine(out, "FAIL")
 			} else {
-				fmt.Println("OK")
+				ui.WriteLine(out, "OK")
 			}
 
 			// 7. docker-images.txt
 			if !skipDocker {
-				fmt.Print("  docker-images.txt ... ")
+				ui.WriteRaw(out, "  docker-images.txt ... ")
 				if err := backupDockerImages(ctx, rc, backupDir); err != nil {
 					errors = append(errors, fmt.Sprintf("docker-images: %v", err))
-					fmt.Println("SKIP (docker not available)")
+					ui.WriteLine(out, "SKIP (docker not available)")
 				} else {
-					fmt.Println("OK")
+					ui.WriteLine(out, "OK")
 				}
 			}
 
 			// 8. config-snapshot.yaml
-			fmt.Print("  config-snapshot.yaml ... ")
+			ui.WriteRaw(out, "  config-snapshot.yaml ... ")
 			if err := backupConfigSnapshot(rc, backupDir); err != nil {
 				errors = append(errors, fmt.Sprintf("config-snapshot: %v", err))
-				fmt.Println("FAIL")
+				ui.WriteLine(out, "FAIL")
 			} else {
-				fmt.Println("OK")
+				ui.WriteLine(out, "OK")
 			}
 
 			// A same-day re-run overwrites existing files, and overwriting
@@ -162,23 +167,32 @@ func newBackupCmd() *cobra.Command {
 				}
 			}
 
-			fmt.Println()
+			ui.WriteLine(out)
 			if len(errors) > 0 {
-				fmt.Printf("Backup completed with %d warning(s):\n", len(errors))
+				ui.WriteText(out, "Backup completed with %d warning(s):\n", len(errors))
 				for _, e := range errors {
-					fmt.Printf("  - %s\n", e)
+					ui.WriteText(out, "  - %s\n", e)
 				}
 			} else {
-				fmt.Println("Backup completed successfully.")
+				ui.WriteLine(out, "Backup completed successfully.")
 			}
-			fmt.Printf("\nRestore config with:\n  rootfiles apply --config %s/config-snapshot.yaml --dry-run\n", backupDir)
+			ui.WriteText(out, "\nRestore config with:\n  rootfiles apply --config %s/config-snapshot.yaml --dry-run\n", backupDir)
 			return nil
 		},
 	}
-	cmd.Flags().StringP("output", "o", "/raid/backup", "Backup output directory")
+	cmd.Flags().String("dir", defaultBackupDir(), "Backup directory (the archive goes in a rootfiles-backup-* subdirectory)")
+	cmd.Flags().StringP("output", "o", "", "Deprecated alias for --dir")
+	_ = cmd.Flags().MarkDeprecated("output", "use --dir instead")
+	_ = cmd.Flags().MarkShorthandDeprecated("output", "use --dir instead")
 	cmd.Flags().Bool("skip-docker", false, "Skip Docker image list")
 	cmd.Flags().Bool("skip-etc", false, "Skip /etc/ config tar")
-	return cmd
+	return usesConfigTarget(cmd)
+}
+
+// defaultBackupDir keeps a full system backup beside rootfiles' own state; an
+// operator with a data disk passes --dir.
+func defaultBackupDir() string {
+	return filepath.Join(state.Dir(), "system-backup")
 }
 
 // backupSystemInfo writes system detection results + hostname.
@@ -254,9 +268,9 @@ func backupUsrLocalBin(ctx context.Context, rc *module.RunContext, backupDir str
 // it whatever the process umask is; RunShell keeps it dry-run aware.
 func backupTar(ctx context.Context, rc *module.RunContext, outPath string, paths ...string) error {
 	parts := make([]string, 0, len(paths)+2)
-	parts = append(parts, "tar czf", shellQuoteCLI(outPath))
+	parts = append(parts, "tar czf", fleet.ShellQuote(outPath))
 	for _, p := range paths {
-		parts = append(parts, shellQuoteCLI(p))
+		parts = append(parts, fleet.ShellQuote(p))
 	}
 	_, err := rc.Runner.RunShell(ctx, "umask 077 && "+strings.Join(parts, " "))
 	return err

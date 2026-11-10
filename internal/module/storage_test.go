@@ -35,7 +35,7 @@ func TestStorageModule_CheckMissingDataDir(t *testing.T) {
 
 func TestStorageModule_CheckDefaultHomeBaseIsSatisfied(t *testing.T) {
 	rc := newDryRunRC(t)
-	// Default HomeBase="" and no DataDir/Symlinks → nothing to do.
+	// Existing private home and metadata directory with no storage targets need no changes.
 	result, err := NewStorageModule().Check(context.Background(), rc)
 	if err != nil {
 		t.Fatalf("Check: %v", err)
@@ -59,7 +59,7 @@ func TestStorageModule_ApplyDryRun(t *testing.T) {
 }
 
 func TestIsSymlinkTo(t *testing.T) {
-	if isSymlinkTo("/path/that/does/not/exist", "/other") {
+	if isSymlinkTo(filepath.Join(t.TempDir(), "missing"), filepath.Join(t.TempDir(), "target")) {
 		t.Error("isSymlinkTo should return false for non-existent path")
 	}
 }

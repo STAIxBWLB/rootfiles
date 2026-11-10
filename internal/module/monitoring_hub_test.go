@@ -15,6 +15,7 @@ import (
 	"text/template"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	rootexec "github.com/STAIxBWLB/rootfiles/internal/exec"
 	"gopkg.in/yaml.v3"
 )
 
@@ -247,19 +248,19 @@ func TestMonitoringHubRulesAlertOnDoctorFailuresAndGPUHealth(t *testing.T) {
 	}
 }
 
-func TestMonitoringHubREADMEReceiverTemplateShowsFiringResolvedAndOptionalRunbook(t *testing.T) {
-	readme, err := os.ReadFile("../../README.md")
+func TestMonitoringDocReceiverTemplateShowsFiringResolvedAndOptionalRunbook(t *testing.T) {
+	readme, err := os.ReadFile("../../docs/monitoring.md")
 	if err != nil {
-		t.Fatalf("read monitoring hub README example: %v", err)
+		t.Fatalf("read monitoring receiver example in docs/monitoring.md: %v", err)
 	}
 	const start = "route:\n  receiver: operations"
 	startAt := strings.Index(string(readme), start)
 	if startAt < 0 {
-		t.Fatal("README monitoring receiver example is missing")
+		t.Fatal("docs/monitoring.md receiver example is missing")
 	}
 	endAt := strings.Index(string(readme[startAt:]), "\n```")
 	if endAt < 0 {
-		t.Fatal("README monitoring receiver example is not closed")
+		t.Fatal("docs/monitoring.md receiver example is not closed")
 	}
 	example := []byte(string(readme[startAt : startAt+endAt]))
 	var config struct {
@@ -272,28 +273,28 @@ func TestMonitoringHubREADMEReceiverTemplateShowsFiringResolvedAndOptionalRunboo
 		} `yaml:"receivers"`
 	}
 	if err := yaml.Unmarshal(example, &config); err != nil {
-		t.Fatalf("parse README monitoring receiver example: %v", err)
+		t.Fatalf("parse docs/monitoring.md receiver example: %v", err)
 	}
 	if len(config.Receivers) != 1 || len(config.Receivers[0].Telegram) != 1 {
-		t.Fatal("README example must define one Telegram receiver")
+		t.Fatal("docs/monitoring.md example must define one Telegram receiver")
 	}
 	receiver := config.Receivers[0].Telegram[0]
 	if !receiver.SendResolved {
-		t.Fatal("README receiver example does not request resolved notifications")
+		t.Fatal("docs/monitoring.md receiver example does not request resolved notifications")
 	}
 	if receiver.ParseMode == nil || *receiver.ParseMode != "" {
-		t.Fatal("README Telegram receiver must explicitly select plain-text parse_mode")
+		t.Fatal("docs/monitoring.md Telegram receiver must explicitly select plain-text parse_mode")
 	}
 	if _, err := template.New("telegram-message").Parse(receiver.Message); err != nil {
-		t.Fatalf("parse README Telegram message template: %v", err)
+		t.Fatalf("parse docs/monitoring.md Telegram message template: %v", err)
 	}
 	for _, expected := range []string{".Alerts.Firing", ".Alerts.Resolved", ".Annotations.summary", ".Annotations.description", ".Annotations.runbook_url"} {
 		if !strings.Contains(receiver.Message, expected) {
-			t.Errorf("README Telegram template does not render %q", expected)
+			t.Errorf("docs/monitoring.md Telegram template does not render %q", expected)
 		}
 	}
 	if strings.Contains(receiver.Message, "GeneratorURL") {
-		t.Fatal("README Telegram template must not expose the container-local Prometheus generator URL")
+		t.Fatal("docs/monitoring.md Telegram template must not expose the container-local Prometheus generator URL")
 	}
 	type alert struct {
 		Labels       map[string]string
@@ -1001,5 +1002,87 @@ func TestMonitoringHubReloadsPrometheusWhenOnlyRulesChange(t *testing.T) {
 	status = http.StatusOK
 	if _, err := applyMonitoringHub(context.Background(), rc); err != nil || len(reloads) != 3 {
 		t.Fatalf("retry after a failed reload: err=%v reloads=%v", err, reloads)
+	}
+}
+
+func TestMonitoringHubDaemonReloadFailureWarnsWithoutConvergedReload(t *testing.T) {
+	tmp, stateFile, _, _, calls := fakeMonitoringHub(t)
+	script := "#!/bin/sh\nprintf 'systemctl %s\\n' \"$*\" >> '" + calls + "'\n" +
+		"case $1 in\n" +
+		"daemon-reload) echo 'systemd unavailable' >&2; exit 1 ;;\n" +
+		"is-active) test -f '" + stateFile + "' || exit 3 ;;\n" +
+		"enable) docker compose -f '" + monitoringHubCompose + "' up -d || exit $?; touch '" + stateFile + "' ;;\n" +
+		"reenable) mkdir -p '" + dockerWantsDir + "' && touch '" + dockerWantsDir + "'/\"$2\" ;;\n" +
+		"esac\n"
+	fakeMonitoringCommand(t, "systemctl", script)
+	rc := newRealRC(t)
+	rc.Config.Modules.Monitoring.Hub = config.MonitoringHubConfig{
+		Enabled: true, DataDir: filepath.Join(tmp, "data"), TargetsFile: filepath.Join(tmp, "discovery", "targets.json"),
+	}
+	result, err := applyMonitoringHub(context.Background(), rc)
+	if err != nil || result == nil || !result.Changed {
+		t.Fatalf("unit write should survive daemon-reload failure: result=%+v error=%v", result, err)
+	}
+	warnings := strings.Join(result.Warnings, "\n")
+	if !strings.Contains(warnings, "daemon-reload failed") || !strings.Contains(warnings, "run sudo systemctl daemon-reload") {
+		t.Fatalf("reload warning lacks cause/manual repair: %q", warnings)
+	}
+	if changes, err := checkMonitoringHub(context.Background(), rc); err != nil || len(changes) != 0 {
+		t.Fatalf("written files and running fixture should converge: changes=%+v error=%v", changes, err)
+	}
+	result, err = applyMonitoringHub(context.Background(), rc)
+	if err != nil || result.Changed || len(result.Warnings) != 0 {
+		t.Fatalf("converged apply should not retry daemon-reload: result=%+v error=%v", result, err)
+	}
+	if log := readCalls(t, calls); strings.Count(log, "systemctl daemon-reload\n") != 1 {
+		t.Fatalf("converged apply performed a hidden reload: %s", log)
+	}
+}
+
+func TestMonitoringHubHeaderFreeUnitRemainsExactAndConvergedNoChurn(t *testing.T) {
+	tmp, _, _, _, calls := fakeMonitoringHub(t)
+	rc := newRealRC(t)
+	rc.Config.Modules.Monitoring.Hub = config.MonitoringHubConfig{
+		Enabled: true, DataDir: filepath.Join(tmp, "data"), TargetsFile: filepath.Join(tmp, "discovery", "targets.json"),
+	}
+	if _, err := applyMonitoringHub(context.Background(), rc); err != nil {
+		t.Fatal(err)
+	}
+	want := monitoringHubSystemdUnit(monitoringHubCompose)
+	if !strings.HasPrefix(want, "[Unit]\n") {
+		t.Fatal("hub unit contract changed: expected no management header")
+	}
+	// Unlike tenant host files, the hub unit has never emitted a management
+	// marker. Adding one is real byte drift, not a legacy-marker equivalent.
+	if err := os.WriteFile(monitoringHubUnitPath, []byte("# Managed by rootfiles-v2\n"+want), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if changes, err := checkMonitoringHub(context.Background(), rc); err != nil || len(changes) == 0 {
+		t.Fatalf("header-free unit accepted an added marker: changes=%+v error=%v", changes, err)
+	}
+	if result, err := applyMonitoringHub(context.Background(), rc); err != nil || result == nil || !result.Changed {
+		t.Fatalf("real unit byte drift was not repaired: result=%+v error=%v", result, err)
+	}
+	// Snapshot the repaired header-free unit, then prove both Check and Apply
+	// preserve bytes, inode and timestamp and execute no service mutations.
+	snapshots := seedLegacyManagedFiles(t, map[string]string{monitoringHubUnitPath: want})
+	if err := os.WriteFile(calls, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	rc.Runner.Backup = rootexec.NewBackup(t.TempDir(), "hub unit no-churn")
+	if changes, err := checkMonitoringHub(context.Background(), rc); err != nil || len(changes) != 0 {
+		t.Fatalf("converged hub unit Check=%+v error=%v", changes, err)
+	}
+	if result, err := applyMonitoringHub(context.Background(), rc); err != nil || result == nil || result.Changed {
+		t.Fatalf("converged hub unit Apply=%+v error=%v", result, err)
+	}
+	assertManagedFilesUnchanged(t, snapshots, rc.Runner.Backup)
+	for _, line := range strings.Split(strings.TrimSpace(readCalls(t, calls)), "\n") {
+		if strings.HasPrefix(line, "systemctl ") && !strings.HasPrefix(line, "systemctl is-active ") {
+			t.Fatalf("converged unit caused a systemd mutation: %s", line)
+		}
+		if strings.Contains(line, " up -d") || strings.Contains(line, " down") {
+			t.Fatalf("converged unit changed containers: %s", line)
+		}
 	}
 }

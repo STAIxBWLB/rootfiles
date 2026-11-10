@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 type UsersModule struct{}
@@ -50,23 +51,18 @@ type UsersDB struct {
 // Returns an empty DB (not an error) when the file is absent so callers can
 // treat "no managed users" as a valid state. Parse errors are surfaced.
 func LoadUsersDB(rc *RunContext) (*UsersDB, error) {
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	var db UsersDB
-	data, err := rc.Runner.ReadFile(filepath.Join(homeBase, ".rootfiles", "users.json"))
-	if err != nil {
-		return &db, nil
-	}
-	if err := json.Unmarshal(data, &db); err != nil {
-		return &db, fmt.Errorf("parsing users DB: %w", err)
+	if _, err := readJSONDB(filepath.Join(homeBase, ".rootfiles", "users.json"), &db); err != nil {
+		return &db, err
 	}
 	return &db, nil
 }
 
 // useraddDefaultsFile holds useradd's default HOME; tests redirect it.
 var useraddDefaultsFile = "/etc/default/useradd"
+var groupPath = "/etc/group"
+var lookupAccount = user.Lookup
 
 // homeBaseRoot is where the ownership walk of a custom home base starts and
 // homeBaseOwner the uid that must own it; tests stub both.
@@ -91,14 +87,6 @@ func checkHomeBase(base string) error {
 // warnOut receives the warnings of read-only reports; tests capture it.
 var warnOut io.Writer = os.Stderr
 
-// metaHomeBase is the configured home base, /home when unset.
-func metaHomeBase(rc *RunContext) string {
-	if hb := rc.Config.Users.HomeBase; hb != "" {
-		return hb
-	}
-	return "/home"
-}
-
 // requireTrustedMetadata refuses the user and GPU databases under the home
 // base when a user other than root could control them: checkHomeBase
 // rejects the base, or <base>/.rootfiles (a directory, or the legacy flat
@@ -108,7 +96,7 @@ func metaHomeBase(rc *RunContext) string {
 // the databases grant; fixing the directory modes alone would not remove
 // what was planted while they were open.
 func requireTrustedMetadata(rc *RunContext) error {
-	base := metaHomeBase(rc)
+	base := rc.Config.Users.Base()
 	if err := checkHomeBase(base); err != nil {
 		return err
 	}
@@ -118,6 +106,9 @@ func requireTrustedMetadata(rc *RunContext) error {
 	}
 	if err := rootOnlyTree(meta, homeBaseOwner); err != nil {
 		return fmt.Errorf("refusing rootfiles metadata in %s: %w", meta, err)
+	}
+	if info, err := os.Lstat(meta); err == nil && !info.IsDir() {
+		return legacyMetadataError(meta)
 	}
 	return nil
 }
@@ -152,14 +143,14 @@ func rootOnlyTree(path string, uid uint32) error {
 // WarnUntrustedMetadata lets a read-only report go on, naming the reason.
 func WarnUntrustedMetadata(rc *RunContext) {
 	if err := requireTrustedMetadata(rc); err != nil {
-		fmt.Fprintf(warnOut, "⚠ untrusted rootfiles metadata (%v); this report reads it anyway\n", err)
+		ui.WriteText(warnOut, ui.MarkWarn+" untrusted rootfiles metadata (%v); this report reads it anyway\n", err)
 	}
 }
 
 // refuseSymlink stops a database write that would follow a symlink.
 func refuseSymlink(path string) error {
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing to write %s: it is a symlink", path)
+		return fmt.Errorf("refusing to write %s: it is a symlink; replace it with a trusted regular database file before retrying", path)
 	}
 	return nil
 }
@@ -319,7 +310,7 @@ func accountDrift(ctx context.Context, rc *RunContext, a config.AccountConfig) (
 	if err := requireNativeAdminGroup(rc.Config.System, groups); err != nil {
 		return nil, err
 	}
-	u, err := user.Lookup(a.Name)
+	u, err := lookupAccount(a.Name)
 	if err != nil {
 		return []accountChange{{fmt.Sprintf("Create user %s", a.Name), "useradd " + a.Name}}, nil
 	}
@@ -339,7 +330,7 @@ func convergeAccount(ctx context.Context, rc *RunContext, a config.AccountConfig
 	if err := requireNativeAdminGroup(rc.Config.System, groups); err != nil {
 		return nil, err
 	}
-	u, err := user.Lookup(a.Name)
+	u, err := lookupAccount(a.Name)
 	if err != nil {
 		if err := AddUser(ctx, rc, a.Name, a.SSHPubkeys, a.Groups, false); err != nil {
 			return nil, err
@@ -436,10 +427,7 @@ func AddUser(ctx context.Context, rc *RunContext, username string, pubkeys []str
 		return err
 	}
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 	if err := requireTrustedMetadata(rc); err != nil {
 		return err
 	}
@@ -449,12 +437,12 @@ func AddUser(ctx context.Context, rc *RunContext, username string, pubkeys []str
 		shell = "/usr/bin/zsh"
 	}
 	if !rc.DryRun && !rc.Runner.FileExists(shell) {
-		fmt.Printf("  %s shell %s not found, using /bin/bash\n", "⚠", shell)
+		ui.WriteText(rc.Output(), "  %s shell %s not found, using /bin/bash\n", ui.MarkWarn, shell)
 		shell = "/bin/bash"
 	}
 
 	// Check if user exists
-	if _, err := user.Lookup(username); err == nil {
+	if _, err := lookupAccount(username); err == nil {
 		return fmt.Errorf("user %s already exists", username)
 	}
 
@@ -474,7 +462,7 @@ func AddUser(ctx context.Context, rc *RunContext, username string, pubkeys []str
 	}
 	groups, missing := existingGroups(groups)
 	for _, g := range missing {
-		fmt.Printf("  ⚠ group %s does not exist yet, skipped (add later with 'rootfiles user group-add')\n", g)
+		ui.WriteText(rc.Output(), "  "+ui.MarkWarn+" group %s does not exist yet, skipped (add later with 'rootfiles user group-add')\n", g)
 	}
 
 	// Create user
@@ -506,7 +494,7 @@ func AddUser(ctx context.Context, rc *RunContext, username string, pubkeys []str
 		return fmt.Errorf("recording user metadata: %w", err)
 	}
 
-	fmt.Printf("User %s created (home: %s, shell: %s, groups: %v)\n", username, homeDir, shell, groups)
+	ui.WriteText(rc.Output(), "User %s created (home: %s, shell: %s, groups: %v)\n", username, homeDir, shell, groups)
 	return nil
 }
 
@@ -514,17 +502,14 @@ func AddUser(ctx context.Context, rc *RunContext, username string, pubkeys []str
 func BackupUsers(rc *RunContext, outputPath string) error {
 	ctx := context.Background()
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	// Load existing managed users DB (if any). A backup is a restore input,
 	// so the DB of an untrusted base is left out, not just warned about.
 	var db UsersDB
 	dbPath := filepath.Join(homeBase, ".rootfiles", "users.json")
 	if err := requireTrustedMetadata(rc); err != nil {
-		fmt.Fprintf(warnOut, "⚠ %v; leaving the users database out of the backup\n", err)
+		ui.WriteText(warnOut, ui.MarkWarn+" %v; leaving the users database out of the backup\n", err)
 	} else if data, err := rc.Runner.ReadFile(dbPath); err == nil {
 		json.Unmarshal(data, &db)
 	}
@@ -532,7 +517,7 @@ func BackupUsers(rc *RunContext, outputPath string) error {
 	// Scan system users and merge
 	sysUsers, err := scanSystemUsers(ctx, rc)
 	if err != nil {
-		fmt.Printf("  Warning: system user scan failed: %v\n", err)
+		ui.WriteText(rc.Output(), "  Warning: system user scan failed: %v\n", err)
 	}
 
 	managed := make(map[string]bool)
@@ -552,7 +537,7 @@ func BackupUsers(rc *RunContext, outputPath string) error {
 		db.HomeBase = homeBase
 	}
 	if db.CreatedBy == "" {
-		db.CreatedBy = "rootfiles-v2"
+		db.CreatedBy = "rootfiles"
 	}
 
 	data, err := json.MarshalIndent(db, "", "  ")
@@ -569,7 +554,7 @@ func BackupUsers(rc *RunContext, outputPath string) error {
 		return fmt.Errorf("writing backup: %w", err)
 	}
 
-	fmt.Printf("User backup saved to %s (%d users)\n", outputPath, len(db.Users))
+	ui.WriteText(rc.Output(), "User backup saved to %s (%d users)\n", outputPath, len(db.Users))
 	return nil
 }
 
@@ -580,7 +565,7 @@ func ScanSystemUsersExported(ctx context.Context, rc *RunContext) ([]UserMeta, e
 
 // scanSystemUsers reads /etc/passwd and collects metadata for regular users (UID 1000-65533).
 func scanSystemUsers(ctx context.Context, rc *RunContext) ([]UserMeta, error) {
-	data, err := rc.Runner.ReadFile("/etc/passwd")
+	data, err := rc.Runner.ReadFile(passwdPath)
 	if err != nil {
 		return nil, fmt.Errorf("reading /etc/passwd: %w", err)
 	}
@@ -661,10 +646,7 @@ func scanSystemUsers(ctx context.Context, rc *RunContext) ([]UserMeta, error) {
 // RestoreUsers restores users from a backup JSON file.
 func RestoreUsers(ctx context.Context, rc *RunContext, backupPath string) error {
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	// Auto-detect backup path. Its accounts, sudo rights and keys are
 	// trusted only from a base that root alone controls.
@@ -692,8 +674,8 @@ func RestoreUsers(ctx context.Context, rc *RunContext, backupPath string) error 
 			continue
 		}
 		// Check if user already exists
-		if _, err := user.Lookup(u.Name); err == nil {
-			fmt.Printf("  User %s already exists, skipping\n", u.Name)
+		if _, err := lookupAccount(u.Name); err == nil {
+			ui.WriteText(rc.Output(), "  User %s already exists, skipping\n", u.Name)
 			continue
 		}
 
@@ -732,7 +714,7 @@ func RestoreUsers(ctx context.Context, rc *RunContext, backupPath string) error 
 		if homeExists {
 			status = "restored (home preserved)"
 		}
-		fmt.Printf("  User %s %s\n", u.Name, status)
+		ui.WriteText(rc.Output(), "  User %s %s\n", u.Name, status)
 	}
 
 	if len(failed) > 0 {
@@ -750,7 +732,7 @@ func restoreUserExtras(ctx context.Context, rc *RunContext, u UserMeta, homeExis
 	}
 	groups, missing := existingGroups(groups)
 	for _, g := range missing {
-		fmt.Printf("  ⚠ %s: group %s does not exist, skipped\n", u.Name, g)
+		ui.WriteText(rc.Output(), "  "+ui.MarkWarn+" %s: group %s does not exist, skipped\n", u.Name, g)
 	}
 	if len(groups) > 0 {
 		if _, err := rc.Runner.Run(ctx, "usermod", "-aG", strings.Join(groups, ","), u.Name); err != nil {
@@ -792,7 +774,7 @@ func RehomeUser(ctx context.Context, rc *RunContext, username string, removeOld 
 		return err
 	}
 
-	u, err := user.Lookup(username)
+	u, err := lookupAccount(username)
 	if err != nil {
 		return fmt.Errorf("user %s not found: %w", username, err)
 	}
@@ -851,10 +833,10 @@ func RehomeUser(ctx context.Context, rc *RunContext, username string, removeOld 
 			return fmt.Errorf("removing old home backup %s: %w", backup, err)
 		}
 	} else {
-		fmt.Printf("Original home kept at %s (delete it once verified)\n", backup)
+		ui.WriteText(rc.Output(), "Original home kept at %s (delete it once verified)\n", backup)
 	}
 
-	fmt.Printf("User %s moved: %s → %s (symlink created)\n", username, oldHome, newHome)
+	ui.WriteText(rc.Output(), "User %s moved: %s "+ui.MarkPending+" %s (symlink created)\n", username, oldHome, newHome)
 	return nil
 }
 
@@ -862,15 +844,12 @@ func RehomeUser(ctx context.Context, rc *RunContext, username string, removeOld 
 func ListUsers(rc *RunContext) error {
 	WarnUntrustedMetadata(rc)
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	dbPath := filepath.Join(homeBase, ".rootfiles", "users.json")
 	data, err := rc.Runner.ReadFile(dbPath)
 	if err != nil {
-		fmt.Println("No managed users found.")
+		ui.WriteLine(rc.Output(), "No managed users found.")
 		return nil
 	}
 
@@ -879,11 +858,11 @@ func ListUsers(rc *RunContext) error {
 		return fmt.Errorf("parsing user database: %w", err)
 	}
 
-	fmt.Printf("Home base: %s\n", db.HomeBase)
-	fmt.Printf("%-15s %-6s %-20s %-15s %s\n", "USER", "UID", "HOME", "SHELL", "GROUPS")
-	fmt.Printf("%-15s %-6s %-20s %-15s %s\n", "----", "---", "----", "-----", "------")
+	ui.WriteText(rc.Output(), "Home base: %s\n", db.HomeBase)
+	ui.WriteText(rc.Output(), "%-15s %-6s %-20s %-15s %s\n", "USER", "UID", "HOME", "SHELL", "GROUPS")
+	ui.WriteText(rc.Output(), "%-15s %-6s %-20s %-15s %s\n", "----", "---", "----", "-----", "------")
 	for _, u := range db.Users {
-		fmt.Printf("%-15s %-6d %-20s %-15s %s\n",
+		ui.WriteText(rc.Output(), "%-15s %-6d %-20s %-15s %s\n",
 			u.Name, u.UID, u.Home, u.Shell, strings.Join(u.Groups, ","))
 	}
 	return nil
@@ -892,10 +871,7 @@ func ListUsers(rc *RunContext) error {
 // ListUserNames prints only usernames, one per line (for scripting).
 func ListUserNames(rc *RunContext) error {
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	dbPath := filepath.Join(homeBase, ".rootfiles", "users.json")
 	data, err := rc.Runner.ReadFile(dbPath)
@@ -909,7 +885,7 @@ func ListUserNames(rc *RunContext) error {
 	}
 
 	for _, u := range db.Users {
-		fmt.Println(u.Name)
+		ui.WriteLine(rc.Output(), u.Name)
 	}
 	return nil
 }
@@ -921,13 +897,13 @@ func ListSystemUsers(ctx context.Context, rc *RunContext) error {
 		return fmt.Errorf("scanning system users: %w", err)
 	}
 	if len(users) == 0 {
-		fmt.Println("No system users found.")
+		ui.WriteLine(rc.Output(), "No system users found.")
 		return nil
 	}
-	fmt.Printf("%-15s %-6s %-6s %-20s %-15s %s\n", "USER", "UID", "GID", "HOME", "SHELL", "GROUPS")
-	fmt.Printf("%-15s %-6s %-6s %-20s %-15s %s\n", "----", "---", "---", "----", "-----", "------")
+	ui.WriteText(rc.Output(), "%-15s %-6s %-6s %-20s %-15s %s\n", "USER", "UID", "GID", "HOME", "SHELL", "GROUPS")
+	ui.WriteText(rc.Output(), "%-15s %-6s %-6s %-20s %-15s %s\n", "----", "---", "---", "----", "-----", "------")
 	for _, u := range users {
-		fmt.Printf("%-15s %-6d %-6d %-20s %-15s %s\n",
+		ui.WriteText(rc.Output(), "%-15s %-6d %-6d %-20s %-15s %s\n",
 			u.Name, u.UID, u.GID, u.Home, u.Shell, strings.Join(u.Groups, ","))
 	}
 	return nil
@@ -940,32 +916,32 @@ func ListSystemUserNames(ctx context.Context, rc *RunContext) error {
 		return fmt.Errorf("scanning system users: %w", err)
 	}
 	for _, u := range users {
-		fmt.Println(u.Name)
+		ui.WriteLine(rc.Output(), u.Name)
 	}
 	return nil
 }
 
 // ShowUserID displays UID/GID/groups for a user via the `id` command.
 func ShowUserID(ctx context.Context, rc *RunContext, username string) error {
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 	result, err := rc.Runner.Query(ctx, "id", username)
 	if err != nil {
 		return fmt.Errorf("querying id for %s: %w", username, err)
 	}
-	fmt.Print(result.Stdout)
+	ui.WriteRaw(rc.Output(), result.Stdout)
 	return nil
 }
 
 // ListGroups displays all groups from /etc/group in a table.
 func ListGroups(ctx context.Context, rc *RunContext) error {
-	data, err := rc.Runner.ReadFile("/etc/group")
+	data, err := rc.Runner.ReadFile(groupPath)
 	if err != nil {
 		return fmt.Errorf("reading /etc/group: %w", err)
 	}
-	fmt.Printf("%-20s %-6s %s\n", "GROUP", "GID", "MEMBERS")
-	fmt.Printf("%-20s %-6s %s\n", "-----", "---", "-------")
+	ui.WriteText(rc.Output(), "%-20s %-6s %s\n", "GROUP", "GID", "MEMBERS")
+	ui.WriteText(rc.Output(), "%-20s %-6s %s\n", "-----", "---", "-------")
 	scanner := bufio.NewScanner(strings.NewReader(string(data)))
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -979,27 +955,27 @@ func ListGroups(ctx context.Context, rc *RunContext) error {
 		name := fields[0]
 		gid := fields[2]
 		members := fields[3]
-		fmt.Printf("%-20s %-6s %s\n", name, gid, members)
+		ui.WriteText(rc.Output(), "%-20s %-6s %s\n", name, gid, members)
 	}
 	return nil
 }
 
 // ListUserGroups displays groups for a specific user.
 func ListUserGroups(ctx context.Context, rc *RunContext, username string) error {
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 	result, err := rc.Runner.Query(ctx, "id", username)
 	if err != nil {
 		return fmt.Errorf("querying id for %s: %w", username, err)
 	}
-	fmt.Print(result.Stdout)
+	ui.WriteRaw(rc.Output(), result.Stdout)
 	return nil
 }
 
 // AddUserToGroups adds a user to the specified groups.
 func AddUserToGroups(ctx context.Context, rc *RunContext, username string, groups []string) error {
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 	groups = accountGroupsForSystem(rc.Config.System, groups)
@@ -1012,13 +988,13 @@ func AddUserToGroups(ctx context.Context, rc *RunContext, username string, group
 	if _, err := rc.Runner.Run(ctx, "usermod", "-aG", strings.Join(groups, ","), username); err != nil {
 		return fmt.Errorf("adding %s to groups: %w", username, err)
 	}
-	fmt.Printf("User %s added to groups: %s\n", username, strings.Join(groups, ", "))
+	ui.WriteText(rc.Output(), "User %s added to groups: %s\n", username, strings.Join(groups, ", "))
 	return nil
 }
 
 // RemoveUserFromGroups removes a user from the specified groups.
 func RemoveUserFromGroups(ctx context.Context, rc *RunContext, username string, groups []string) error {
-	if _, err := user.Lookup(username); err != nil {
+	if _, err := lookupAccount(username); err != nil {
 		return fmt.Errorf("user %s not found", username)
 	}
 	groups = accountGroupsForSystem(rc.Config.System, groups)
@@ -1030,9 +1006,9 @@ func RemoveUserFromGroups(ctx context.Context, rc *RunContext, username string, 
 	}
 	for _, group := range groups {
 		if _, err := rc.Runner.Run(ctx, "gpasswd", "-d", username, group); err != nil {
-			fmt.Printf("  Failed to remove %s from %s: %v\n", username, group, err)
+			ui.WriteText(rc.Output(), "  Failed to remove %s from %s: %v\n", username, group, err)
 		} else {
-			fmt.Printf("  Removed %s from %s\n", username, group)
+			ui.WriteText(rc.Output(), "  Removed %s from %s\n", username, group)
 		}
 	}
 	return nil
@@ -1065,25 +1041,25 @@ func SetPasswords(ctx context.Context, rc *RunContext, entries []PasswordEntry, 
 			}
 		}
 		if rc.DryRun {
-			fmt.Printf("  [dry-run] set password for %s (password: ****)\n", e.Username)
+			ui.WriteText(rc.Output(), "  [dry-run] set password for %s (password: ****)\n", e.Username)
 			continue
 		}
 		if err := setPassword(ctx, rc, e.Username, pass); err != nil {
-			fmt.Printf("  Failed to set password for %s: %s\n", e.Username, firstLine(err.Error()))
+			ui.WriteText(rc.Output(), "  Failed to set password for %s: %s\n", e.Username, firstLine(err.Error()))
 			failed = append(failed, e.Username)
 			continue
 		}
 		if expire {
 			if _, err := rc.Runner.Run(ctx, "chage", "-d", "0", e.Username); err != nil {
-				fmt.Printf("  Password set for %s, but expiring it failed: %s\n", e.Username, firstLine(err.Error()))
+				ui.WriteText(rc.Output(), "  Password set for %s, but expiring it failed: %s\n", e.Username, firstLine(err.Error()))
 				failed = append(failed, e.Username)
 				continue
 			}
 		}
 		if generated != "" {
-			fmt.Printf("  Password set for %s: %s\n", e.Username, generated)
+			ui.WriteText(rc.Output(), "  Password set for %s: %s\n", e.Username, generated)
 		} else {
-			fmt.Printf("  Password set for %s\n", e.Username)
+			ui.WriteText(rc.Output(), "  Password set for %s\n", e.Username)
 		}
 	}
 	if len(failed) > 0 {
@@ -1122,10 +1098,7 @@ func LoadPasswordFile(path, suffix string) ([]PasswordEntry, error) {
 
 func saveUserMeta(rc *RunContext, username, home, shell string, groups []string, sudoNopasswd bool, pubkeys []string) error {
 	cfg := rc.Config.Users
-	homeBase := cfg.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := cfg.Base()
 
 	if err := ensureMetaDir(rc.Runner, homeBase); err != nil {
 		return err
@@ -1133,15 +1106,14 @@ func saveUserMeta(rc *RunContext, username, home, shell string, groups []string,
 	dbPath := filepath.Join(homeBase, ".rootfiles", "users.json")
 	var db UsersDB
 
-	if data, err := rc.Runner.ReadFile(dbPath); err == nil {
-		if err := json.Unmarshal(data, &db); err != nil {
-			return fmt.Errorf("parsing %s: %w", dbPath, err)
-		}
+	if _, err := readJSONDB(dbPath, &db); err != nil {
+		return err
 	}
+
 	if db.Version == 0 {
 		db.Version = 1
 		db.HomeBase = homeBase
-		db.CreatedBy = "rootfiles-v2"
+		db.CreatedBy = "rootfiles"
 	}
 
 	meta := UserMeta{
@@ -1153,7 +1125,7 @@ func saveUserMeta(rc *RunContext, username, home, shell string, groups []string,
 		Home:         home,
 	}
 	// The account does not exist in dry-run; record what we can.
-	if u, err := user.Lookup(username); err == nil {
+	if u, err := lookupAccount(username); err == nil {
 		meta.UID, _ = strconv.Atoi(u.Uid)
 		meta.GID, _ = strconv.Atoi(u.Gid)
 	} else if !rc.DryRun {
@@ -1174,12 +1146,5 @@ func saveUserMeta(rc *RunContext, username, home, shell string, groups []string,
 		db.Users = append(db.Users, meta)
 	}
 
-	data, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := refuseSymlink(dbPath); err != nil {
-		return err
-	}
-	return rc.Runner.WriteFile(dbPath, data, 0600)
+	return writeJSONDB(rc, dbPath, &db, 0600)
 }

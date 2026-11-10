@@ -8,13 +8,13 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
-	execpkg "github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
@@ -24,11 +24,13 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show full system status at a glance",
-		Long:  "Unified dashboard: system, profile, modules, GPU allocations, tunnel, users.",
-		RunE:  runStatus,
+		Long: "Read-only overview of the system, profile, modules, GPU allocations, tunnel and users.\n" +
+			"Exit code: 0 for the overview, including reported findings; invalid inputs return an error.",
+		RunE: runStatus,
 	}
+	cmd.Flags().StringSlice("module", nil, "Report specific modules only")
 	addOutputFlag(cmd)
-	return cmd
+	return usesConfigTarget(cmd)
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
@@ -39,6 +41,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	moduleFilter, _ := cmd.Flags().GetStringSlice("module")
 	profileName, _ := cmd.Flags().GetString("profile")
 	if profileName == "" {
 		profileName = os.Getenv("ROOTFILES_PROFILE")
@@ -61,40 +64,47 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
-	runner := execpkg.NewRunner(true, logger)
-	rc := &module.RunContext{
-		Config: cfg,
-		Runner: runner,
-		APT:    statusPackageManager(runner, sysInfo),
-		DryRun: true,
-		Yes:    true,
-	}
+	rc := readOnlyRunContext(cfg, sysInfo, logger)
+	rc.Out = cmd.OutOrStdout()
 
 	if rc.Config.Users.HomeBase != "" {
-		module.WarnUntrustedMetadata(rc) // on stderr, so JSON stays clean
+		warnStatusMetadata(rc) // on stderr, so JSON stays clean
 	}
+	report := collectStatus(ctx, rc, sysInfo, reportProfile, reportPath, cfgErr, last, moduleFilter...)
 	if format == "json" {
-		return writeJSON(out, collectStatus(ctx, rc, sysInfo, reportProfile, reportPath, cfgErr, last))
+		return writeJSON(out, report)
 	}
-
-	ui.WriteHeader(out, "rootfiles status")
-
-	renderSystemSection(out, sysInfo)
-	renderProfileSection(out, reportProfile, profileName, sysInfo, reportPath, cfgErr)
-	renderLastApplySection(out, last, lastErr)
-	renderModulesSection(ctx, out, rc)
-	renderGPUSection(out, rc)
-	renderTunnelSection(ctx, out, rc)
-	renderUsersSection(ctx, out, rc)
-
-	fmt.Fprintln(out)
+	renderStatusText(out, report, profileName, lastErr)
 	return nil
 }
 
-func renderSystemSection(out io.Writer, sys *config.SystemInfo) {
+// renderStatusText only formats the collected snapshot; it performs no queries.
+func renderStatusText(out io.Writer, report statusReport, profileFlag string, lastErr error) {
+	ui.WriteHeader(out, "rootfiles status")
+	renderSystemSection(out, report.System, report.Hostname)
+	var cfgErr error
+	if report.ConfigErr != "" {
+		cfgErr = errors.New(report.ConfigErr)
+	}
+	renderProfileSection(out, report.Profile, profileFlag, report.System, report.ConfigPath, cfgErr)
+	renderLastApplySection(out, report.LastApply, lastErr)
+	renderModulesSection(out, report)
+	if report.details.gpuSelected {
+		renderGPUSection(out, report)
+	}
+	if report.details.tunnelSelected {
+		renderTunnelSection(out, report)
+	}
+	if report.details.usersSelected {
+		renderUsersSection(out, report)
+	}
+	fmt.Fprintln(out)
+}
+
+func renderSystemSection(out io.Writer, sys *config.SystemInfo, hostname string) {
 	ui.WriteSection(out, "System")
 
-	osLine := firstNonEmpty(sys.OS, "unknown")
+	osLine := ui.FirstNonEmpty(sys.OS, "unknown")
 	if sys.Version != "" {
 		osLine = fmt.Sprintf("%s %s", osLine, sys.Version)
 	}
@@ -103,10 +113,10 @@ func renderSystemSection(out io.Writer, sys *config.SystemInfo) {
 	}
 	ui.WriteKV(out, "OS", osLine)
 
-	if host, err := os.Hostname(); err == nil && host != "" {
-		ui.WriteKV(out, "Hostname", host)
+	if hostname != "" {
+		ui.WriteKV(out, "Hostname", hostname)
 	}
-	ui.WriteKV(out, "Architecture", firstNonEmpty(sys.Arch, "unknown"))
+	ui.WriteKV(out, "Architecture", ui.FirstNonEmpty(sys.Arch, "unknown"))
 	if sys.MemoryGB > 0 {
 		ui.WriteKV(out, "Memory", fmt.Sprintf("%d GiB", sys.MemoryGB))
 	}
@@ -116,9 +126,9 @@ func renderSystemSection(out io.Writer, sys *config.SystemInfo) {
 
 	switch {
 	case sys.IsDGX:
-		ui.WriteKV(out, "GPU", fmt.Sprintf("DGX %s × %s", countStr(sys.GPUCount), firstNonEmpty(sys.GPUModel, "NVIDIA")))
+		ui.WriteKV(out, "GPU", fmt.Sprintf("DGX %s × %s", countStr(sys.GPUCount), ui.FirstNonEmpty(sys.GPUModel, "NVIDIA")))
 	case sys.HasNVIDIAGPU:
-		ui.WriteKV(out, "GPU", fmt.Sprintf("%s × %s", countStr(sys.GPUCount), firstNonEmpty(sys.GPUModel, "NVIDIA")))
+		ui.WriteKV(out, "GPU", fmt.Sprintf("%s × %s", countStr(sys.GPUCount), ui.FirstNonEmpty(sys.GPUModel, "NVIDIA")))
 	default:
 		ui.WriteKV(out, "GPU", "none detected")
 	}
@@ -131,8 +141,8 @@ func renderSystemSection(out io.Writer, sys *config.SystemInfo) {
 func renderProfileSection(out io.Writer, active, flagProfile string, sys *config.SystemInfo, configPath string, loadErr error) {
 	ui.WriteSection(out, "Profile")
 
-	ui.WriteKV(out, "Active", firstNonEmpty(active, "(none)"))
-	ui.WriteKV(out, "Suggested", firstNonEmpty(sys.SuggestProfile(), "minimal"))
+	ui.WriteKV(out, "Active", ui.FirstNonEmpty(active, "(none)"))
+	ui.WriteKV(out, "Suggested", ui.FirstNonEmpty(sys.SuggestProfile(), "minimal"))
 	switch {
 	case configPath != "":
 		ui.WriteKV(out, "Config", configPath)
@@ -146,7 +156,19 @@ func renderProfileSection(out io.Writer, active, flagProfile string, sys *config
 	}
 }
 
+// statusDetails preserves text-only display state without extending the JSON schema.
+type statusDetails struct {
+	homeBase                                   string
+	capabilityBlocked                          bool
+	moduleSatisfied                            map[string]bool
+	gpuSelected, tunnelSelected, usersSelected bool
+	gpu                                        *module.GPUAllocationsDB
+	tunnelBinary, tunnelInterface              string
+	systemUsersKnown                           bool
+}
+
 type statusReport struct {
+	details    statusDetails
 	Version    string             `json:"version,omitempty"`
 	System     *config.SystemInfo `json:"system"`
 	Hostname   string             `json:"hostname"`
@@ -177,8 +199,15 @@ type statusUsers struct {
 	System   int    `json:"system"`
 }
 
-func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.SystemInfo, profile, configPath string, cfgErr error, last *state.Run) statusReport {
+func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.SystemInfo, profile, configPath string, cfgErr error, last *state.Run, filter ...string) statusReport {
 	r := statusReport{System: sys, Profile: profile, ConfigPath: configPath, LastApply: last, Modules: []checkModule{}}
+	r.details = statusDetails{
+		homeBase:        rc.Config.Users.HomeBase,
+		gpuSelected:     statusModuleSelected(filter, "gpu"),
+		tunnelSelected:  statusModuleSelected(filter, "cloudflared"),
+		usersSelected:   statusModuleSelected(filter, "users"),
+		moduleSatisfied: make(map[string]bool),
+	}
 	r.Version = buildVersion
 	r.Hostname, _ = os.Hostname()
 	if cfgErr != nil {
@@ -188,17 +217,15 @@ func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.Syste
 		r.AppliedConfigSHA256 = fingerprint
 	}
 
-	modules := module.NewRegistry().Resolve(rc.Config, nil)
-	names := make([]string, 0, len(modules))
-	for _, m := range modules {
-		names = append(names, m.Name())
-	}
-	if err := config.ValidateCapabilities(rc.Config, sys, names); err != nil {
+	modules := module.NewRegistry().Resolve(rc.Config, filter)
+	if err := validateModules(rc.Config, sys, modules); err != nil {
+		r.details.capabilityBlocked = true
 		r.ModuleCheckError = err.Error()
 	} else if results, err := module.CheckAll(ctx, modules, rc); err == nil {
 		for _, m := range modules {
 			cm := checkModule{Name: m.Name(), Satisfied: true, Changes: []module.Change{}}
 			if res := results[m.Name()]; res != nil {
+				r.details.moduleSatisfied[m.Name()] = res.Satisfied
 				cm.Satisfied = res.Satisfied
 				if res.Changes != nil {
 					cm.Changes = res.Changes
@@ -213,34 +240,49 @@ func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.Syste
 	// An empty home base means the config did not load and none was given:
 	// skip the databases instead of reading them under /home.
 	homeBase := rc.Config.Users.HomeBase
-	if homeBase != "" {
-		if db, err := module.LoadGPUDB(rc); err == nil && db != nil && (db.TotalGPUs > 0 || len(db.Allocations) > 0) {
+	if homeBase != "" && r.details.gpuSelected {
+		db, err := module.LoadGPUDB(rc)
+		r.details.gpu = db // Text historically displayed partial decoded metadata on error.
+		if err == nil && db != nil && (db.TotalGPUs > 0 || len(db.Allocations) > 0) {
 			r.GPU = db
 		}
 	}
-
-	if rc.Runner.FileExists(cloudflaredStatusBinary) {
-		if res, err := rc.Runner.Query(ctx, cloudflaredStatusBinary, "--version"); err == nil {
-			r.Tunnel.Binary = strings.TrimSpace(res.Stdout)
+	if r.details.tunnelSelected {
+		observation := module.InspectCloudflared(ctx, rc.Runner, cloudflaredStatusBinary)
+		r.details.tunnelBinary = "(not installed)"
+		if observation.Installed {
+			r.details.tunnelBinary = observation.Path
+			if observation.QueryError == nil {
+				r.Tunnel.Binary = strings.TrimSpace(observation.RawOutput)
+				r.details.tunnelBinary = r.Tunnel.Binary
+			}
 		}
-	}
-	r.Tunnel.Service = systemctlStatus(ctx, "cloudflared")
-	iface := rc.Config.Modules.Cloudflared.PrivateNetwork.Interface
-	if iface == "" {
-		iface = "vlan0"
-	}
-	r.Tunnel.VLAN = interfaceAddress(iface)
-
-	r.Users.HomeBase = homeBase
-	if homeBase != "" {
-		if db, _ := module.LoadUsersDB(rc); db != nil {
-			r.Users.Managed = len(db.Users)
+		r.Tunnel.Service = systemctlStatus(ctx, "cloudflared")
+		iface := rc.Config.Modules.Cloudflared.PrivateNetwork.Interface
+		if iface == "" {
+			iface = "vlan0"
 		}
+		r.details.tunnelInterface = iface
+		r.Tunnel.VLAN = interfaceAddress(iface)
 	}
-	if sysUsers, err := module.ScanSystemUsersExported(ctx, rc); err == nil {
-		r.Users.System = len(sysUsers)
+
+	if statusModuleSelected(filter, "users") {
+		r.Users.HomeBase = homeBase
+		if homeBase != "" {
+			if db, _ := module.LoadUsersDB(rc); db != nil {
+				r.Users.Managed = len(db.Users)
+			}
+		}
+		if sysUsers, err := scanStatusUsers(ctx, rc); err == nil {
+			r.Users.System = len(sysUsers)
+			r.details.systemUsersKnown = true
+		}
 	}
 	return r
+}
+
+func statusModuleSelected(filter []string, name string) bool {
+	return len(filter) == 0 || slices.Contains(filter, name)
 }
 
 func renderLastApplySection(out io.Writer, last *state.Run, err error) {
@@ -259,7 +301,7 @@ func renderLastApplySection(out io.Writer, last *state.Run, err error) {
 	}
 	ui.WriteKV(out, "When", last.FinishedAt.Local().Format("2006-01-02 15:04:05"))
 	ui.WriteKV(out, "Result", result)
-	ui.WriteKV(out, "Version", firstNonEmpty(last.Version, "unknown"))
+	ui.WriteKV(out, "Version", ui.FirstNonEmpty(last.Version, "unknown"))
 	for _, m := range last.Modules {
 		if m.Status == "failed" {
 			ui.WriteKV(out, "Failed", m.Name+": "+m.Error)
@@ -270,57 +312,52 @@ func renderLastApplySection(out io.Writer, last *state.Run, err error) {
 	}
 }
 
-func renderModulesSection(ctx context.Context, out io.Writer, rc *module.RunContext) {
-	reg := module.NewRegistry()
-	modules := reg.Resolve(rc.Config, nil)
-	if len(modules) == 0 {
+func renderModulesSection(out io.Writer, report statusReport) {
+	if report.ModuleCheckError != "" {
+		ui.WriteSection(out, "Modules (check failed)")
+		ui.WriteHint(out, fmt.Sprintf("%s %s", ui.WarnMark(), report.ModuleCheckError))
+		if report.details.capabilityBlocked {
+			ui.WriteHint(out, "Use a supported distribution or disable unsupported modules/options in the selected config.")
+		}
+		return
+	}
+	if len(report.Modules) == 0 {
 		ui.WriteSection(out, "Modules (none enabled)")
 		ui.WriteHint(out, "no profile selected — select one with --profile")
 		return
 	}
-
-	results, err := module.CheckAll(ctx, modules, rc)
-	if err != nil {
-		ui.WriteSection(out, "Modules (check failed)")
-		ui.WriteHint(out, fmt.Sprintf("%s %v", ui.WarnMark(), err))
-		return
-	}
-
 	satisfied := 0
-	for _, m := range modules {
-		if r := results[m.Name()]; r != nil && r.Satisfied {
+	for _, m := range report.Modules {
+		if report.details.moduleSatisfied[m.Name] {
 			satisfied++
 		}
 	}
-	ui.WriteSection(out, fmt.Sprintf("Modules (%d/%d satisfied)", satisfied, len(modules)))
-
-	for _, m := range modules {
-		r := results[m.Name()]
+	ui.WriteSection(out, fmt.Sprintf("Modules (%d/%d satisfied)", satisfied, len(report.Modules)))
+	for _, m := range report.Modules {
 		marker := ui.OKMark()
-		if r == nil || !r.Satisfied {
+		if !report.details.moduleSatisfied[m.Name] {
 			marker = ui.PendingMark()
 		}
-		ui.WriteBullet(out, marker, m.Name())
+		ui.WriteBullet(out, marker, m.Name)
 	}
-
-	pending := len(modules) - satisfied
+	pending := len(report.Modules) - satisfied
 	if pending > 0 {
 		fmt.Fprintln(out)
 		ui.WriteHint(out, fmt.Sprintf("%d module(s) need attention — run 'rootfiles check' for details.", pending))
 	}
 }
 
-func renderGPUSection(out io.Writer, rc *module.RunContext) {
+func renderGPUSection(out io.Writer, report statusReport) {
 	ui.WriteSection(out, "GPU Allocations")
-	if rc.Config.Users.HomeBase == "" {
+	if report.details.homeBase == "" {
 		ui.WriteHint(out, unknownHomeBaseHint)
 		return
 	}
-	db, _ := module.LoadGPUDB(rc)
+	db := report.details.gpu
 
 	if db == nil || (db.TotalGPUs == 0 && len(db.Allocations) == 0) {
 		ui.WriteKV(out, "Total GPUs", "none recorded")
-		ui.WriteHint(out, "run 'rootfiles gpu assign <user> <indices>' to register an allocation")
+		ui.WriteHint(out, "run 'rootfiles gpu assign <user> --gpus 0,1' to register an allocation")
 		return
 	}
 
@@ -352,22 +389,17 @@ func renderGPUSection(out io.Writer, rc *module.RunContext) {
 	}
 }
 
-const cloudflaredStatusBinary = "/usr/local/bin/cloudflared"
+// scanStatusUsers keeps system account discovery replaceable in report fixtures.
+var scanStatusUsers = module.ScanSystemUsersExported
+var warnStatusMetadata = module.WarnUntrustedMetadata
 
-func renderTunnelSection(ctx context.Context, out io.Writer, rc *module.RunContext) {
+// Empty overrides use the module-owned production binary path.
+var cloudflaredStatusBinary string
+
+func renderTunnelSection(out io.Writer, report statusReport) {
 	ui.WriteSection(out, "Tunnel")
-
-	binary := "(not installed)"
-	if rc.Runner.FileExists(cloudflaredStatusBinary) {
-		if res, err := rc.Runner.Query(ctx, cloudflaredStatusBinary, "--version"); err == nil {
-			binary = strings.TrimSpace(res.Stdout)
-		} else {
-			binary = cloudflaredStatusBinary
-		}
-	}
-	ui.WriteKV(out, "cloudflared", binary)
-
-	switch status := systemctlStatus(ctx, "cloudflared"); status {
+	ui.WriteKV(out, "cloudflared", report.details.tunnelBinary)
+	switch status := report.Tunnel.Service; status {
 	case "active":
 		ui.WriteKV(out, "Service", ui.StyleSuccess.Render("active"))
 	case "unknown":
@@ -375,38 +407,24 @@ func renderTunnelSection(ctx context.Context, out io.Writer, rc *module.RunConte
 	default:
 		ui.WriteKV(out, "Service", ui.StyleHint.Render(status))
 	}
-
-	iface := rc.Config.Modules.Cloudflared.PrivateNetwork.Interface
-	if iface == "" {
-		iface = "vlan0"
-	}
-	if addr := interfaceAddress(iface); addr != "" {
+	iface := report.details.tunnelInterface
+	if addr := report.Tunnel.VLAN; addr != "" {
 		ui.WriteKV(out, "VLAN", fmt.Sprintf("%s on %s", addr, iface))
 	} else {
 		ui.WriteKV(out, "VLAN", fmt.Sprintf("%s not configured", iface))
 	}
 }
 
-func renderUsersSection(ctx context.Context, out io.Writer, rc *module.RunContext) {
+func renderUsersSection(out io.Writer, report statusReport) {
 	ui.WriteSection(out, "Users")
-
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
+	if report.details.homeBase == "" {
 		ui.WriteKV(out, "Home base", ui.StyleHint.Render("unknown (see GPU Allocations)"))
 	} else {
-		ui.WriteKV(out, "Home base", homeBase)
-		db, _ := module.LoadUsersDB(rc)
-		managed := 0
-		if db != nil {
-			managed = len(db.Users)
-		}
-		ui.WriteKV(out, "Managed", fmt.Sprintf("%d user(s)", managed))
+		ui.WriteKV(out, "Home base", report.details.homeBase)
+		ui.WriteKV(out, "Managed", fmt.Sprintf("%d user(s)", report.Users.Managed))
 	}
-
-	// System-user count: ignore scan errors (missing /etc/passwd, etc.).
-	sysUsers, err := module.ScanSystemUsersExported(ctx, rc)
-	if err == nil {
-		ui.WriteKV(out, "System", fmt.Sprintf("%d user(s) (UID 1000-65533)", len(sysUsers)))
+	if report.details.systemUsersKnown {
+		ui.WriteKV(out, "System", fmt.Sprintf("%d user(s) (UID 1000-65533)", report.Users.System))
 	}
 }
 
@@ -472,15 +490,6 @@ func mountRoot(p string) string {
 	default:
 		return "/" + parts[0] + "/" + parts[1]
 	}
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func countStr(n int) string {

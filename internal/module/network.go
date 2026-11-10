@@ -39,11 +39,15 @@ func (m *NetworkModule) Check(ctx context.Context, rc *RunContext) (*CheckResult
 	cfg := rc.Config.Modules.Network
 
 	if cfg.UFW {
-		st, installed := queryUFW(ctx, rc)
+		st, err := networkFirewallState(ctx, rc)
+		if err != nil {
+			return blockedFirewallCheck(err), nil
+		}
+		installed := st.Installed
 		if !installed {
 			changes = append(changes, Change{
 				Description: "Install UFW firewall",
-				Command:     "apt-get install ufw",
+				Command:     packageInstallCommand(rc, []string{"ufw"}),
 			})
 		}
 		for _, port := range m.requiredPorts(ctx, rc) {
@@ -54,7 +58,7 @@ func (m *NetworkModule) Check(ctx context.Context, rc *RunContext) (*CheckResult
 				})
 			}
 		}
-		if !st.Active {
+		if !st.UFWActive {
 			changes = append(changes, Change{
 				Description: "Enable UFW firewall",
 				Command:     "ufw --force enable",
@@ -77,8 +81,12 @@ func (m *NetworkModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult
 		return &ApplyResult{Changed: false}, nil
 	}
 
-	// Ensure UFW is installed
-	if !rc.Runner.CommandExists("ufw") {
+	st, err := networkFirewallState(ctx, rc)
+	if err != nil {
+		return nil, err
+	}
+	// Ensure UFW is installed only after existing firewall state is known.
+	if !st.Installed {
 		if err := rc.APT.Update(ctx); err != nil {
 			return nil, fmt.Errorf("apt update: %w", err)
 		}
@@ -87,9 +95,14 @@ func (m *NetworkModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult
 		}
 		messages = append(messages, "ufw installed")
 		changed = true
+		st, err = networkFirewallState(ctx, rc)
+		if err != nil {
+			return nil, err
+		}
+		if !rc.DryRun && !st.Installed {
+			return nil, fmt.Errorf("UFW is still unavailable after installation; verify the ufw package and PATH before applying firewall changes")
+		}
 	}
-
-	st, _ := queryUFW(ctx, rc)
 
 	// Rules first, then enable: the SSH port must be admitted before the
 	// default-deny policy takes effect.
@@ -108,7 +121,7 @@ func (m *NetworkModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult
 		changed = true
 	}
 
-	if !st.Active {
+	if !st.UFWActive {
 		if _, err := rc.Runner.Run(ctx, "ufw", "--force", "enable"); err != nil {
 			return nil, fmt.Errorf("enabling ufw: %w", err)
 		}

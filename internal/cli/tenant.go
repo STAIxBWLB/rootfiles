@@ -13,6 +13,7 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/tenant"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 func newTenantCmd() *cobra.Command {
@@ -25,17 +26,17 @@ host keys survive image changes. Specs live in <home_base>/.rootfiles/tenants.`,
 	}
 	cmd.AddCommand(
 		newTenantListCmd(), newTenantStatusCmd(), newTenantCreateCmd(), newTenantApplyCmd(),
-		newTenantUserCmd(), newTenantPasswdCmd("passwd"), newTenantPasswdCmd("reset"),
+		newTenantUserCmd(), newTenantPasswdCmd(),
 		newTenantGPUCmd(), newTenantImageCmd(), newTenantPortCmd(), newTenantVolumeCmd(),
 		newTenantRestartCmd(), newTenantLogsCmd(), newTenantImportCmd(), newTenantOpsCmd(),
 		newTenantSyncCmd(),
 	)
-	return cmd
+	return usesConfigTarget(cmd)
 }
 
 // tenantEnv loads the run context and a manager after the tenant checks.
 func tenantEnv(cmd *cobra.Command) (*module.RunContext, *tenant.Manager, error) {
-	rc, err := buildRunContext(cmd)
+	rc, err := buildRunContext(cmd, "tenant")
 	if err != nil {
 		return nil, nil, err
 	}
@@ -72,7 +73,7 @@ func recordTenant(t, action string, err error) {
 		result = "error: " + strings.SplitN(err.Error(), "\n", 2)[0]
 	}
 	if aerr := tenant.Audit(actor, t, action, result); aerr != nil {
-		fmt.Fprintf(os.Stderr, "⚠ tenant audit log: %v\n", aerr)
+		ui.WriteText(os.Stderr, ui.MarkWarn+" tenant audit log: %v\n", aerr)
 	}
 }
 
@@ -148,9 +149,10 @@ func newTenantStatusCmd() *cobra.Command {
 
 func newTenantCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create TENANT",
-		Short: "Create a tenant: volume, container and temporary passwords",
-		Args:  cobra.ExactArgs(1),
+		Use:     "create TENANT",
+		Short:   "Create a tenant: volume, container and temporary passwords",
+		Args:    cobra.ExactArgs(1),
+		Example: `  sudo rootfiles tenant create lab --image ubuntu:24.04 --ssh-port 2201 --size 200G --account alice:1000`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t := args[0]
 			s := &tenant.Spec{Name: t}
@@ -268,7 +270,7 @@ func newTenantApplyCmd() *cobra.Command {
 					recordTenant(t, "apply", err)
 				}
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "✗ %s: %v\n", t, err)
+					ui.WriteText(os.Stderr, ui.MarkFail+" %s: %v\n", t, err)
 					failed = append(failed, t)
 				}
 			}
@@ -328,14 +330,17 @@ func newTenantUserCmd() *cobra.Command {
 	return userCmd
 }
 
-func newTenantPasswdCmd(use string) *cobra.Command {
+func newTenantPasswdCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   use + " TENANT USER",
-		Short: "Issue a temporary password that must be changed at first login",
-		Args:  cobra.ExactArgs(2),
+		Use:     "passwd TENANT USER",
+		Aliases: []string{"reset"},
+		Short:   "Issue a temporary password that must be changed at first login",
+		Long: `Issues a temporary password that the tenant user must change at first login.
+"reset" is an alias: it was a second copy of this command.`,
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, user := args[0], args[1]
-			return tenantDo(cmd, t, use+" "+user, func(ctx context.Context, _ *module.RunContext, m *tenant.Manager) error {
+			return tenantDo(cmd, t, cmd.CalledAs()+" "+user, func(ctx context.Context, _ *module.RunContext, m *tenant.Manager) error {
 				s, err := m.Load(t)
 				if err != nil {
 					return err
@@ -348,7 +353,7 @@ func newTenantPasswdCmd(use string) *cobra.Command {
 
 func newTenantGPUCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "gpu TENANT --gpus 0,1|none",
+		Use:   "gpu TENANT",
 		Short: "Change a tenant's GPUs (recreates the container)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -466,7 +471,7 @@ func newTenantLogsCmd() *cobra.Command {
 
 func newTenantImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "import TENANT --from CONTAINER --size SIZE",
+		Use:   "import TENANT",
 		Short: "Move a hand-made container under rootfiles (the old one is kept stopped)",
 		Long: `Writes the spec from the running container, copies its host keys, password
 hashes, --data and --keep paths into a new volume, stops the old container and
@@ -514,7 +519,7 @@ host's applied configuration. Every attempt is audited.`,
 			actor, viaSudo := tenant.Actor()
 			refuse := func(err error) error {
 				if aerr := tenant.Audit(actor, t, "ops "+action, "refused: "+err.Error()); aerr != nil {
-					fmt.Fprintf(os.Stderr, "⚠ tenant audit log: %v\n", aerr)
+					ui.WriteText(os.Stderr, ui.MarkWarn+" tenant audit log: %v\n", aerr)
 				}
 				return err
 			}
@@ -590,7 +595,7 @@ running: it only rewrites each tenant's derived files. It still needs root.`,
 					err = m.Sync(cmd.Context(), s)
 				}
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "✗ %s: %v\n", t, err)
+					ui.WriteText(os.Stderr, ui.MarkFail+" %s: %v\n", t, err)
 					failed = append(failed, t)
 				}
 			}

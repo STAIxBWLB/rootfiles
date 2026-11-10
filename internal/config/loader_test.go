@@ -89,11 +89,11 @@ func TestResolveProfile_DGX(t *testing.T) {
 	if !cfg.Modules.Nvidia.Enabled {
 		t.Error("nvidia should be enabled in dgx")
 	}
-	if !cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
-		t.Error("cloudflared private_network should be enabled in dgx")
+	if cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
+		t.Error("cloudflared private_network must stay site-specific, not enabled in dgx")
 	}
-	if cfg.Modules.Cloudflared.PrivateNetwork.Address != "172.16.229.32/32" {
-		t.Errorf("vlan address = %q, want 172.16.229.32/32", cfg.Modules.Cloudflared.PrivateNetwork.Address)
+	if addr := cfg.Modules.Cloudflared.PrivateNetwork.Address; addr != "" {
+		t.Errorf("dgx must not carry a VLAN address, got %q", addr)
 	}
 	if !cfg.Modules.Storage.Enabled {
 		t.Error("storage should be enabled in dgx")
@@ -132,6 +132,9 @@ func TestResolveProfile_GPUServer(t *testing.T) {
 	if cfg.Modules.Nvidia.GPUAllocation.Method != "env" {
 		t.Errorf("gpu_allocation method = %q, want env", cfg.Modules.Nvidia.GPUAllocation.Method)
 	}
+	if cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
+		t.Error("cloudflared private_network must stay site-specific, not enabled in gpu-server")
+	}
 }
 
 func TestResolveProfile_Full(t *testing.T) {
@@ -145,8 +148,14 @@ func TestResolveProfile_Full(t *testing.T) {
 	if !cfg.Modules.Storage.Enabled {
 		t.Error("storage should be enabled in full")
 	}
-	if !cfg.Modules.Network.Enabled {
-		t.Error("network should be enabled in full")
+	// full leaves the network module off: a network block without ufw is a
+	// no-op, and enabling the firewall is a behaviour change for existing
+	// hosts, not a key removal.
+	if cfg.Modules.Network.Enabled {
+		t.Error("network should not be enabled in full")
+	}
+	if !cfg.SSH.DisablePasswordAuth {
+		t.Error("full should keep disabling password auth")
 	}
 }
 
@@ -801,6 +810,33 @@ func TestLoad_HomeBaseDetectionOnlyWhenUnset(t *testing.T) {
 	t.Setenv("ROOTFILES_HOME_BASE", "/env/home")
 	if cfg, err = Load("minimal", "", sys); err != nil || cfg.Users.HomeBase != "/env/home" {
 		t.Errorf("env override: got %q, err=%v; want /env/home", cfg.Users.HomeBase, err)
+	}
+}
+
+func TestLoad_VLANAddressOverrideSatisfiesValidation(t *testing.T) {
+	site := filepath.Join(t.TempDir(), "site.yaml")
+	body := "extends: minimal\nusers:\n  home_base: /home\nmodules:\n  cloudflared:\n    private_network:\n      enabled: true\n      interface: vlan0\n"
+	if err := os.WriteFile(site, []byte(body), 0600); err != nil {
+		t.Fatal(err)
+	}
+	sys := &SystemInfo{OS: "ubuntu"}
+
+	if _, err := Load("", site, sys); err == nil || !strings.Contains(err.Error(), "modules.cloudflared.private_network.address") {
+		t.Fatalf("without --vlan-address: want the address error, got %v", err)
+	}
+
+	// The flag is folded in before validation, so it satisfies the check the
+	// file alone fails, and it wins over the environment override.
+	t.Setenv("ROOTFILES_VLAN_ADDRESS", "198.51.100.11/32")
+	cfg, err := LoadWithOverrides("", site, sys, Overrides{VLANAddress: "203.0.113.10/32"})
+	if err != nil {
+		t.Fatalf("--vlan-address should satisfy the address check: %v", err)
+	}
+	if got := cfg.Modules.Cloudflared.PrivateNetwork.Address; got != "203.0.113.10/32" {
+		t.Errorf("address = %q, want the flag value 203.0.113.10/32", got)
+	}
+	if !cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
+		t.Error("private_network.enabled should stay true")
 	}
 }
 

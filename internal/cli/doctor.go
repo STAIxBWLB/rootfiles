@@ -8,11 +8,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
-	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
+
+// doctorChecks keeps command-format fixtures independent of host files.
+var doctorChecks = module.Doctor
 
 func newDoctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -24,7 +26,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 	addOutputFlagWithMetrics(cmd)
 	cmd.Flags().Bool("strict", false, "Treat warnings as failures for the exit code")
-	return cmd
+	return usesConfigTarget(cmd)
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
@@ -38,22 +40,21 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 	}
 	profile, configPath, applied := resolveTarget(cmd, sys)
 	reportProfile, reportPath := reportedTarget(profile, configPath, applied)
+	// Doctor reports on the config it is given; it does not read
+	// --vlan-address, so it stays a config-target reader and keeps refusing
+	// inputs it does not use.
 	cfg, loadErr := config.LoadWithHomeBase(profile, configPath, sys, homeBaseFlag(cmd))
 	if loadErr != nil {
 		cfg = config.Fallback(sys, homeBaseFlag(cmd))
 	}
 
-	runner := exec.NewRunner(true, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	rc := &module.RunContext{Config: cfg, Runner: runner, APT: statusPackageManager(runner, sys), DryRun: true, Yes: true}
-	findings := module.Doctor(cmd.Context(), rc)
+	rc := readOnlyRunContext(cfg, sys, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	rc.Out = cmd.OutOrStdout()
+	findings := doctorChecks(cmd.Context(), rc)
 	if loadErr != nil {
 		findings = append(findings, module.Finding{Check: "configuration", Level: module.LevelFail, Detail: loadErr.Error()})
 	}
-	names := []string{}
-	for _, m := range module.NewRegistry().Resolve(cfg, nil) {
-		names = append(names, m.Name())
-	}
-	if err := config.ValidateCapabilities(cfg, sys, names); err != nil {
+	if err := validateModules(cfg, sys, module.NewRegistry().Resolve(cfg, nil)); err != nil {
 		findings = append(findings, module.Finding{Check: "capabilities", Level: module.LevelSkip, Detail: err.Error()})
 	}
 
@@ -109,7 +110,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			}
 			ui.WriteBullet(out, marker, fmt.Sprintf("%-16s %s", f.Check, f.Detail))
 			if f.Hint != "" && f.Level != module.LevelOK {
-				fmt.Fprintf(out, "      %s\n", ui.StyleHint.Render("→ "+f.Hint))
+				fmt.Fprintf(out, "      %s\n", ui.StyleHint.Render(ui.MarkPending+" "+f.Hint))
 			}
 		}
 		fmt.Fprintln(out)

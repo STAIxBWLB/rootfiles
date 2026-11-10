@@ -86,7 +86,7 @@ func TestFleetSudoersContentIsExactAndStable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "# Managed by rootfiles-v2\n" +
+	want := "# Managed by rootfiles\n" +
 		"Cmnd_Alias ROOTFILES_FLEET_READONLY = /usr/local/bin/rootfiles status -o json, /usr/local/bin/rootfiles check -o json, /usr/local/bin/rootfiles doctor -o json\n" +
 		"alice,zoe ALL=(root) NOPASSWD: ROOTFILES_FLEET_READONLY\n"
 	if string(content) != want {
@@ -140,6 +140,7 @@ func TestUsersModuleEmptyFleetSudoDoesNotTouchUnrelatedSudoers(t *testing.T) {
 		t.Fatal(err)
 	}
 	rc := newRealRC(t)
+	useraddFixture(t, "HOME="+rc.Config.Users.HomeBase+"\n")
 	check, err := NewUsersModule().Check(context.Background(), rc)
 	if err != nil || !check.Satisfied {
 		t.Fatalf("Check empty fleet list = %+v, %v; want satisfied", check, err)
@@ -171,6 +172,7 @@ func TestUsersModuleEmptyFleetSudoDoesNotTouchUnrelatedSudoers(t *testing.T) {
 func TestUsersModuleFleetSudoInstallVerifyAndIdempotency(t *testing.T) {
 	calls := setFleetSudoTestState(t, fleetSudoTestListing)
 	rc := newRealRC(t)
+	useraddFixture(t, "HOME="+rc.Config.Users.HomeBase+"\n")
 	rc.Config.Users.FleetSudoUsers = []string{"alice"}
 	m := NewUsersModule()
 
@@ -229,6 +231,7 @@ func TestUsersModuleFleetSudoDeclaredAccountMayBeCreatedFirst(t *testing.T) {
 func TestFleetSudoApplyFailsWhenEffectiveRuleIsAbsent(t *testing.T) {
 	setFleetSudoTestState(t, "User alice may run the following commands on this host:\n    (root) PASSWD: /usr/local/bin/rootfiles status -o json\n")
 	rc := newRealRC(t)
+	useraddFixture(t, "HOME="+rc.Config.Users.HomeBase+"\n")
 	rc.Config.Users.FleetSudoUsers = []string{"alice"}
 	if _, err := NewUsersModule().Apply(context.Background(), rc); err == nil {
 		t.Fatal("Apply must fail when sudo -l does not confirm the NOPASSWD rule")
@@ -238,6 +241,7 @@ func TestFleetSudoApplyFailsWhenEffectiveRuleIsAbsent(t *testing.T) {
 func TestUsersModuleFleetSudoApplyMissingUserFails(t *testing.T) {
 	setFleetSudoTestState(t, "")
 	rc := newRealRC(t)
+	useraddFixture(t, "HOME="+rc.Config.Users.HomeBase+"\n")
 	rc.Config.Users.FleetSudoUsers = []string{"missing"}
 	if _, err := NewUsersModule().Apply(context.Background(), rc); err == nil {
 		t.Fatal("Apply must fail when a fleet sudo user is missing")

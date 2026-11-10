@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -33,7 +34,7 @@ func loadForInspection(cmd *cobra.Command) (*config.Config, string, error) {
 	if reportPath != "" {
 		source = "config " + reportPath
 	}
-	cfg, err := config.LoadWithHomeBase(profile, configPath, sys, homeBaseFlag(cmd))
+	cfg, err := config.LoadWithOverrides(profile, configPath, sys, loadOverrides(cmd))
 	if err != nil {
 		return nil, source, err
 	}
@@ -43,13 +44,7 @@ func loadForInspection(cmd *cobra.Command) (*config.Config, string, error) {
 		return cfg, source, err
 	}
 	if sys.OS == "rocky" {
-		names := []string{}
-		for _, name := range []string{"locale", "system", "packages", "users", "ssh", "security", "docker", "nvidia", "gpu", "cloudflared", "storage", "network", "monitoring", "tenant"} {
-			if cfg.IsModuleEnabled(name) {
-				names = append(names, name)
-			}
-		}
-		if err := config.ValidateCapabilities(cfg, sys, names); err != nil {
+		if err := validateModules(cfg, sys, module.NewRegistry().Resolve(cfg, nil)); err != nil {
 			return cfg, source, err
 		}
 	}
@@ -78,21 +73,11 @@ func newConfigShowCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("reveal", false, "Show secrets (tunnel token) instead of masking them")
-	return cmd
-}
-
-func maskSecret(s string) string {
-	if s == "" {
-		return ""
-	}
-	if len(s) <= 8 {
-		return "****"
-	}
-	return s[:4] + "…" + "(masked)"
+	return usesConfigInputs(cmd)
 }
 
 func newConfigValidateCmd() *cobra.Command {
-	return &cobra.Command{
+	return usesConfigInputs(&cobra.Command{
 		Use:   "validate",
 		Short: "Validate a profile or config file (unknown keys, paths, ports, CIDRs, …)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -103,7 +88,7 @@ func newConfigValidateCmd() *cobra.Command {
 			fmt.Fprintln(cmd.OutOrStdout(), ui.StyleSuccess.Render(ui.MarkOK+" "+source+" is valid"))
 			return nil
 		},
-	}
+	})
 }
 
 func newConfigInitCmd() *cobra.Command {
@@ -117,7 +102,9 @@ func newConfigInitCmd() *cobra.Command {
 			fromSystem, _ := cmd.Flags().GetBool("from-system")
 			extends, _ := cmd.Flags().GetString("extends")
 			file, _ := cmd.Flags().GetString("file")
-			force, _ := cmd.Flags().GetBool("force")
+			overwrite, _ := cmd.Flags().GetBool("overwrite")
+			legacyForce, _ := cmd.Flags().GetBool("force")
+			overwrite = overwrite || legacyForce
 
 			var data []byte
 			if fromSystem {
@@ -144,8 +131,8 @@ func newConfigInitCmd() *cobra.Command {
 				_, err := cmd.OutOrStdout().Write(data)
 				return err
 			}
-			if _, err := os.Stat(file); err == nil && !force {
-				return fmt.Errorf("%s already exists (use --force to overwrite)", file)
+			if _, err := os.Stat(file); err == nil && !overwrite {
+				return fmt.Errorf("%s already exists (use --overwrite to replace it)", file)
 			}
 			// 0600: captured configs may contain the tunnel token.
 			if err := os.WriteFile(file, data, 0600); err != nil {
@@ -155,6 +142,9 @@ func newConfigInitCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().Bool("overwrite", false, "Overwrite an existing config file")
+	cmd.Flags().Bool("force", false, "Deprecated alias for --overwrite")
+	_ = cmd.Flags().MarkDeprecated("force", "use --overwrite instead")
 	cmd.Flags().Bool("from-system", false, "Capture settings from the running system")
 	cmd.Flags().String("extends", "", "Base profile for the template (default: detected suggestion)")
 	cmd.Flags().String("file", "", "Write to FILE instead of stdout")

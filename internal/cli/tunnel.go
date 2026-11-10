@@ -3,8 +3,8 @@ package cli
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -14,32 +14,29 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
+// applyCloudflaredSetup is shared by setup and its install alias; keeping the
+// module entry point injectable lets CLI tests validate inputs without a host.
+var applyCloudflaredSetup = func(ctx context.Context, rc *module.RunContext) (*module.ApplyResult, error) {
+	return module.NewCloudflaredModule().Apply(ctx, rc)
+}
+
 func newTunnelCmd() *cobra.Command {
 	tunnel := &cobra.Command{
 		Use:   "tunnel",
 		Short: "Manage cloudflared tunnel and VLAN private network",
 	}
 
-	tunnel.AddCommand(&cobra.Command{
-		Use:   "install",
-		Short: "Install cloudflared binary",
+	tunnel.AddCommand(usesRootFlags(&cobra.Command{
+		Use:     "setup [TOKEN]",
+		Aliases: []string{"install"},
+		Short:   "Set up the tunnel, its VLAN private network and the cloudflared binary",
+		Long: `Sets up the cloudflared binary, the tunnel token and the VLAN private network.
+Configured credentials (including tunnel_token_file) and VLAN settings are used
+unless an explicit token or VLAN address overrides them. Without credentials only
+the binary and any configured VLAN are managed. "install" is an alias of setup.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
-			if err != nil {
-				return err
-			}
-			m := module.NewCloudflaredModule()
-			_, err = m.Apply(cmd.Context(), rc)
-			return err
-		},
-	})
-
-	tunnel.AddCommand(&cobra.Command{
-		Use:   "setup [TOKEN]",
-		Short: "Setup tunnel + VLAN private network",
-		Args:  cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "cloudflared")
 			if err != nil {
 				return err
 			}
@@ -57,9 +54,28 @@ func newTunnelCmd() *cobra.Command {
 			if vlanAddr == "" {
 				vlanAddr = os.Getenv("ROOTFILES_VLAN_ADDRESS")
 			}
-			return module.TunnelSetup(cmd.Context(), rc, token, vlanAddr)
+			if token != "" {
+				rc.Config.Modules.Cloudflared.TunnelToken = token
+			}
+			if vlanAddr != "" {
+				rc.Config.Modules.Cloudflared.PrivateNetwork.Address = vlanAddr
+				rc.Config.Modules.Cloudflared.PrivateNetwork.Enabled = true
+			}
+			result, err := applyCloudflaredSetup(cmd.Context(), rc)
+			if err != nil {
+				return err
+			}
+			for _, warning := range result.Warnings {
+				fmt.Fprintln(cmd.ErrOrStderr(), ui.MarkWarn+" "+warning)
+			}
+			if result.Changed {
+				fmt.Fprintln(cmd.OutOrStdout(), "Cloudflared setup complete.")
+			} else {
+				fmt.Fprintln(cmd.OutOrStdout(), "Cloudflared setup is already current.")
+			}
+			return nil
 		},
-	})
+	}, "tunnel-token", "vlan-address"))
 
 	tunnel.AddCommand(&cobra.Command{
 		Use:   "status",
@@ -77,7 +93,7 @@ func newTunnelCmd() *cobra.Command {
 		Use:   "restart",
 		Short: "Restart cloudflared service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildConfigFreeRunContext(cmd)
+			rc, err := buildConfigFreeRunContext(cmd, "cloudflared")
 			if err != nil {
 				return err
 			}
@@ -85,7 +101,7 @@ func newTunnelCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("restarting cloudflared: %w", err)
 			}
-			fmt.Println("cloudflared service restarted.")
+			ui.WriteLine(cmd.OutOrStdout(), "cloudflared service restarted.")
 			return nil
 		},
 	})
@@ -102,13 +118,17 @@ don't run the tunnel just update the binary.
 Use --check to see the current installed version vs. the latest upstream tag
 without downloading or restarting anything.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildConfigFreeRunContext(cmd)
+			checkOnly, _ := cmd.Flags().GetBool("check")
+			var modules []string
+			if !checkOnly {
+				modules = []string{"cloudflared"}
+			}
+			rc, err := buildConfigFreeRunContext(cmd, modules...)
 			if err != nil {
 				return err
 			}
 			ctx := cmd.Context()
 
-			checkOnly, _ := cmd.Flags().GetBool("check")
 			version, _ := cmd.Flags().GetString("version")
 
 			if checkOnly {
@@ -126,7 +146,7 @@ without downloading or restarting anything.`,
 		Use:   "uninstall",
 		Short: "Remove tunnel service, VLAN, and binary",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "cloudflared")
 			if err != nil {
 				return err
 			}
@@ -134,7 +154,7 @@ without downloading or restarting anything.`,
 		},
 	})
 
-	return tunnel
+	return usesConfigTarget(tunnel)
 }
 
 // tunnelUpdateCheck prints the installed and upstream cloudflared versions
@@ -146,77 +166,60 @@ func tunnelUpdateCheck(ctx context.Context, rc *module.RunContext) error {
 		return fmt.Errorf("fetching latest cloudflared release: %w", err)
 	}
 
-	ui.WriteSection(os.Stdout, "Cloudflared update check")
+	out := rc.Output()
+	ui.WriteSection(out, "Cloudflared update check")
 
-	// currentCloudflaredVersion is package-private in module; derive from
-	// `cloudflared --version` here using the same logic.
-	current := ""
-	if rc.Runner.FileExists(cloudflaredPath) {
-		if res, err := rc.Runner.Query(ctx, cloudflaredPath, "--version"); err == nil {
-			for _, tok := range strings.Fields(res.Stdout) {
-				if len(tok) > 3 && tok[0] >= '0' && tok[0] <= '9' && strings.Contains(tok, ".") {
-					current = tok
-					break
-				}
-			}
-		}
-	}
+	current := module.InspectCloudflared(ctx, rc.Runner, cloudflaredPath).Version
 	if current == "" {
-		ui.WriteKV(os.Stdout, "Current", ui.StyleHint.Render("(not installed)"))
+		ui.WriteKV(out, "Current", ui.StyleHint.Render("(not installed)"))
 	} else {
-		ui.WriteKV(os.Stdout, "Current", current)
+		ui.WriteKV(out, "Current", current)
 	}
-	ui.WriteKV(os.Stdout, "Latest", latest)
+	ui.WriteKV(out, "Latest", latest)
 
 	switch {
 	case current == "":
-		ui.WriteHint(os.Stdout, "run `sudo rootfiles tunnel install` to install.")
+		ui.WriteHint(out, "run `sudo rootfiles tunnel setup` to install.")
 		return &ExitError{Code: exitDrift}
 	case normalizeVersion(current) == normalizeVersion(latest):
-		fmt.Println("  " + ui.StyleSuccess.Render(ui.MarkOK+" up to date."))
+		ui.WriteLine(out, "  "+ui.StyleSuccess.Render(ui.MarkOK+" up to date."))
 	default:
-		ui.WriteHint(os.Stdout, "run `sudo rootfiles tunnel update` to upgrade.")
+		ui.WriteHint(out, "run `sudo rootfiles tunnel update` to upgrade.")
 		return &ExitError{Code: exitDrift}
 	}
 	return nil
 }
 
-// cloudflaredPath is overridable in tests and mirrors internal/module/cloudflared.go's cloudflaredBinary
-// constant. Duplicated here rather than exported to keep the module surface
-// minimal; if it ever drifts, the `tunnel status` / `tunnel update --check`
-// pair will report inconsistent paths, which scenario tests will catch.
-var cloudflaredPath = "/usr/local/bin/cloudflared"
+// cloudflaredPath is an optional read-only inspection override for tests.
+// Empty uses the module's installed binary path.
+var cloudflaredPath string
 
 // buildRunContext loads the profile config and returns any load error. A
 // zero config would read and write user and GPU state under /home, skipping
 // home-base detection, and drop the profile's user defaults.
-func buildRunContext(cmd *cobra.Command) (*module.RunContext, error) {
-	return loadRunContext(cmd, false)
+func buildRunContext(cmd *cobra.Command, modules ...string) (*module.RunContext, error) {
+	return loadRunContext(cmd, false, modules)
 }
 
 // buildConfigFreeRunContext is buildRunContext for commands that need no
 // profile config, such as `tunnel status`: a load error is logged and
 // config.Fallback is used.
-func buildConfigFreeRunContext(cmd *cobra.Command) (*module.RunContext, error) {
-	return loadRunContext(cmd, true)
+func buildConfigFreeRunContext(cmd *cobra.Command, modules ...string) (*module.RunContext, error) {
+	return loadRunContext(cmd, true, modules)
 }
 
-func loadRunContext(cmd *cobra.Command, tolerateLoadErr bool) (*module.RunContext, error) {
+func loadRunContext(cmd *cobra.Command, tolerateLoadErr bool, modules []string) (*module.RunContext, error) {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	yes, _ := cmd.Flags().GetBool("yes")
-	if os.Getenv("ROOTFILES_YES") == "true" {
-		yes = true
-	}
+	yes := yesFlag(cmd)
 
-	runner := newRunner(cmd, dryRun)
-	logger := runner.Logger
+	logger := newLogger(cmd, true, slog.LevelInfo)
 
 	sysInfo, sysErr := detectSystem()
 	if sysErr != nil {
 		logger.Warn("system detection failed, using defaults", "err", sysErr)
 	}
 	profileName, configPath := resolveRunTarget(cmd, logger)
-	cfg, cfgErr := config.LoadWithHomeBase(profileName, configPath, sysInfo, homeBaseFlag(cmd))
+	cfg, cfgErr := config.LoadWithOverrides(profileName, configPath, sysInfo, loadOverrides(cmd))
 	if cfgErr != nil {
 		if !tolerateLoadErr {
 			return nil, cfgErr
@@ -228,14 +231,27 @@ func loadRunContext(cmd *cobra.Command, tolerateLoadErr bool) (*module.RunContex
 	// Apply flag overrides
 	applyFlagOverrides(cmd, cfg)
 
-	force, _ := cmd.Flags().GetBool("force")
+	validating := cmd.Annotations[annotMutates] == "true" && len(modules) > 0
+	if validating {
+		if err := config.ValidateCapabilities(cfg, sysInfo, modules); err != nil {
+			return nil, err
+		}
+	}
+	runner := newRunner(cmd, dryRun)
+	pm, err := exec.NewPackageManager(runner, sysInfo)
+	if err != nil {
+		if validating {
+			return nil, err
+		}
+		pm = statusPackageManager(runner, sysInfo)
+	}
 
 	return &module.RunContext{
 		Config: cfg,
+		Out:    cmd.OutOrStdout(),
 		Runner: runner,
-		APT:    exec.NewAPT(runner),
+		APT:    pm,
 		DryRun: dryRun,
 		Yes:    yes,
-		Force:  force,
 	}, nil
 }

@@ -2,7 +2,6 @@ package module
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
@@ -11,16 +10,15 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // Account lifecycle beyond creation: delete, lock, key management, expiry,
 // disk usage and metadata audit.
 
 func usersDBPath(rc *RunContext) string {
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	return filepath.Join(homeBase, ".rootfiles", "users.json")
 }
 
@@ -28,13 +26,13 @@ func usersDBPath(rc *RunContext) string {
 // false to delete the entry. Missing DB or entry is not an error.
 func updateUserMeta(rc *RunContext, name string, fn func(*UserMeta) bool) error {
 	path := usersDBPath(rc)
-	data, err := rc.Runner.ReadFile(path)
-	if err != nil {
-		return nil
-	}
 	var db UsersDB
-	if err := json.Unmarshal(data, &db); err != nil {
-		return fmt.Errorf("parsing %s: %w", path, err)
+	found, err := readJSONDB(path, &db)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return nil
 	}
 	var kept []UserMeta
 	for i := range db.Users {
@@ -45,14 +43,7 @@ func updateUserMeta(rc *RunContext, name string, fn func(*UserMeta) bool) error 
 		kept = append(kept, u)
 	}
 	db.Users = kept
-	out, err := json.MarshalIndent(db, "", "  ")
-	if err != nil {
-		return err
-	}
-	if err := refuseSymlink(path); err != nil {
-		return err
-	}
-	return rc.Runner.WriteFile(path, out, 0600)
+	return writeJSONDB(rc, path, &db, 0600)
 }
 
 // lookupManaged returns the account, refusing system accounts.
@@ -60,7 +51,7 @@ func lookupManaged(name string) (*user.User, error) {
 	if err := checkUsername(name); err != nil {
 		return nil, err
 	}
-	u, err := user.Lookup(name)
+	u, err := lookupAccount(name)
 	if err != nil {
 		return nil, fmt.Errorf("user %s not found", name)
 	}
@@ -100,7 +91,7 @@ func DeleteUser(ctx context.Context, rc *RunContext, name string, mode DeleteHom
 		if _, err := rc.Runner.Run(ctx, "tar", "-czf", archive, "-C", filepath.Dir(home), filepath.Base(home)); err != nil {
 			return fmt.Errorf("archiving %s (account left intact): %w", home, err)
 		}
-		fmt.Printf("  home archived to %s\n", archive)
+		ui.WriteText(rc.Output(), "  home archived to %s\n", archive)
 	}
 
 	if err := RevokeGPUs(ctx, rc, name); err != nil && !strings.Contains(err.Error(), "no GPU allocation") {
@@ -122,9 +113,9 @@ func DeleteUser(ctx context.Context, rc *RunContext, name string, mode DeleteHom
 		if _, err := rc.Runner.Run(ctx, "rm", "-rf", "--one-file-system", home); err != nil {
 			return fmt.Errorf("removing %s: %w", home, err)
 		}
-		fmt.Printf("User %s deleted (home removed)\n", name)
+		ui.WriteText(rc.Output(), "User %s deleted (home removed)\n", name)
 	default:
-		fmt.Printf("User %s deleted (home kept at %s)\n", name, home)
+		ui.WriteText(rc.Output(), "User %s deleted (home kept at %s)\n", name, home)
 	}
 	return nil
 }
@@ -138,7 +129,7 @@ func LockUser(ctx context.Context, rc *RunContext, name string) error {
 	if _, err := rc.Runner.Run(ctx, "usermod", "-L", "-e", "1", name); err != nil {
 		return fmt.Errorf("locking %s: %w", name, err)
 	}
-	fmt.Printf("User %s locked (password and SSH key logins blocked)\n", name)
+	ui.WriteText(rc.Output(), "User %s locked (password and SSH key logins blocked)\n", name)
 	return nil
 }
 
@@ -150,7 +141,7 @@ func UnlockUser(ctx context.Context, rc *RunContext, name string) error {
 	if _, err := rc.Runner.Run(ctx, "usermod", "-U", "-e", "", name); err != nil {
 		return fmt.Errorf("unlocking %s: %w", name, err)
 	}
-	fmt.Printf("User %s unlocked\n", name)
+	ui.WriteText(rc.Output(), "User %s unlocked\n", name)
 	return nil
 }
 
@@ -169,7 +160,7 @@ func SetExpiry(ctx context.Context, rc *RunContext, name, date string) error {
 	if _, err := rc.Runner.Run(ctx, "chage", "-E", arg, name); err != nil {
 		return fmt.Errorf("setting expiry: %w", err)
 	}
-	fmt.Printf("User %s expiry: %s\n", name, date)
+	ui.WriteText(rc.Output(), "User %s expiry: %s\n", name, date)
 	return nil
 }
 
@@ -186,7 +177,7 @@ func ListKeys(rc *RunContext, name string) error {
 	data, _ := rc.Runner.ReadFile(authorizedKeysPath(u))
 	keys := nonEmptyLines(string(data))
 	if len(keys) == 0 {
-		fmt.Printf("%s has no authorized keys\n", name)
+		ui.WriteText(rc.Output(), "%s has no authorized keys\n", name)
 		return nil
 	}
 	for i, k := range keys {
@@ -194,7 +185,7 @@ func ListKeys(rc *RunContext, name string) error {
 		if len(blob) > 40 {
 			blob = blob[:25] + "…" + blob[len(blob)-12:]
 		}
-		fmt.Printf("%2d  %-40s %s\n", i+1, blob, keyComment(k))
+		ui.WriteText(rc.Output(), "%2d  %-40s %s\n", i+1, blob, keyComment(k))
 	}
 	return nil
 }
@@ -214,7 +205,7 @@ func AddKey(ctx context.Context, rc *RunContext, name, key string) error {
 	}
 	path := authorizedKeysPath(u)
 	if len(missingKeys(path, []string{key})) == 0 {
-		fmt.Printf("key already present for %s\n", name)
+		ui.WriteText(rc.Output(), "key already present for %s\n", name)
 		return nil
 	}
 	var lines []string
@@ -230,7 +221,7 @@ func AddKey(ctx context.Context, rc *RunContext, name, key string) error {
 	}); err != nil {
 		return err
 	}
-	fmt.Printf("key added for %s\n", name)
+	ui.WriteText(rc.Output(), "key added for %s\n", name)
 	return nil
 }
 
@@ -287,7 +278,7 @@ func RemoveKey(ctx context.Context, rc *RunContext, name, sel string) error {
 	}); err != nil {
 		return err
 	}
-	fmt.Printf("removed %d key(s) for %s\n", len(removed), name)
+	ui.WriteText(rc.Output(), "removed %d key(s) for %s\n", len(removed), name)
 	return nil
 }
 

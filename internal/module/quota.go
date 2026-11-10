@@ -3,10 +3,11 @@ package module
 import (
 	"context"
 	"fmt"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // Per-user disk quotas on the home_base filesystem. XFS uses project
@@ -137,19 +138,16 @@ func SetQuota(ctx context.Context, rc *RunContext, username, size string) error 
 		return err
 	}
 	if kib == 0 {
-		fmt.Printf("quota removed for %s\n", username)
+		ui.WriteText(rc.Output(), "quota removed for %s\n", username)
 	} else {
-		fmt.Printf("quota for %s set to %s on %s (%s)\n", username, size, mnt.Point, mnt.FSType)
+		ui.WriteText(rc.Output(), "quota for %s set to %s on %s (%s)\n", username, size, mnt.Point, mnt.FSType)
 	}
 	return nil
 }
 
 // ShowQuotas prints the quota report for the home_base filesystem.
 func ShowQuotas(ctx context.Context, rc *RunContext) error {
-	homeBase := rc.Config.Users.HomeBase
-	if homeBase == "" {
-		homeBase = "/home"
-	}
+	homeBase := rc.Config.Users.Base()
 	mnt, err := findMount(rc, homeBase)
 	if err != nil {
 		return err
@@ -171,7 +169,7 @@ func ShowQuotas(ctx context.Context, rc *RunContext) error {
 	default:
 		return fmt.Errorf("quotas are supported on xfs and ext4; %s is %s", mnt.Point, mnt.FSType)
 	}
-	fmt.Print(out)
+	ui.WriteRaw(rc.Output(), out)
 	return nil
 }
 
@@ -180,10 +178,10 @@ func reapplyQuota(ctx context.Context, rc *RunContext, m UserMeta) {
 	if m.Quota == "" {
 		return
 	}
-	if _, err := user.Lookup(m.Name); err != nil {
+	if _, err := lookupAccount(m.Name); err != nil {
 		return
 	}
 	if err := SetQuota(ctx, rc, m.Name, m.Quota); err != nil {
-		fmt.Printf("  ⚠ %s: quota %s not restored: %v\n", m.Name, m.Quota, err)
+		ui.WriteText(rc.Output(), "  "+ui.MarkWarn+" %s: quota %s not restored: %v\n", m.Name, m.Quota, err)
 	}
 }

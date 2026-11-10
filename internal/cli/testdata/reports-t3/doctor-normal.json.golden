@@ -1,0 +1,18 @@
+{
+  "applied_config_sha256": "",
+  "failed": 0,
+  "findings": [
+    {
+      "check": "fixture <&> \"ok\"\nsecond",
+      "level": "ok",
+      "detail": "healthy <&> \"quoted\"\nnext line"
+    },
+    {
+      "check": "fixture <&> \"warn\"\nsecond",
+      "level": "warn",
+      "detail": "warning <&> \"quoted\"\nnext line",
+      "hint": "inspect fixture <&> \"target\"\nthen retry"
+    }
+  ],
+  "version": "report-contract"
+}

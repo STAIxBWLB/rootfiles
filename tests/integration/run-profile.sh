@@ -17,9 +17,25 @@ install -d -m 700 -o ciadmin -g ciadmin /home/ciadmin/.ssh
 echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl ci" \
     > /home/ciadmin/.ssh/authorized_keys
 
+# The dgx profile keeps the tunnel's private VLAN site-specific, so the DGX
+# scenario sets it the way an operator does: a config that extends the profile.
+PROFILE_ARG=(--profile "$PROFILE")
+if [ "$PROFILE" = "dgx" ]; then
+    cat > /tmp/dgx-site.yaml <<'YAML'
+extends: dgx
+modules:
+  cloudflared:
+    private_network:
+      enabled: true
+      interface: vlan0
+      address: 192.0.2.40/32
+YAML
+    PROFILE_ARG=(--config /tmp/dgx-site.yaml)
+fi
+
 # Apply profile
 echo "--- Applying profile: $PROFILE ---"
-rootfiles apply --profile "$PROFILE" --module "$CI_MODULES" --yes 2>&1 || true
+rootfiles apply "${PROFILE_ARG[@]}" --module "$CI_MODULES" --yes 2>&1 || true
 
 # Common assertions (all profiles include base)
 echo "--- Verifying base packages ---"
@@ -70,10 +86,10 @@ case "$PROFILE" in
         assert_file_exists "/etc/ssh/sshd_config.d/00-rootfiles.conf"
         assert_file_contains "/etc/ssh/sshd_config.d/00-rootfiles.conf" "PasswordAuthentication no"
 
-        # VLAN interface
+        # VLAN interface, from the site config the scenario extends dgx with
         assert_file_exists "/etc/systemd/network/10-cloudflared-vlan.netdev"
         assert_file_exists "/etc/systemd/network/10-cloudflared-vlan.network"
-        assert_file_contains "/etc/systemd/network/10-cloudflared-vlan.network" "172.16"
+        assert_file_contains "/etc/systemd/network/10-cloudflared-vlan.network" "192.0.2.40/32"
         ;;
     gpu-server)
         echo "--- Verifying gpu-server-specific ---"
@@ -83,6 +99,6 @@ esac
 
 echo ""
 echo "--- Verifying idempotency ---"
-rootfiles check --profile "$PROFILE" 2>&1 || true
+rootfiles check "${PROFILE_ARG[@]}" 2>&1 || true
 
 report

@@ -21,8 +21,10 @@ func newGPUCmd() *cobra.Command {
 		Use:   "assign USERNAME",
 		Short: "Assign GPUs to a user",
 		Args:  cobra.ExactArgs(1),
+		Example: `  sudo rootfiles gpu assign alice --gpus 0,1
+  sudo rootfiles gpu assign alice --gpus 2,3 --method cgroup`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
 				return err
 			}
@@ -51,7 +53,7 @@ func newGPUCmd() *cobra.Command {
 		Short: "Revoke GPU allocation from a user",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
 				return err
 			}
@@ -64,7 +66,7 @@ func newGPUCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List current GPU allocations",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
 				return err
 			}
@@ -77,7 +79,7 @@ func newGPUCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show GPU status with allocation info",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
 				return err
 			}
@@ -90,7 +92,7 @@ func newGPUCmd() *cobra.Command {
 		Use:   "status",
 		Short: "Show MIG mode and instances per GPU",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rc, err := buildRunContext(cmd)
+			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
 				return err
 			}
@@ -114,7 +116,7 @@ func newGPUCmd() *cobra.Command {
 	})
 	gpuCmd.AddCommand(migCmd)
 
-	return gpuCmd
+	return usesConfigTarget(gpuCmd)
 }
 
 func parseGPUList(s string) ([]int, error) {

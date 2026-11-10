@@ -11,6 +11,7 @@ import (
 	"syscall"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 const fleetSudoBinaryDefault = "/usr/local/bin/rootfiles"
@@ -47,7 +48,7 @@ func fleetSudoersContent(users []string) ([]byte, error) {
 	}
 
 	var b strings.Builder
-	b.WriteString("# Managed by rootfiles-v2\n")
+	b.WriteString("# Managed by rootfiles\n")
 	b.WriteString("Cmnd_Alias ROOTFILES_FLEET_READONLY = ")
 	b.WriteString(strings.Join(fleetSudoCommands, ", "))
 	b.WriteString("\n")
@@ -202,7 +203,7 @@ func checkFleetSudo(ctx context.Context, rc *RunContext) ([]Change, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading fleet sudoers drop-in: %w", err)
 	}
-	if string(current) != string(expected) || !fleetSudoDropInSafe(info) {
+	if !exec.ManagedContentEqual(string(current), string(expected)) || !fleetSudoDropInSafe(info) {
 		return []Change{{Description: "Update read-only fleet sudoers rule", Command: "write " + fleetSudoersPath()}}, nil
 	}
 	for _, username := range users {
@@ -244,7 +245,7 @@ func applyFleetSudo(ctx context.Context, rc *RunContext) (*ApplyResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("reading fleet sudoers drop-in: %w", err)
 		}
-		changed = string(current) != string(expected) || !fleetSudoDropInSafe(info)
+		changed = !exec.ManagedContentEqual(string(current), string(expected)) || !fleetSudoDropInSafe(info)
 	}
 	if changed {
 		if err := writeFleetSudoers(ctx, rc, expected); err != nil {

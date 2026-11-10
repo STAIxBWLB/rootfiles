@@ -142,7 +142,7 @@ func TestPiperUnit(t *testing.T) {
 	rc := newDryRunRC(t)
 	rc.Config.Modules.Tenant.SSHPiper = config.SSHPiperConfig{Enabled: true}
 	u := piperUnitContent(rc)
-	for _, want := range []string{"--port 2222", "--address 0.0.0.0", "/v1.6.1/plugins/yaml --config /etc/rootfiles/sshpiper/tenants/*.yaml -- ", "/plugins/failtoban", "--server-key-generate-mode notexist"} {
+	for _, want := range []string{"--port 2222", "--address 0.0.0.0", "/v1.6.1/plugins/yaml --config " + piperConfDir + "/tenants/*.yaml -- ", "/plugins/failtoban", "--server-key-generate-mode notexist"} {
 		if !strings.Contains(u, want) {
 			t.Errorf("unit lacks %q:\n%s", want, u)
 		}
@@ -192,5 +192,110 @@ func TestPiperUnitFailtobanIgnore(t *testing.T) {
 		if err := rc.Config.Validate(); err == nil || !strings.Contains(err.Error(), "failtoban_ignore") {
 			t.Errorf("bad entry %q accepted: %v", bad, err)
 		}
+	}
+}
+
+func TestPiperRemovalReloadFailureWarnsWithoutConvergedReload(t *testing.T) {
+	dir := t.TempDir()
+	oldUnitDir, oldConf := tenantUnitDir, piperConfDir
+	tenantUnitDir, piperConfDir = dir, filepath.Join(dir, "piper")
+	t.Cleanup(func() { tenantUnitDir, piperConfDir = oldUnitDir, oldConf })
+	if err := os.WriteFile(piperUnitPath(), []byte("old unit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	calls := filepath.Join(dir, "calls")
+	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '"+calls+"'\ncase $1 in daemon-reload) echo 'systemd unavailable' >&2; exit 1;; esac\n")
+	rc := newRealRC(t)
+	var warnings []string
+	note := func(string) {}
+	warn := func(warning string) { warnings = append(warnings, warning) }
+	if err := applyPiper(context.Background(), rc, note, warn); err != nil {
+		t.Fatalf("removed unit should survive reload failure: %v", err)
+	}
+	if len(warnings) != 1 || !strings.Contains(warnings[0], "run sudo systemctl daemon-reload") {
+		t.Fatalf("removal lost manual repair warning: %v", warnings)
+	}
+	if changes, err := piperChanges(context.Background(), rc); err != nil || len(changes) != 0 {
+		t.Fatalf("disabled piper should converge: changes=%+v error=%v", changes, err)
+	}
+	if err := applyPiper(context.Background(), rc, note, warn); err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 1 || strings.Count(readCalls(t, calls), "daemon-reload\n") != 1 {
+		t.Fatalf("converged disabled piper retried reload: warnings=%v calls=%s", warnings, readCalls(t, calls))
+	}
+}
+
+func TestLegacyTenantHostFilesNoChurnAndUnsafeSudoersRepair(t *testing.T) {
+	sudoCalls := setFleetSudoTestState(t, "")
+	// The fleet fixture grants synthetic root ownership only to its own
+	// drop-in. Extend that seam to this tenant drop-in alone, retaining its
+	// real mode and symlink state so unsafe metadata still triggers repair.
+	inspect := fleetSudoLstat
+	fleetSudoLstat = func(path string) (os.FileInfo, error) {
+		info, err := inspect(path)
+		if err != nil || filepath.Clean(path) != filepath.Clean(tenantSudoersPath()) || info.Mode()&os.ModeSymlink != 0 {
+			return info, err
+		}
+		return fleetSudoTestFileInfo{name: info.Name(), mode: info.Mode(), uid: 0}, nil
+	}
+	t.Cleanup(func() { fleetSudoLstat = inspect })
+	dir := t.TempDir()
+	oldUnits, oldGuard := tenantUnitDir, tenantGuardPath
+	tenantUnitDir, tenantGuardPath = filepath.Join(dir, "units"), filepath.Join(dir, "guard")
+	t.Cleanup(func() { tenantUnitDir, tenantGuardPath = oldUnits, oldGuard })
+	calls := filepath.Join(dir, "systemctl-calls")
+	fakeMonitoringCommand(t, "systemctl", "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '"+calls+"'\ncase $1 in is-enabled) echo enabled;; *) exit 1;; esac\n")
+	fakeMonitoringCommand(t, "getent", "#!/bin/sh\nexit 0\n")
+	rc := newRealRC(t)
+	rc.Config.Modules.Tenant.Enabled = true
+	files := map[string]string{}
+	for _, file := range tenantFiles() {
+		files[file.path] = file.content
+	}
+	snapshots := seedLegacyManagedFiles(t, files)
+	for _, file := range tenantFiles() {
+		if err := os.Chmod(file.path, file.mode); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(tenantSudoersPath(), tenantSudoersContent(rc.Config.Modules.Tenant.Group()), 0o440); err != nil {
+		t.Fatal(err)
+	}
+	checkApplyLegacyHeaders(t, NewTenantModule(), rc, snapshots)
+	for _, file := range tenantFiles() {
+		info, err := os.Stat(file.path)
+		if err != nil || info.Mode().Perm() != file.mode {
+			t.Fatalf("legacy file mode changed for %s: %v", file.path, err)
+		}
+	}
+	for _, line := range strings.Split(strings.TrimSpace(readCalls(t, calls)), "\n") {
+		if !strings.HasPrefix(line, "is-enabled ") {
+			t.Fatalf("legacy host files caused a service mutation: %s", line)
+		}
+	}
+	if data, _ := os.ReadFile(sudoCalls); strings.Contains(string(data), "visudo") {
+		t.Fatalf("legacy host files rewrote safe sudoers: %s", data)
+	}
+
+	// Metadata safety is independent of content equivalence: an unsafe
+	// sudoers mode must still be reported and repaired transactionally.
+	if err := os.Chmod(tenantSudoersPath(), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	check, err := NewTenantModule().Check(context.Background(), rc)
+	if err != nil || check.Satisfied {
+		t.Fatalf("unsafe sudoers metadata was accepted: Check=%+v error=%v", check, err)
+	}
+	result, err := NewTenantModule().Apply(context.Background(), rc)
+	if err != nil || result == nil || !result.Changed {
+		t.Fatalf("unsafe sudoers was not repaired: Apply=%+v error=%v", result, err)
+	}
+	info, err := os.Stat(tenantSudoersPath())
+	if err != nil || info.Mode().Perm() != 0o440 {
+		t.Fatalf("sudoers repair did not restore safe mode: %v", err)
+	}
+	if data, _ := os.ReadFile(sudoCalls); !strings.Contains(string(data), "visudo -cf") {
+		t.Fatalf("sudoers repair bypassed validation: %s", data)
 	}
 }

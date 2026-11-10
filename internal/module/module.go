@@ -3,7 +3,7 @@ package module
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +11,7 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // Module is the interface that all rootfiles modules must implement.
@@ -22,6 +23,8 @@ type Module interface {
 
 // RunContext carries config and runtime options to all modules.
 type RunContext struct {
+	// Out receives command text; nil preserves the traditional stdout default.
+	Out    io.Writer
 	Config *config.Config
 	Runner *exec.Runner
 	APT    exec.PackageManager
@@ -33,6 +36,14 @@ type RunContext struct {
 	// run maps the modules of the current RunAll or CheckAll to whether
 	// they have failed so far; nil outside one.
 	run map[string]bool
+}
+
+// Output returns the command writer, retaining stdout for callers without one.
+func (rc *RunContext) Output() io.Writer {
+	if rc.Out != nil {
+		return rc.Out
+	}
+	return os.Stdout
 }
 
 // moduleSucceeding reports whether module name is part of the current run
@@ -81,24 +92,8 @@ type ApplyResult struct {
 	Warnings []string
 }
 
-// defaultOrder defines the static module execution order.
-// Dependencies are implicit in the ordering.
-var defaultOrder = []string{
-	"locale",
-	"system", // before packages: an APT mirror applies to the first install
-	"packages",
-	"users", // before ssh: declared accounts (and their keys) must exist before password auth is disabled
-	"ssh",
-	"security", // after ssh: the fail2ban jail follows the configured SSH port
-	"docker",
-	"nvidia",
-	"gpu",
-	"cloudflared",
-	"storage",
-	"network",
-	"monitoring",
-	"tenant", // after docker and nvidia: tenant containers need both
-}
+// defaultOrder keeps the config-owned static module execution order.
+var defaultOrder = config.ModuleNames()
 
 // Registry manages module registration and resolution.
 type Registry struct {
@@ -170,14 +165,14 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		check, err := m.Check(ctx, rc)
 		if err != nil {
 			rc.run[m.Name()] = true
-			fmt.Printf("  ⚠ %s: check error: %v\n", m.Name(), err)
+			ui.WriteBullet(rc.Output(), ui.WarnMark(), fmt.Sprintf("%s: check error: %v", m.Name(), err))
 			out.Status, out.Error = "failed", "check: "+err.Error()
 			errors = append(errors, fmt.Sprintf("%s: check: %v", m.Name(), err))
 			outcomes = append(outcomes, out)
 			continue
 		}
 		if check.Satisfied {
-			fmt.Printf("  ✓ %s: already satisfied\n", m.Name())
+			ui.WriteBullet(rc.Output(), ui.OKMark(), fmt.Sprintf("%s: already satisfied", m.Name()))
 			out.Status = "satisfied"
 			outcomes = append(outcomes, out)
 			continue
@@ -187,11 +182,11 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		var blocked []string
 		for _, c := range check.Changes {
 			if c.State == ChangeBlocked {
-				fmt.Printf("  ✗ %s: blocked: %s\n", m.Name(), c.Description)
+				ui.WriteBullet(rc.Output(), ui.FailMark(), fmt.Sprintf("%s: blocked: %s", m.Name(), c.Description))
 				blocked = append(blocked, c.Description)
 				continue
 			}
-			fmt.Printf("  → %s: %s\n", m.Name(), c.Description)
+			ui.WriteBullet(rc.Output(), ui.PendingMark(), fmt.Sprintf("%s: %s", m.Name(), c.Description))
 		}
 
 		if rc.DryRun {
@@ -209,7 +204,7 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		result, err := m.Apply(ctx, rc)
 		if err != nil {
 			rc.run[m.Name()] = true
-			fmt.Printf("  ✗ %s: %v\n", m.Name(), err)
+			ui.WriteBullet(rc.Output(), ui.FailMark(), fmt.Sprintf("%s: %v", m.Name(), err))
 			out.Status, out.Error = "failed", err.Error()
 			errors = append(errors, fmt.Sprintf("%s: %v", m.Name(), err))
 			outcomes = append(outcomes, out)
@@ -219,11 +214,11 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 		if result.Changed {
 			out.Status = "changed"
 			for _, msg := range result.Messages {
-				fmt.Printf("  ✓ %s: %s\n", m.Name(), msg)
+				ui.WriteBullet(rc.Output(), ui.OKMark(), fmt.Sprintf("%s: %s", m.Name(), msg))
 			}
 		}
 		for _, w := range result.Warnings {
-			fmt.Printf("  ⚠ %s: %s\n", m.Name(), w)
+			ui.WriteBullet(rc.Output(), ui.WarnMark(), fmt.Sprintf("%s: %s", m.Name(), w))
 		}
 		out.Messages, out.Warnings = result.Messages, result.Warnings
 		outcomes = append(outcomes, out)
@@ -237,30 +232,21 @@ func RunAll(ctx context.Context, modules []Module, rc *RunContext) ([]state.Modu
 	return outcomes, nil
 }
 
-// ensureMetaDir ensures the .rootfiles metadata directory exists under homeBase.
-// If a legacy flat file exists at that path (from older rootfiles versions),
-// it is migrated into the directory as users.json.
+// ensureMetaDir refuses the obsolete single-file metadata layout without mutation.
 func ensureMetaDir(runner *exec.Runner, homeBase string) error {
 	metaDir := filepath.Join(homeBase, ".rootfiles")
-	info, err := os.Stat(metaDir)
+	info, err := os.Lstat(metaDir)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("cannot inspect metadata path %s: %w; repair its permissions before retrying", metaDir, err)
+	}
 	if err == nil && !info.IsDir() {
-		// Legacy flat file exists — migrate it into the directory.
-		tmp := metaDir + ".migrating"
-		if err := os.Rename(metaDir, tmp); err != nil {
-			return fmt.Errorf("migrating legacy .rootfiles file: %w", err)
-		}
-		if err := os.MkdirAll(metaDir, 0755); err != nil {
-			// Attempt to restore on failure.
-			os.Rename(tmp, metaDir)
-			return fmt.Errorf("creating .rootfiles dir after migration: %w", err)
-		}
-		dest := filepath.Join(metaDir, "users.json")
-		if err := os.Rename(tmp, dest); err != nil {
-			return fmt.Errorf("moving legacy file into .rootfiles dir: %w", err)
-		}
-		slog.Info("migrated legacy .rootfiles file to directory", "path", dest)
+		return legacyMetadataError(metaDir)
 	}
 	return runner.MkdirAll(metaDir, 0755)
+}
+
+func legacyMetadataError(metaDir string) error {
+	return fmt.Errorf("metadata path %s is not a directory; move the legacy file to a safe location, create %s as a directory, then place the file at %s before retrying", metaDir, metaDir, filepath.Join(metaDir, "users.json"))
 }
 
 // CheckAll runs Check on each module and returns results.

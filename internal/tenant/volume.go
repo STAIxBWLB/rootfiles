@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // EnsureVolume creates the tenant volume image, its mount unit and the
@@ -71,7 +73,7 @@ func (m *Manager) EnsureVolume(ctx context.Context, s *Spec) error {
 	case size > cur:
 		return m.grow(ctx, s, size)
 	case size < cur:
-		m.printf("⚠ %s volume is %s, larger than the spec's %s; shrink it with `rootfiles tenant volume resize %s %s --offline`\n",
+		m.printf(ui.MarkWarn+" %s volume is %s, larger than the spec's %s; shrink it with `rootfiles tenant volume resize %s %s --offline`\n",
 			s.Name, human(cur), s.Volume.Size, s.Name, s.Volume.Size)
 	}
 	return nil

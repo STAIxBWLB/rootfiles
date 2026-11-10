@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
 
 // untrustedMetaBases builds home bases whose metadata a user other than
@@ -120,6 +118,7 @@ func TestMetadataCommandsRefuseUntrustedBase(t *testing.T) {
 
 // AC1b: a backup leaves out the users database of an untrusted base.
 func TestBackupUsersLeavesOutUntrustedDatabase(t *testing.T) {
+	fixtureSystemUsers(t)
 	for _, tc := range untrustedMetaBases {
 		t.Run(tc.name, func(t *testing.T) {
 			parent := t.TempDir()
@@ -127,7 +126,7 @@ func TestBackupUsersLeavesOutUntrustedDatabase(t *testing.T) {
 			rc := newDryRunRC(t)
 			// BackupUsers writes through the runner, which a dry run gates.
 			rc.DryRun = false
-			rc.Runner = exec.NewRunner(false, rc.Runner.Logger)
+			rc.Runner = guardedTestRunner(t, false, rc.Runner.Logger)
 			rc.Config.Users.HomeBase = tc.setup(t, parent)
 			var warn bytes.Buffer
 			old := warnOut
@@ -168,7 +167,7 @@ func TestMetadataWritesRefuseSymlinks(t *testing.T) {
 	}
 	rc := newDryRunRC(t)
 	rc.DryRun = false
-	rc.Runner = exec.NewRunner(false, rc.Runner.Logger)
+	rc.Runner = guardedTestRunner(t, false, rc.Runner.Logger)
 	rc.Config.Users.HomeBase = base
 	if err := updateUserMeta(rc, "mallory", func(*UserMeta) bool { return false }); err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Errorf("updateUserMeta error = %v, want a symlink refusal", err)

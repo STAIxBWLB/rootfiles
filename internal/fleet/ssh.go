@@ -30,12 +30,6 @@ type SSHRunner struct {
 // reasonConnectFailed marks a host ssh could not connect to, so nothing ran.
 const reasonConnectFailed = "ssh connection failed"
 
-// RunRemote executes one already-constructed remote command. Callers must use
-// fixed command tokens and validate any values embedded in the shell string.
-func (r SSHRunner) RunRemote(ctx context.Context, h NamedHost, op, remote string, input []byte) Result {
-	return r.run(ctx, h, op, remote, input)
-}
-
 // RunMutationRemote applies the bounded mutation deadline to one remote write.
 func (r SSHRunner) RunMutationRemote(ctx context.Context, h NamedHost, op, remote string, input []byte) Result {
 	return r.runMutation(ctx, h, op, remote, input)
@@ -88,7 +82,7 @@ func (r SSHRunner) ReadOnly(ctx context.Context, h NamedHost, op string) Result 
 	res = compareFingerprint(res, h.Host.ConfigFingerprint)
 	if res.State == "error" && op == "status" && len(res.Remote) == 0 && missingRemoteBinary(res) {
 		probe := "hostname; cat /etc/os-release; uptime; " + remoteBinary + " --version 2>&1"
-		p := r.run(ctx, h, op, "/bin/sh -c "+shellQuote(probe), nil)
+		p := r.run(ctx, h, op, "/bin/sh -c "+ShellQuote(probe), nil)
 		if p.State != "unreachable" && p.State != "needs-privilege" && len(p.Remote) == 0 && missingRemoteBinary(p) {
 			p.State = "missing"
 			p.Reason = "rootfiles is not installed"
@@ -356,4 +350,5 @@ func lastLine(s string, match func(string) bool) string {
 	return ""
 }
 
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+// ShellQuote quotes a single argument for a POSIX shell.
+func ShellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }

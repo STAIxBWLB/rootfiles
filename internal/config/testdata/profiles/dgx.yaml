@@ -1,0 +1,82 @@
+locale: en_US.UTF-8
+timezone: Asia/Seoul
+modules:
+    locale:
+        enabled: true
+    system:
+        enabled: true
+        journald_max_use: 2G
+    packages:
+        enabled: true
+    ssh:
+        enabled: true
+    users:
+        enabled: true
+    security:
+        enabled: true
+        unattended_upgrades: true
+        fail2ban: true
+        time_sync: true
+    docker:
+        enabled: true
+        storage_dir: /raid/docker
+    nvidia:
+        enabled: true
+        gpu_allocation:
+            enabled: true
+            method: both
+        persistenced: true
+        fabric_manager: true
+    cloudflared:
+        enabled: true
+    storage:
+        enabled: true
+        data_dir: /raid/data
+        symlinks:
+            /data: /raid/data
+    network:
+        enabled: true
+        ufw: true
+        allowed_ports:
+            - 80
+            - 443
+    monitoring:
+        enabled: false
+        node_exporter: false
+        dcgm_exporter: false
+        perimeter_firewall: false
+        hub:
+            enabled: false
+packages:
+    - ca-certificates
+    - curl
+    - wget
+    - gnupg
+    - lsb-release
+    - git
+    - git-lfs
+    - vim
+    - tmux
+    - tree
+    - jq
+    - htop
+    - unzip
+    - zip
+    - build-essential
+    - locales
+    - zsh
+    - software-properties-common
+packages_extra:
+    - openssh-server
+    - ufw
+    - fail2ban
+users:
+    home_base: /raid/home
+    default_shell: /usr/bin/zsh
+    default_groups:
+        - sudo
+        - docker
+    sudo_nopasswd: true
+ssh:
+    disable_root_login: true
+    disable_password_auth: true

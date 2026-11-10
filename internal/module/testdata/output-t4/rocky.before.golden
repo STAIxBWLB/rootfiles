@@ -1,0 +1,9 @@
+  ✓ locale: already satisfied
+  → system: Cap journald at 2G
+  → packages: Install 19 packages: [ca-certificates curl wget gnupg2 git vim-enhanced tmux tree jq unzip zip gcc gcc-c++ make glibc-langpack-en zsh openssh-server chrony dnf-automatic]
+  ✓ users: already satisfied
+  → ssh: Deploy custom sshd configuration
+  → security: Install [dnf-automatic chrony]
+  → security: Configure security-only automatic updates for Rocky baseos/appstream (no reboot, GPU packages excluded)
+  → security: Enable DNF automatic security update timer
+  → security: Enable chronyd time synchronization

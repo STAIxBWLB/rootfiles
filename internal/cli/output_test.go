@@ -4,9 +4,39 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
+
+// A renamed path flag keeps reading its deprecated alias, and the new name
+// wins when an operator passes both.
+func TestStringFlagOrAlias(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"default", nil, "default"},
+		{"new flag", []string{"--dir", "/srv/new"}, "/srv/new"},
+		{"alias only", []string{"--output", "/srv/old"}, "/srv/old"},
+		{"shorthand alias", []string{"-o", "/srv/short"}, "/srv/short"},
+		{"both", []string{"--output", "/srv/old", "--dir", "/srv/new"}, "/srv/new"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := &cobra.Command{}
+			cmd.Flags().String("dir", "default", "")
+			cmd.Flags().StringP("output", "o", "", "")
+			if err := cmd.Flags().Parse(tc.args); err != nil {
+				t.Fatal(err)
+			}
+			if got := stringFlagOrAlias(cmd, "dir", "output"); got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
 
 // recordProfileApply records a successful dgx apply with a --home-base
 // override, keeping its resolved config copy as apply would, and returns the

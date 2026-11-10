@@ -19,64 +19,6 @@ var (
 	shadowPath = "/etc/shadow"
 )
 
-// ufwState is the parsed output of `ufw status`.
-type ufwState struct {
-	Active  bool
-	Allowed map[int]bool
-}
-
-// parseUFWStatus parses `ufw status` output. Only exact port matches on
-// ALLOW rules count (so "2222" does not satisfy a request for "22").
-func parseUFWStatus(out string) ufwState {
-	st := ufwState{Allowed: map[int]bool{}}
-	for _, line := range strings.Split(out, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "Status:") {
-			st.Active = strings.TrimSpace(strings.TrimPrefix(line, "Status:")) == "active"
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		allow := false
-		for _, f := range fields[1:] {
-			if f == "ALLOW" {
-				allow = true
-				break
-			}
-		}
-		if !allow {
-			continue
-		}
-		spec := fields[0]
-		if i := strings.Index(spec, "/"); i >= 0 {
-			if proto := spec[i+1:]; proto != "tcp" {
-				continue // udp-only rules do not admit SSH
-			}
-			spec = spec[:i]
-		}
-		for _, ps := range strings.Split(spec, ",") {
-			if p, err := strconv.Atoi(ps); err == nil {
-				st.Allowed[p] = true
-			}
-		}
-	}
-	return st
-}
-
-// queryUFW returns the current UFW state, or ok=false when ufw is absent.
-func queryUFW(ctx context.Context, rc *RunContext) (ufwState, bool) {
-	if !rc.Runner.CommandExists("ufw") {
-		return ufwState{Allowed: map[int]bool{}}, false
-	}
-	res, err := rc.Runner.Query(ctx, "ufw", "status")
-	if err != nil || res == nil {
-		return ufwState{Allowed: map[int]bool{}}, false
-	}
-	return parseUFWStatus(res.Stdout), true
-}
-
 // sshPorts returns the ports sshd listens on (or will, once the ssh module
 // has run): the configured port when set, otherwise the effective ports
 // reported by `sshd -T`, otherwise every Port directive in the config
@@ -87,9 +29,6 @@ func sshPorts(ctx context.Context, rc *RunContext) []int {
 		return []int{rc.Config.SSH.Port}
 	}
 	if bin := sshdBinary(rc); bin != "" {
-		// sshd -T refuses to run without its privilege separation dir,
-		// which only exists while sshd runs. Creating it is harmless.
-		_ = os.MkdirAll("/run/sshd", 0755)
 		if res, err := rc.Runner.Query(ctx, bin, "-T"); err == nil {
 			if ports := parsePortDirectives(res.Stdout); len(ports) > 0 {
 				return ports
@@ -135,13 +74,16 @@ func globFiles(dir, pattern string) []string {
 	return m
 }
 
+// sshdSystemBinary is overridable so tests never fall back to the host daemon.
+var sshdSystemBinary = "/usr/sbin/sshd"
+
 // sshdBinary locates sshd, which lives in /usr/sbin and may be off PATH.
 func sshdBinary(rc *RunContext) string {
 	if rc.Runner.CommandExists("sshd") {
 		return "sshd"
 	}
-	if rc.Runner.FileExists("/usr/sbin/sshd") {
-		return "/usr/sbin/sshd"
+	if sshdSystemBinary != "" && rc.Runner.FileExists(sshdSystemBinary) {
+		return sshdSystemBinary
 	}
 	return ""
 }

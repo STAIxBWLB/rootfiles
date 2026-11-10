@@ -12,7 +12,7 @@ import (
 )
 
 // TenantModule prepares a host for `rootfiles tenant` containers: the GPU
-// device guard, the daily password sync, fstrim, the operator sudoers rule
+// device guard, the two-minute password sync, fstrim, the operator sudoers rule
 // and the volume mount units of existing tenants.
 type TenantModule struct{}
 
@@ -35,10 +35,13 @@ var tenantTimers = []string{tenantGuardUnit + ".timer", tenantSyncUnit + ".timer
 // NewTenantManager returns a tenant manager wired to rc's runner, config and
 // the shared GPU ledger.
 func NewTenantManager(rc *RunContext, out io.Writer) *tenant.Manager {
+	if out == nil {
+		out = rc.Output()
+	}
 	return &tenant.Manager{
 		Runner:  rc.Runner,
 		Root:    rc.Config.Modules.Tenant.DataRoot(),
-		SpecDir: tenant.SpecDir(metaHomeBase(rc)),
+		SpecDir: tenant.SpecDir(rc.Config.Users.Base()),
 		UnitDir: tenantUnitDir,
 		Out:     out,
 		ReserveGPUs: func(ctx context.Context, t string, gpus []int) error {
@@ -128,7 +131,7 @@ func tenantChanges(ctx context.Context, rc *RunContext) ([]Change, error) {
 	var changes []Change
 	add := func(desc, cmd string) { changes = append(changes, Change{Description: desc, Command: cmd}) }
 	for _, f := range tenantFiles() {
-		if cur, err := rc.Runner.ReadFile(f.path); err != nil || string(cur) != f.content {
+		if !fileEquals(rc, f.path, f.content) {
 			add("Write "+filepath.Base(f.path), "write "+f.path)
 		}
 	}
@@ -145,7 +148,8 @@ func tenantChanges(ctx context.Context, rc *RunContext) ([]Change, error) {
 		return nil, err
 	}
 	cur, err := rc.Runner.ReadFile(tenantSudoersPath())
-	info, statErr := os.Lstat(tenantSudoersPath())
+	// Share the sudoers metadata inspection seam; production uses os.Lstat.
+	info, statErr := fleetSudoLstat(tenantSudoersPath())
 	if err != nil || string(cur) != string(tenantSudoersContent(group)) || statErr != nil || !fleetSudoDropInSafe(info) {
 		add("Install tenant operator sudoers rule", "write "+tenantSudoersPath())
 	}
@@ -170,7 +174,7 @@ func loadTenantSpecs(rc *RunContext) ([]*tenant.Spec, error) {
 	if err := requireTrustedMetadata(rc); err != nil {
 		return nil, err
 	}
-	dir := tenant.SpecDir(metaHomeBase(rc))
+	dir := tenant.SpecDir(rc.Config.Users.Base())
 	names, err := tenant.ListSpecs(dir)
 	if err != nil {
 		return nil, err
@@ -191,17 +195,20 @@ func (m *TenantModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 	note := func(msg string) { res.Changed, res.Messages = true, append(res.Messages, msg) }
 	reload := false
 	for _, f := range tenantFiles() {
-		if cur, err := rc.Runner.ReadFile(f.path); err == nil && string(cur) == f.content {
+		if fileEquals(rc, f.path, f.content) {
 			continue
 		}
 		if err := rc.Runner.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
 			return nil, err
 		}
-		if err := rc.Runner.WriteFile(f.path, []byte(f.content), f.mode); err != nil {
+		written, err := ensureFile(rc, f.path, f.content, f.mode)
+		if err != nil {
 			return nil, fmt.Errorf("writing %s: %w", f.path, err)
 		}
-		reload = reload || strings.HasPrefix(f.path, tenantUnitDir)
-		note("wrote " + f.path)
+		if written {
+			reload = reload || strings.HasPrefix(f.path, tenantUnitDir)
+			note("wrote " + f.path)
+		}
 	}
 	specs, err := loadTenantSpecs(rc)
 	if err != nil {
@@ -226,7 +233,7 @@ func (m *TenantModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 		if unitOn(ctx, rc, t) {
 			continue
 		}
-		if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", t); err != nil {
+		if err := enableUnit(ctx, rc, t, true); err != nil {
 			res.Warnings = append(res.Warnings, "enabling "+t+": "+firstLine(err.Error()))
 			continue
 		}
@@ -237,7 +244,7 @@ func (m *TenantModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 		if unitOn(ctx, rc, u) {
 			continue
 		}
-		if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", u); err != nil {
+		if err := enableUnit(ctx, rc, u, true); err != nil {
 			return nil, fmt.Errorf("enabling %s: %w", u, err)
 		}
 		note("enabled " + u)
@@ -254,14 +261,15 @@ func (m *TenantModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 	}
 	want := tenantSudoersContent(group)
 	cur, err := rc.Runner.ReadFile(tenantSudoersPath())
-	info, statErr := os.Lstat(tenantSudoersPath())
+	// Share the sudoers metadata inspection seam; production uses os.Lstat.
+	info, statErr := fleetSudoLstat(tenantSudoersPath())
 	if err != nil || string(cur) != string(want) || statErr != nil || !fleetSudoDropInSafe(info) {
 		if err := installSudoersFile(ctx, rc, tenantSudoersPath(), want, "tenant operator"); err != nil {
 			return nil, err
 		}
 		note("installed tenant operator sudoers rule for %" + group)
 	}
-	if err := applyPiper(ctx, rc, note); err != nil {
+	if err := applyPiper(ctx, rc, note, func(warning string) { res.Warnings = append(res.Warnings, warning) }); err != nil {
 		return nil, err
 	}
 	if rc.DryRun {
@@ -272,7 +280,7 @@ func (m *TenantModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 
 // tenantGuardScript restores GPU access of running containers whose device
 // filter a systemd daemon-reload rebuilt without their /dev/nvidia* nodes
-// (containers started with --gpus on runc). Verified on dgx02 2026-10-20.
+// (containers started with --gpus on runc).
 const tenantGuardScript = `#!/bin/bash
 # Managed by rootfiles: GPU device guard. Do not edit.
 # Usage: rootfiles-gpu-guard [--dry-run] [container ...]  (no args: all running GPU containers)

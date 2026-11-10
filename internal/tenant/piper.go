@@ -145,14 +145,6 @@ func (m *Manager) Routes(s *Spec) []string {
 	return out
 }
 
-// RemoveRoutes deletes tenant t's route file.
-func (m *Manager) RemoveRoutes(t string) error {
-	if m.Piper == nil || !m.Runner.FileExists(m.routeFile(t)) {
-		return nil
-	}
-	return m.Runner.Remove(m.routeFile(t))
-}
-
 // containerKeys reads user's authorized_keys inside the container, where
 // its symlinks resolve against the container's root, bounded in size and
 // time, and keeps only plain key lines that sshpiper can parse.

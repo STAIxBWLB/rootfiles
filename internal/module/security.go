@@ -26,7 +26,8 @@ var (
 	unattendedPolicyPath = "/etc/apt/apt.conf.d/zzzzzz-rootfiles-unattended-upgrades"
 	fail2banJailPath     = "/etc/fail2ban/jail.d/rootfiles-sshd.conf"
 	// legacyUnattendedPaths are the earlier managed file and the hand-placed
-	// fleet fix it replaces; apply backs them up and removes them.
+	// fleet fix it replaces; apply backs them up and removes them. Retain through
+	// v0.19; removal is eligible for v0.20.0 only after rollout verification.
 	legacyUnattendedPaths = []string{
 		"/etc/apt/apt.conf.d/52rootfiles-unattended-upgrades",
 		"/etc/apt/apt.conf.d/zzzzz-rootfiles-security-origins.conf",
@@ -40,7 +41,7 @@ var securityOrigins = []string{
 	"${distro_id}ESM:${distro_codename}-infra-security",
 }
 
-const autoUpgradesContent = `// Managed by rootfiles-v2
+const autoUpgradesContent = `// Managed by rootfiles
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";
@@ -49,7 +50,7 @@ APT::Periodic::AutocleanInterval "7";
 // The NVIDIA driver/CUDA stack must only change together with a planned
 // reboot and matching kernel modules, so it is never upgraded unattended.
 // Reboots are never automatic; `rootfiles doctor` reports reboot-required.
-const unattendedPolicyContent = `// Managed by rootfiles-v2
+const unattendedPolicyContent = `// Managed by rootfiles
 #clear Unattended-Upgrade::Allowed-Origins;
 #clear Unattended-Upgrade::Origins-Pattern;
 Unattended-Upgrade::Allowed-Origins {
@@ -75,7 +76,7 @@ func fail2banJail(ports []int) string {
 	for i, p := range ports {
 		ps[i] = strconv.Itoa(p)
 	}
-	return fmt.Sprintf(`# Managed by rootfiles-v2
+	return fmt.Sprintf(`# Managed by rootfiles
 [sshd]
 enabled  = true
 port     = %s
@@ -117,9 +118,6 @@ func (m *SecurityModule) packages(rc *RunContext) []string {
 		if cfg.TimeSync {
 			pkgs = append(pkgs, "chrony")
 		}
-		if cfg.Fail2ban {
-			pkgs = append(pkgs, "fail2ban", "python3-systemd")
-		}
 		return pkgs
 	}
 	if cfg.UnattendedUpgrades {
@@ -143,7 +141,7 @@ func (m *SecurityModule) Check(ctx context.Context, rc *RunContext) (*CheckResul
 	var changes []Change
 
 	if missing := missingPackages(rc, m.packages(rc)); len(missing) > 0 {
-		changes = append(changes, Change{Description: fmt.Sprintf("Install %v", missing), Command: "apt-get install " + strings.Join(missing, " ")})
+		changes = append(changes, Change{Description: fmt.Sprintf("Install %v", missing), Command: packageInstallCommand(rc, missing)})
 	}
 	if cfg.UnattendedUpgrades {
 		if !fileEquals(rc, autoUpgradesPath, autoUpgradesContent) || !fileEquals(rc, unattendedPolicyPath, unattendedPolicyContent) || len(existingLegacyUnattended(rc)) > 0 || len(unreadableAptConf()) > 0 {
@@ -156,8 +154,14 @@ func (m *SecurityModule) Check(ctx context.Context, rc *RunContext) (*CheckResul
 		changes = append(changes, Change{Description: "Configure fail2ban sshd jail", Command: "write " + fail2banJailPath})
 	}
 	if cfg.TimeSync {
-		if res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value"); err == nil && strings.TrimSpace(res.Stdout) != "yes" {
-			changes = append(changes, Change{Description: "Enable NTP time sync", Command: "timedatectl set-ntp true"})
+		res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value")
+		// Apply only warns when this query is unavailable; it does not refuse.
+		// Do not make dry-run block work that real Apply can complete.
+		if err == nil && strings.TrimSpace(res.Stdout) != "yes" {
+			_, unit := timeSyncPackage(rc)
+			changes = append(changes,
+				Change{Description: "Enable time-sync service " + unit, Command: "systemctl enable --now " + unit},
+				Change{Description: "Enable NTP time sync", Command: "timedatectl set-ntp true"})
 		}
 	}
 	return &CheckResult{Satisfied: len(changes) == 0, Changes: changes}, nil
@@ -191,10 +195,11 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 			if err := rc.Runner.MkdirAll(filepath.Dir(path), 0755); err != nil {
 				return nil, err
 			}
-			if err := rc.Runner.WriteFile(path, []byte(content), 0644); err != nil {
+			fileChanged, err := ensureFile(rc, path, content, 0644)
+			if err != nil {
 				return nil, fmt.Errorf("writing %s: %w", path, err)
 			}
-			wrote = true
+			wrote = wrote || fileChanged
 		}
 		// Non-root apt reads apt.conf.d too; v0.15.0 fleet applies left 0600.
 		for _, path := range unreadableAptConf() {
@@ -229,30 +234,40 @@ func (m *SecurityModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResul
 			if err := rc.Runner.MkdirAll(filepath.Dir(fail2banJailPath), 0755); err != nil {
 				return nil, err
 			}
-			if err := rc.Runner.WriteFile(fail2banJailPath, []byte(jail), 0644); err != nil {
+			wrote, err := ensureFile(rc, fail2banJailPath, jail, 0644)
+			if err != nil {
 				return nil, fmt.Errorf("writing %s: %w", fail2banJailPath, err)
 			}
-			if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "fail2ban"); err != nil {
-				warnings = append(warnings, "enabling fail2ban: "+firstLine(err.Error()))
-			} else if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "fail2ban"); err != nil {
-				warnings = append(warnings, "restarting fail2ban: "+firstLine(err.Error()))
+			if wrote {
+				if err := enableUnit(ctx, rc, "fail2ban", false); err != nil {
+					warnings = append(warnings, "enabling fail2ban: "+firstLine(err.Error()))
+				} else if _, err := rc.Runner.Run(ctx, "systemctl", "restart", "fail2ban"); err != nil {
+					warnings = append(warnings, "restarting fail2ban: "+firstLine(err.Error()))
+				}
+				messages = append(messages, "fail2ban sshd jail configured")
+				changed = true
 			}
-			messages = append(messages, "fail2ban sshd jail configured")
-			changed = true
 		}
 	}
 
 	if cfg.TimeSync {
-		if res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value"); err == nil && strings.TrimSpace(res.Stdout) != "yes" {
+		res, err := rc.Runner.Query(ctx, "timedatectl", "show", "-p", "NTP", "--value")
+		if err != nil {
+			warnings = append(warnings, "cannot determine NTP time sync: "+firstLine(err.Error())+"; run timedatectl show -p NTP --value and repair the time-sync service")
+		} else if strings.TrimSpace(res.Stdout) != "yes" {
 			_, unit := timeSyncPackage(rc)
-			if _, err := rc.Runner.Run(ctx, "systemctl", "enable", "--now", unit); err != nil {
+			if err := enableUnit(ctx, rc, unit, true); err != nil {
 				warnings = append(warnings, "enabling "+unit+": "+firstLine(err.Error()))
+			} else {
+				messages = append(messages, unit+" time-sync service enabled")
+				changed = true
 			}
 			if _, err := rc.Runner.Run(ctx, "timedatectl", "set-ntp", "true"); err != nil {
 				warnings = append(warnings, "timedatectl set-ntp: "+firstLine(err.Error()))
+			} else {
+				messages = append(messages, "NTP time sync enabled ("+unit+")")
+				changed = true
 			}
-			messages = append(messages, "NTP time sync enabled ("+unit+")")
-			changed = true
 		}
 	}
 

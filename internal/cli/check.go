@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -15,18 +14,24 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
+// checkNow preserves the live clock while metric fixtures pin one instant.
+var checkNow = time.Now
+
 func newCheckCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "check",
 		Short: "Check current system state against profile",
 		Long: "Check which modules are satisfied and which need changes.\n" +
 			"Exit code: 0 = all satisfied, 2 = pending changes, 1 = error. Without --profile/--config,\n" +
-			"the last applied profile (or the detected suggestion) is used.",
+			"the last applied target or a detected profile is resolved.",
+		Example: `  rootfiles check
+  rootfiles check --profile dgx --module ssh,docker -o json`,
 		RunE: runCheck,
 	}
+	cmd.Flags().StringSlice("module", nil, "Check specific modules only")
 	cmd.Flags().BoolP("verbose", "v", false, "Show commands that will be executed")
 	addOutputFlagWithMetrics(cmd)
-	return cmd
+	return usesConfigInputs(cmd)
 }
 
 func runCheck(cmd *cobra.Command, _ []string) error {
@@ -44,7 +49,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 	}
 	profileName, configPath, applied := resolveTarget(cmd, sysInfo)
 
-	cfg, err := config.LoadWithHomeBase(profileName, configPath, sysInfo, homeBaseFlag(cmd))
+	cfg, err := config.LoadWithOverrides(profileName, configPath, sysInfo, loadOverrides(cmd))
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -54,31 +59,21 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
+	logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{
 		Level: slog.LevelWarn,
 	}))
-	runner := exec.NewRunner(true, logger) // always dry-run for check
-	apt, err := exec.NewPackageManager(runner, sysInfo)
+	rc := readOnlyRunContext(cfg, sysInfo, logger)
+	rc.Out = cmd.OutOrStdout()
+	// Check is a strict evaluator, unlike overview reports which retain a
+	// backend for diagnostic output on unsupported operating systems.
+	rc.APT, err = exec.NewPackageManager(rc.Runner, sysInfo)
 	if err != nil {
 		return err
 	}
-
 	registry := module.NewRegistry()
 	modules := registry.Resolve(cfg, moduleFilter)
-	names := make([]string, 0, len(modules))
-	for _, m := range modules {
-		names = append(names, m.Name())
-	}
-	if err := config.ValidateCapabilities(cfg, sysInfo, names); err != nil {
+	if err := validateModules(cfg, sysInfo, modules); err != nil {
 		return err
-	}
-
-	rc := &module.RunContext{
-		Config: cfg,
-		Runner: runner,
-		APT:    apt,
-		DryRun: true,
-		Yes:    true,
 	}
 
 	results, err := module.CheckAll(ctx, modules, rc)
@@ -118,7 +113,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		}
 		fmt.Fprintln(out, "# HELP rootfiles_check_timestamp_seconds When the check ran.")
 		fmt.Fprintln(out, "# TYPE rootfiles_check_timestamp_seconds gauge")
-		fmt.Fprintf(out, "rootfiles_check_timestamp_seconds %d\n", time.Now().Unix())
+		fmt.Fprintf(out, "rootfiles_check_timestamp_seconds %d\n", checkNow().Unix())
 	} else if format == "json" {
 		report := checkReport{Profile: reportProfile, ConfigPath: reportPath, Satisfied: allOK}
 		report.Version = buildVersion

@@ -84,10 +84,13 @@ func (m *LocaleModule) Check(ctx context.Context, rc *RunContext) (*CheckResult,
 	}
 
 	if cfg.Locale != "" && currentLocale(rc) != cfg.Locale {
-		command := fmt.Sprintf("locale-gen %s && update-locale LANG=%s", cfg.Locale, cfg.Locale)
-		if config.IsRocky(cfg.System) {
-			command = "write " + rockyLocalePath
+		if !config.IsRocky(cfg.System) {
+			if !rc.Runner.CommandExists("locale-gen") {
+				changes = append(changes, Change{Description: "Install locale generation tools", Command: packageInstallCommand(rc, []string{"locales"})})
+			}
+			changes = append(changes, Change{Description: "Generate locale " + cfg.Locale, Command: "locale-gen " + cfg.Locale})
 		}
+		command := "write " + localeConfigPath(rc)
 		changes = append(changes, Change{
 			Description: fmt.Sprintf("Set locale to %s", cfg.Locale),
 			Command:     command,
@@ -204,12 +207,6 @@ func (m *LocaleModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 	}
 
 	return &ApplyResult{Changed: changed, Messages: messages, Warnings: warnings}, nil
-}
-
-// setDefaultLocale sets LANG in /etc/default/locale, keeping other lines
-// but dropping a stale LC_ALL that earlier versions wrote.
-func setDefaultLocale(rc *RunContext, locale string) error {
-	return setLocaleConfig(rc, defaultLocalePath, locale)
 }
 
 func setLocaleConfig(rc *RunContext, path, locale string) error {

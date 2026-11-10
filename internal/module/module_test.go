@@ -1,6 +1,7 @@
 package module
 
 import (
+	"reflect"
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
@@ -97,6 +98,9 @@ func TestRegistry_ResolveEmpty(t *testing.T) {
 // is either dropped at runtime or never constructed — this test forces both
 // lists to be updated together.
 func TestRegistryDefaultOrderSync(t *testing.T) {
+	if !reflect.DeepEqual(defaultOrder, config.ModuleNames()) {
+		t.Fatalf("execution order %v differs from config names %v", defaultOrder, config.ModuleNames())
+	}
 	reg := NewRegistry()
 
 	registered := make(map[string]bool, len(reg.modules))

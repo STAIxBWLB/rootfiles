@@ -15,7 +15,10 @@ func TestNvidiaModule_Name(t *testing.T) {
 }
 
 func TestNvidiaModule_Check(t *testing.T) {
+	withDaemonJSON(t, "")
 	rc := newDryRunRC(t)
+	t.Setenv("PATH", t.TempDir())
+	rc.APT = &agreementPackageManager{}
 	result, err := NewNvidiaModule().Check(context.Background(), rc)
 	if err != nil {
 		t.Fatalf("Check: %v", err)
@@ -26,7 +29,10 @@ func TestNvidiaModule_Check(t *testing.T) {
 }
 
 func TestNvidiaModule_ApplyDryRun(t *testing.T) {
+	withDaemonJSON(t, "")
 	rc := newDryRunRC(t)
+	t.Setenv("PATH", t.TempDir())
+	rc.APT = &agreementPackageManager{}
 	result, err := NewNvidiaModule().Apply(context.Background(), rc)
 	if err != nil {
 		t.Fatalf("Apply: %v", err)

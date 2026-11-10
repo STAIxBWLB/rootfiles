@@ -59,8 +59,7 @@ Report at most 5 nits per review; summarize the rest as a count.
 
 ## Do not report
 
-- Generated paths: `go.sum` and `docs/architecture/rootfiles-v2-rendered*` (blueprint HTML and
-  visual-check PNG/JSON rendered from `rootfiles-v2.architecture.json`).
+- Generated paths: `go.sum`.
   Lockfiles are skipped for style only: a lockfile change without a matching manifest change stays
   in the Security pass.
 - Anything CI already enforces: `gofmt`, `go vet`, `go mod tidy` drift, `govulncheck`,

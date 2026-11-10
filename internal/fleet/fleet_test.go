@@ -144,9 +144,9 @@ func TestApplyProceedsOnAmbiguousHomeBaseStatus(t *testing.T) {
 	run := func(status string) []Result {
 		t.Helper()
 		bin := writeFakeSSH(t, "#!/bin/sh\n"+
-			"printf '%s\\n' \"$7\" >> "+shellQuote(callsFile)+"\n"+
+			"printf '%s\\n' \"$7\" >> "+ShellQuote(callsFile)+"\n"+
 			"case \"$7\" in\n"+
-			"  *\"status -o json\"*) printf '%s\\n' "+shellQuote(status)+" ;;\n"+
+			"  *\"status -o json\"*) printf '%s\\n' "+ShellQuote(status)+" ;;\n"+
 			"  *) echo applied ;;\n"+
 			"esac\n")
 		hosts := []NamedHost{{Name: "n1", Host: Host{SSH: "n1", EffectiveConfig: []byte("users:\n  home_base: /home\n")}, Sudo: "none"}}
@@ -227,7 +227,7 @@ func TestImmutableRemoteConfigPathAndScript(t *testing.T) {
 func TestReadOnlySSHExitClassificationWithFakeSSH(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "ssh")
 	argsFile := filepath.Join(t.TempDir(), "args")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + shellQuote(argsFile) + "\nprintf '{\"modules\":[]}'\nexit 2\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > " + ShellQuote(argsFile) + "\nprintf '{\"modules\":[]}'\nexit 2\n"
 	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ exit 0
 	if err != nil || len(updated) != 1 || updated[0].State != "ok" {
 		t.Fatalf("plaintext update success was rejected: results=%#v err=%v", updated, err)
 	}
-	scheduled, err := Schedule(context.Background(), SSHRunner{Binary: bin}, h, "enable", false)
+	scheduled, err := Schedule(context.Background(), SSHRunner{Binary: bin}, h, "enable", "", false)
 	if err != nil || len(scheduled) != 1 || scheduled[0].State != "ok" {
 		t.Fatalf("plaintext schedule success was rejected: results=%#v err=%v", scheduled, err)
 	}
@@ -288,7 +288,7 @@ func TestUpdateStopsAfterFakeSSHFailure(t *testing.T) {
 	callsFile := filepath.Join(t.TempDir(), "calls")
 	bin := writeFakeSSH(t, "#!/bin/sh\n"+
 		"case \"$7\" in *'check -o json') printf '{\"modules\":[]}'; exit 0 ;; esac\n"+
-		"printf '%s\\n' \"$6\" >> "+shellQuote(callsFile)+"\n"+
+		"printf '%s\\n' \"$6\" >> "+ShellQuote(callsFile)+"\n"+
 		"[ \"$6\" != failing ] || { echo failed >&2; exit 23; }\n"+
 		"echo updated\n")
 	hosts := []NamedHost{{Name: "first", Host: Host{SSH: "first"}, Sudo: "none"}, {Name: "failure", Host: Host{SSH: "failing"}, Sudo: "none"}, {Name: "skipped", Host: Host{SSH: "last"}, Sudo: "none"}}
@@ -326,7 +326,7 @@ esac
 
 	callsFile := filepath.Join(t.TempDir(), "installed-calls")
 	installedBin := writeFakeSSH(t, "#!/bin/sh\n"+
-		"printf '%s\\n' \"$7\" >> "+shellQuote(callsFile)+"\n"+
+		"printf '%s\\n' \"$7\" >> "+ShellQuote(callsFile)+"\n"+
 		"printf '%s\\n' '{\"system\":{\"os\":\"ubuntu\",\"version\":\"24.04\"}}'\n")
 	hosts[0].Host.ConfigFingerprint = "expected-but-not-recorded"
 	results, err = Bootstrap(context.Background(), SSHRunner{Binary: installedBin}, hosts, "v1.2.3", false)

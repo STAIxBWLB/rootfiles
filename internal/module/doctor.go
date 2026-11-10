@@ -82,8 +82,16 @@ func doctorExporterListener(ctx context.Context, rc *RunContext) []Finding {
 	}
 	covered := cfg.PerimeterFirewall
 	if !covered {
-		fw, present := queryUFW(ctx, rc)
-		if present && fw.Active {
+		fw, err := inspectUFW(ctx, rc, false)
+		if err != nil || !fw.Known {
+			detail := "cannot determine installed UFW state"
+			if err != nil {
+				detail += ": " + firstLine(err.Error())
+			}
+			return []Finding{{Check: "exporter exposure", Level: LevelWarn, Detail: detail,
+				Hint: "run sudo ufw status and verify exporter access restrictions"}}
+		}
+		if fw.Installed && fw.Active {
 			covered = true
 			for _, p := range ports {
 				if !ufwRestrictedPortRuleExists(ctx, rc, p) {
@@ -124,13 +132,10 @@ func doctorSSH(ctx context.Context, rc *RunContext) []Finding {
 	if bin == "" {
 		return []Finding{{Check: "ssh", Level: LevelWarn, Detail: "sshd is not installed", Hint: "apt-get install openssh-server"}}
 	}
-	// sshd -T refuses to run without its privilege separation dir, which
-	// only exists while sshd is running. Creating it is harmless.
-	_ = os.MkdirAll("/run/sshd", 0755)
 	res, err := rc.Runner.Query(ctx, bin, "-T")
 	if err != nil {
 		return []Finding{{Check: "ssh config", Level: LevelFail, Detail: "sshd -T failed: " + firstLine(err.Error()),
-			Hint: "fix sshd_config before the next sshd restart"}}
+			Hint: "run sudo sshd -T to inspect configuration, host-key access or missing /run/sshd; repair the reported cause before restarting sshd"}}
 	}
 	eff := map[string]string{}
 	for _, line := range strings.Split(res.Stdout, "\n") {
@@ -206,8 +211,16 @@ func userPasswordAuth(ctx context.Context, rc *RunContext, bin, user string) boo
 }
 
 func doctorFirewall(ctx context.Context, rc *RunContext) Finding {
-	st, ok := queryUFW(ctx, rc)
-	if !ok {
+	st, err := inspectUFW(ctx, rc, false)
+	if err != nil || !st.Known {
+		detail := "cannot determine installed UFW state"
+		if err != nil {
+			detail += ": " + firstLine(err.Error())
+		}
+		return Finding{Check: "firewall", Level: LevelFail, Detail: detail,
+			Hint: "run sudo ufw status and repair the status query"}
+	}
+	if !st.Installed {
 		return Finding{Check: "firewall", Level: LevelSkip, Detail: "ufw not installed"}
 	}
 	if !st.Active {
