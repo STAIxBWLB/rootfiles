@@ -8,7 +8,7 @@ How the code is laid out and how a run flows through it. The contracts behind th
 |---|---|
 | `cmd/rootfiles/` | Entry point. Cancels the run on SIGINT/SIGTERM and maps errors to exit codes. |
 | `internal/cli/` | Cobra commands ([commands.md](commands.md)): `apply`, `backup`, `check`, `config`, `doctor`, `fleet`, `gpu`, `rollback`, `schedule`, `status`, `tenant`, `tunnel`, `update` (alias `upgrade`), `user`. `runtime.go` holds the root and lock preflight for native mutating commands, the audit logger and the runner factory. |
-| `internal/config/` | Config structs, embedded profiles (`profiles/*.yaml`, merged as YAML trees through `extends`), validation, config fingerprints and host detection. |
+| `internal/config/` | Config structs, the module order and toggles (`modules.go`), embedded profiles (`profiles/*.yaml`, merged as YAML trees through `extends`), validation, config fingerprints and host detection. |
 | `internal/module/` | The `Module` interface, the 14 modules, the registry and execution order, and the `doctor` checks. |
 | `internal/exec/` | Shell runner (dry-run aware, saves files before it changes them) and the APT and DNF/RPM package backends. |
 | `internal/state/` | State file, run history, applied-config copy and the global lock. |
@@ -34,7 +34,7 @@ type Module interface {
 - `Check()` reports pending changes and never changes the host.
 - `Apply()` makes those changes idempotently and reports whether anything changed.
 
-`NewRegistry()` and `defaultOrder` in `internal/module/module.go` list the same 14 modules; a test keeps the two lists in sync. What each module does: [modules.md](modules.md). Contract: [docs/specs/engine.md](specs/engine.md).
+`NewRegistry()` in `internal/module/module.go` registers the 14 modules; their order and toggles come from `moduleDefinitions` in `internal/config/modules.go`, and a test keeps the two in sync. What each module does: [modules.md](modules.md). Contract: [docs/specs/engine.md](specs/engine.md).
 
 ## Apply and check flow
 

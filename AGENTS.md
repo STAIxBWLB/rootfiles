@@ -13,7 +13,7 @@ make test         # go test ./... -race
 
 - Contracts live in `docs/specs/<id>.md` (index: `docs/specs/architecture.md`; `ahub specs covers <file>` names the owner). A change to a stated contract updates that spec in the same PR.
 - Package map and run flow: `docs/architecture.md`; contracts: `docs/specs/`.
-- The gpu module is toggled by modules.nvidia.gpu_allocation.enabled; the module list must match in defaultOrder, NewRegistry, config/distro.go and IsModuleEnabled.
+- Module order and toggles live in `moduleDefinitions` (`internal/config/modules.go`), which feeds `defaultOrder`, `IsModuleEnabled` and distro support; `gpu` is toggled by `modules.nvidia.gpu_allocation.enabled`. Add a module there and in `NewRegistry()` (`internal/module/module.go`); `TestRegistryDefaultOrderSync` checks the two agree.
 
 ## Module Interface
 
@@ -31,13 +31,10 @@ type Module interface {
 - `Check()` reports pending changes without side effects; `CheckResult.Satisfied` gates whether `Apply()` runs.
 - `Apply()` performs idempotent changes; returns `ApplyResult.Changed` so callers can summarise diffs.
 
-`NewRegistry()` in `internal/module/module.go` wires all 14 implementations. `defaultOrder` in the same file defines execution sequence. These two lists MUST stay in sync — `TestRegistryDefaultOrderSync` in `module_test.go` enforces this.
-
 ## Conventions
 
 - Go 1.26.10+ (CI and release use the version in `go.mod`), conventional commits
 - Profiles embedded via go:embed in `internal/config/profiles/`
-- Module execution order is static (defined in `module.go defaultOrder`)
 - `--yes` propagates via RunContext, bypasses all prompts
 - `--dry-run` logs commands without executing (write ops gated)
 - GPU allocation DB writes go through `withGPUDBLock` (flock + atomic rename) to protect concurrent `gpu assign`/`revoke` calls

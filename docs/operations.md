@@ -1,6 +1,6 @@
 # Operations
 
-Where rootfiles keeps its records on a host, how to undo a run, how to back up a host before an OS reinstall, how to schedule reports and how to update the binary. Contracts: [docs/specs/state-rollback.md](specs/state-rollback.md), [docs/specs/doctor-schedule.md](specs/doctor-schedule.md), [docs/specs/self-update.md](specs/self-update.md).
+Where rootfiles keeps its records on a host, how to undo a run, how to back up a host before an OS reinstall, how to schedule reports and how to install and update the binary. Contracts: [docs/specs/state-rollback.md](specs/state-rollback.md), [docs/specs/doctor-schedule.md](specs/doctor-schedule.md), [docs/specs/self-update.md](specs/self-update.md).
 
 ## Files on the host
 
@@ -86,12 +86,23 @@ sudo rootfiles schedule disable
 - `disable` stops the timer and removes both units.
 - For a fleet: `rootfiles fleet schedule enable --all --yes --on-calendar hourly` ([fleet.md](fleet.md#rollouts)).
 
+## Install
+
+```bash
+URL=https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh
+curl -fsSL $URL | sudo bash                                # latest release
+curl -fsSL $URL | sudo bash -s -- --version v0.19.0        # a specific release
+curl -fsSL $URL | sudo bash -s -- --channel dev            # build main from source (needs Go)
+```
+
+The installer verifies the release checksum, installs `/usr/local/bin/rootfiles` and creates the `root` symlink, so `sudo root apply` works like `sudo rootfiles apply`.
+
 ## Self-update
 
 ```bash
 sudo rootfiles update                    # latest GitHub release
 rootfiles update --check                 # report only
-sudo rootfiles update --version v0.9.0   # a specific release
+sudo rootfiles update --version v0.19.0  # a specific release
 sudo rootfiles update --dry-run          # download and verify, do not replace
 ```
 
