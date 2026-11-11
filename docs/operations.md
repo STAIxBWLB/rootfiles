@@ -95,7 +95,7 @@ curl -fsSL $URL | sudo bash -s -- --version v0.19.0        # a specific release
 curl -fsSL $URL | sudo bash -s -- --channel dev            # build main from source (needs Go)
 ```
 
-The installer verifies the release checksum, installs `/usr/local/bin/rootfiles` and creates the `root` symlink, so `sudo root apply` works like `sudo rootfiles apply`.
+The installer verifies the release checksum, installs `/usr/local/bin/rootfiles` and, on Linux, creates the `root` symlink, so `sudo root apply` works like `sudo rootfiles apply`.
 
 ## Self-update
 

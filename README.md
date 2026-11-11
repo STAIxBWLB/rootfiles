@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/in
 # pin a release: ... | sudo bash -s -- --version v0.19.0
 ```
 
-The installer verifies the checksum and installs `/usr/local/bin/rootfiles` plus a `root` symlink. Other channels and updates: [docs/operations.md](docs/operations.md#install).
+The installer verifies the checksum and installs `/usr/local/bin/rootfiles` (plus a `root` symlink on Linux). Other channels and updates: [docs/operations.md](docs/operations.md#install).
 
 ## Quick start
 
@@ -70,7 +70,7 @@ Addresses, mirrors and accounts belong in a site config, not a profile ([docs/co
 ## Safety
 
 - `check` and `--dry-run` change nothing and show the plan a real run would follow.
-- Password login is turned off only when no account would be left without a key login; `sshd -t` validates each change, and UFW always admits the SSH port.
+- Password login is turned off only when no account would be left without a key login (`apply --force` overrides this check only); `sshd -t` validates each change, and UFW always admits the SSH port.
 - Unreadable firewall state blocks SSH port, UFW, exporter and tenant SSH changes, even with `--force`.
 - Every overwritten or removed file is backed up; `rootfiles rollback <id>` restores it. Populated paths are never removed.
 - Mutating runs need root, hold `/run/rootfiles.lock` and are logged to `/var/log/rootfiles.log` with secrets redacted.
