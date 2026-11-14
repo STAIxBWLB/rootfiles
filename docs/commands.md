@@ -100,8 +100,8 @@ Root command. Run `rootfiles help <command>` or `rootfiles <command> --help` for
 | `--vlan-address` | unset | Private network address of the tunnel, a CIDR such as `203.0.113.10/32`. |
 | `--color` | `auto` | Color policy: `auto`, `always` or `never`, resolved separately for stdout and stderr. |
 | `--ascii` | `false` | Use ASCII markers (also automatic for a non-UTF-8 locale). |
-| `-v`, `--verbose` | `false` | Show diagnostic logs and command details. |
-| `--version` | | Print the version and commit. |
+| `--verbose` | `false` | Show diagnostic logs and command details. |
+| `-v`, `--version` | | Print the version and commit. |
 
 See [Root flags and their readers](#root-flags-and-their-readers) for which command reads which flag.
 

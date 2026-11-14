@@ -70,7 +70,7 @@ func newRootFlags() *pflag.FlagSet {
 
 	flags.String("color", "auto", "Color mode: auto, always or never")
 	flags.Bool("ascii", false, "Use ASCII markers")
-	flags.BoolP("verbose", "v", false, "Show diagnostic logs and command details")
+	flags.Bool("verbose", false, "Show diagnostic logs and command details")
 
 	// Flags for unattended mode
 	flags.String("home-base", "", "Custom home base directory (e.g., /raid/home)")
