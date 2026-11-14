@@ -17,6 +17,7 @@ func TestFleetReadPoolBoundsFakeSSHConcurrency(t *testing.T) {
 	dir := t.TempDir()
 	active, peak := filepath.Join(dir, "active"), filepath.Join(dir, "peak")
 	lock := filepath.Join(dir, "lock")
+	ready := filepath.Join(dir, "ready")
 	for _, p := range []string{active, peak} {
 		if err := os.WriteFile(p, []byte("0"), 0600); err != nil {
 			t.Fatal(err)
@@ -25,12 +26,19 @@ func TestFleetReadPoolBoundsFakeSSHConcurrency(t *testing.T) {
 	quote := func(s string) string { return "'" + s + "'" }
 	bin := filepath.Join(dir, "ssh")
 	script := "#!/bin/sh\n" +
-		"lock=" + quote(lock) + "\nactive=" + quote(active) + "\npeak=" + quote(peak) + "\n" +
+		"lock=" + quote(lock) + "\nactive=" + quote(active) + "\npeak=" + quote(peak) + "\nready=" + quote(ready) + "\n" +
 		"while ! mkdir \"$lock\" 2>/dev/null; do sleep 0.01; done\n" +
-		"n=$(cat \"$active\"); n=$((n+1)); echo $n > \"$active\"; m=$(cat \"$peak\"); [ $n -le $m ] || echo $n > \"$peak\"; rmdir \"$lock\"\n" +
-		"sleep 0.15\n" +
+		"n=$(cat \"$active\"); n=$((n+1)); echo $n > \"$active\"; m=$(cat \"$peak\"); [ $n -le $m ] || echo $n > \"$peak\"; [ $n -lt 2 ] || : > \"$ready\"; rmdir \"$lock\"\n" +
+		// Latch the overlap so a waiter cannot miss 2 after its peer exits.
+		// A deadline makes a serialized pool fail rather than wait forever.
+		"deadline=$(($(date +%s)+5)); status=0\n" +
+		"while [ ! -f \"$ready\" ]; do\n" +
+		"  if [ $(date +%s) -ge $deadline ]; then status=1; break; fi\n" +
+		"  sleep 0.01\n" +
+		"done\n" +
 		"while ! mkdir \"$lock\" 2>/dev/null; do sleep 0.01; done\n" +
 		"n=$(cat \"$active\"); n=$((n-1)); echo $n > \"$active\"; rmdir \"$lock\"\n" +
+		"[ $status -eq 0 ] || { echo 'fake SSH timed out waiting for concurrency 2' >&2; exit 1; }\n" +
 		"printf '{}\\n'\n"
 	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
 		t.Fatal(err)
