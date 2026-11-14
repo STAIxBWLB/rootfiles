@@ -91,7 +91,7 @@ sudo rootfiles schedule disable
 ```bash
 URL=https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh
 curl -fsSL $URL | sudo bash                                # latest release
-curl -fsSL $URL | sudo bash -s -- --version v0.19.0        # a specific release
+curl -fsSL $URL | sudo bash -s -- --version v0.20.0        # a specific release
 curl -fsSL $URL | sudo bash -s -- --channel dev            # build main from source (needs Go)
 ```
 
@@ -102,7 +102,7 @@ The installer verifies the release checksum, installs `/usr/local/bin/rootfiles`
 ```bash
 sudo rootfiles update                    # latest GitHub release
 rootfiles update --check                 # report only
-sudo rootfiles update --version v0.19.0  # a specific release
+sudo rootfiles update --version v0.20.0  # a specific release
 sudo rootfiles update --dry-run          # download and verify, do not replace
 ```
 

@@ -329,7 +329,7 @@ func newUserPasswdCmd() *cobra.Command {
 	}
 	cmd.Flags().String("password", "", "Set the same password for all users")
 	cmd.Flags().String("suffix", "", "Deprecated: password = username+suffix")
-	_ = cmd.Flags().MarkDeprecated("suffix", "use --password or --file instead; predictable passwords are removed next minor")
+	_ = cmd.Flags().MarkDeprecated("suffix", "use --password or --file instead; predictable passwords are removed in v0.21.0")
 	cmd.Flags().Bool("expire", false, "Force a password change at next login (chage -d 0)")
 	cmd.Flags().StringP("file", "f", "", "File with usernames (or username,password per line)")
 	cmd.Flags().Bool("all", false, "Set passwords for all system users")
