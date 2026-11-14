@@ -58,6 +58,7 @@ func importFixture(t *testing.T, merged string, entries []*tar.Header) (*Manager
 	t.Setenv("IMPORT_ARCHIVE", archiveFile)
 	t.Setenv("IMPORT_PARENT", filepath.Join(dir, "home.tar"))
 	t.Setenv("IMPORT_ALICE_PARENT", "")
+	t.Setenv("IMPORT_BOB_ARCHIVE", "")
 	logFile := filepath.Join(dir, "calls")
 	t.Setenv("IMPORT_CALLS", logFile)
 	script := `#!/bin/sh
@@ -77,6 +78,7 @@ case "$1 $2" in
  legacy:/home) /bin/cat "$IMPORT_PARENT" ;;
  legacy:/home/alice) /bin/cat "${IMPORT_ALICE_PARENT:-$IMPORT_ARCHIVE}" ;;
  legacy:/home/alice/projects) /bin/cat "$IMPORT_ARCHIVE" ;;
+ legacy:/home/bob) /bin/cat "$IMPORT_BOB_ARCHIVE" ;;
  *) exit 1 ;;
  esac ;;
 *) exit 1 ;;
@@ -481,5 +483,47 @@ func TestImportNestedKeepRestoresParentAttributes(t *testing.T) {
 		if len(entries) != 0 {
 			t.Fatalf("dry-run metadata plan wrote %s", dir)
 		}
+	}
+}
+
+func TestImportSequentialKeepsNeedOnlyLargestScratchCopy(t *testing.T) {
+	m, _, _ := importFixture(t, "", normalKeepArchive())
+	var archive bytes.Buffer
+	tw := tar.NewWriter(&archive)
+	if err := tw.WriteHeader(&tar.Header{Name: "bob/", Typeflag: tar.TypeDir, Mode: 0700, Uid: 1000, Gid: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	bob := filepath.Join(t.TempDir(), "bob.tar")
+	if err := os.WriteFile(bob, archive.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("IMPORT_BOB_ARCHIVE", bob)
+	aliceSize, _, err := m.measureDockerKeep(context.Background(), "legacy", "/home/alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobSize, _, err := m.measureDockerKeep(context.Background(), "legacy", "/home/bob")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if aliceSize == 0 || bobSize == 0 {
+		t.Fatal("fixture must contain two nonempty keep estimates")
+	}
+	total := aliceSize + bobSize
+	peak := max(aliceSize, bobSize)
+	// This budget fits all final data plus one staging copy, but cannot fit
+	// a second full copy of both keeps simultaneously.
+	free := total + peak
+	if free >= 2*total {
+		t.Fatal("fixture does not distinguish summed from peak scratch")
+	}
+	old := importFreeSpace
+	importFreeSpace = func(string) uint64 { return free }
+	t.Cleanup(func() { importFreeSpace = old })
+	if _, err := m.Import(context.Background(), ImportOptions{Tenant: "imported", From: "legacy", Size: "128M", Keep: []string{"/home/alice", "/home/bob"}}); err != nil {
+		t.Fatalf("sequential copies should fit peak scratch: %v", err)
 	}
 }

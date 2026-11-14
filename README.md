@@ -107,5 +107,4 @@ Human-readable background. Agent instructions: `AGENTS.md`.
 - 2026-11-09: raised the Go baseline to 1.26.10 so CI and release share a supported, pinned toolchain from `go.mod` (#87).
 - 2026-11-09: native-command test isolation now includes installed/failing ambient tools after remote-only module runs missed host sshd/UFW dependencies (#89, #104).
 - 2026-11-12: module order and toggles moved to `moduleDefinitions` in `internal/config/modules.go` (#121); AGENTS.md now points there instead of naming four lists to keep in sync.
-
 - 2026-11-15: repeated import diagnostics omitted recovery steps during #139 review; AGENTS.md now points to the existing Error messages pass in REVIEW.md before error/refusal changes.

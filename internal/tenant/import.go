@@ -140,6 +140,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 	var items []copyItem
 	var dockerKeep []dockerKeepItem
 	var archiveBytes uint64
+	var scratchBytes uint64
 	p := m.Paths(s.Name)
 	if o.Data != "" {
 		items = append(items, copyItem{strings.TrimSuffix(o.Data, "/") + "/", filepath.Join(p.Mount, "data") + "/"})
@@ -158,6 +159,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 				return nil, fmt.Errorf("kept data size overflows; import fewer paths")
 			}
 			archiveBytes += n
+			scratchBytes = max(scratchBytes, n)
 			dockerKeep = append(dockerKeep, dockerKeepItem{path: k, parents: parents})
 			continue
 		}
@@ -198,9 +200,9 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 	if total > free {
 		return nil, fmt.Errorf("data to copy (%s) exceeds the free space on %s (%s)", human(total), m.Root, human(free))
 	}
-	// Docker fallback uses a private temporary copy as well as the volume.
-	if archiveBytes > free-total {
-		return nil, fmt.Errorf("data and temporary Docker copy need %s plus %s on %s; only %s is free; free space or import fewer paths", human(total), human(archiveBytes), m.Root, human(free))
+	// Copies are sequential; only the largest keep needs temporary space at once.
+	if scratchBytes > free-total {
+		return nil, fmt.Errorf("data and temporary Docker copy need %s plus %s on %s; only %s is free; free space or import fewer paths", human(total), human(scratchBytes), m.Root, human(free))
 	}
 
 	if m.ReserveGPUs != nil {
