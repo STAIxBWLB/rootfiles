@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
 )
@@ -364,5 +365,58 @@ func TestDockerKeepCancellationCleansOnlyPrivateStaging(t *testing.T) {
 	entries, err := os.ReadDir(m.Root)
 	if err != nil || len(entries) != 1 || entries[0].Name() != "existing-volume" {
 		t.Fatalf("cleanup removed wrong path or leaked staging: %v err=%v", entries, err)
+	}
+}
+
+func TestImportCleanupHasNoDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	cancel()
+	cleanup := importCleanupContext(ctx)
+	if _, bounded := cleanup.Deadline(); bounded {
+		t.Fatal("cleanup has a deadline that can truncate a large-data removal")
+	}
+	if cleanup.Done() != nil || cleanup.Err() != nil {
+		t.Fatal("cleanup inherits invocation cancellation")
+	}
+}
+
+func TestDockerKeepWaitsForSlowCleanup(t *testing.T) {
+	m, _, _ := importFixture(t, "", normalKeepArchive())
+	for name, binary := range map[string]string{"mktemp": "/usr/bin/mktemp", "chmod": "/bin/chmod"} {
+		if _, err := os.Stat(binary); err != nil {
+			t.Skipf("%s unavailable", binary)
+		}
+		if err := os.Symlink(binary, filepath.Join(os.Getenv("PATH"), name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	completed := filepath.Join(t.TempDir(), "removed")
+	t.Setenv("IMPORT_REMOVED", completed)
+	// Deliberately wait after the invocation has been canceled. A short parent
+	// deadline cannot cut off cleanup, and the function must wait for rm to finish.
+	rm := []byte("#!/bin/sh\n/bin/sleep 0.05\n/bin/rm \"$@\" || exit $?\nprintf done > \"$IMPORT_REMOVED\"\n")
+	if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), "rm"), rm, 0755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	m.Runner.Logger = slog.New(importHookHandler{hook: func(r slog.Record) {
+		r.Attrs(func(a slog.Attr) bool {
+			if a.Key == "cmd" && strings.HasPrefix(a.Value.String(), "docker cp -a") {
+				cancel()
+			}
+			return true
+		})
+	}})
+	m.Runner.DryRun = false
+	if err := m.copyDockerKeep(ctx, "legacy", "/home/alice", t.TempDir()); err == nil {
+		t.Fatal("canceled copy succeeded")
+	}
+	if _, err := os.Stat(completed); err != nil {
+		t.Fatalf("returned before slow cleanup finished: %v", err)
+	}
+	entries, _ := os.ReadDir(m.Root)
+	if len(entries) != 0 {
+		t.Fatal("slow cleanup left a partial duplicate")
 	}
 }

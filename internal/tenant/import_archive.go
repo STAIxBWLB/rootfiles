@@ -9,7 +9,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // measureDockerKeep reads without writing even in dry run. Inspect every parent
@@ -100,7 +99,7 @@ func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, pare
 		} // Only the directory itself is relevant to a parent probe.
 	}
 	if len(entries) == 0 {
-		return 0, fmt.Errorf("--keep %s: Docker returned an empty archive", keep)
+		return 0, fmt.Errorf("--keep %s: Docker returned an empty archive; choose an existing /home or /tmp path and retry", keep)
 	}
 	for name := range entries {
 		for ancestor := path.Dir(name); ancestor != "."; ancestor = path.Dir(ancestor) {
@@ -169,8 +168,7 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) 
 			return fmt.Errorf("mktemp returned an unexpected staging path; inspect %s before retrying", m.Root)
 		}
 		defer func() {
-			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
-			defer cancel()
+			cleanupCtx := importCleanupContext(ctx)
 			if err := m.run(cleanupCtx, "rm", "-r", "--", stage); err != nil {
 				m.printf("Import temporary directory %s could not be removed: %v\n", stage, err)
 			}
@@ -242,4 +240,10 @@ func archiveAllocation(h *tar.Header) (uint64, error) {
 		return ((n+block-1)/block)*block + block, nil
 	}
 	return 2 * block, nil
+}
+
+// importCleanupContext intentionally has no deadline: removing a full kept-data
+// duplicate can take hours, and must finish even after the invocation is canceled.
+func importCleanupContext(ctx context.Context) context.Context {
+	return context.WithoutCancel(ctx)
 }
