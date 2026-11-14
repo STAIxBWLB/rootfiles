@@ -420,3 +420,30 @@ func TestDockerKeepWaitsForSlowCleanup(t *testing.T) {
 		t.Fatal("slow cleanup left a partial duplicate")
 	}
 }
+
+func TestDockerKeepStagingMkdirErrorNamesStepAndRecovery(t *testing.T) {
+	m, _, _ := importFixture(t, "", normalKeepArchive())
+	m.Runner.DryRun = false
+	stage := filepath.Join(m.Root, ".rootfiles-import-mkdir-failure")
+	if err := os.Mkdir(stage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stage, "home"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("IMPORT_STAGE", stage)
+	bin := os.Getenv("PATH")
+	for name, script := range map[string]string{
+		"mktemp": "#!/bin/sh\nprintf '%s\\n' \"$IMPORT_STAGE\"\n",
+		"chmod":  "#!/bin/sh\nexit 0\n",
+		"rm":     "#!/bin/sh\n/bin/rm \"$@\"\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	err := m.copyDockerKeep(context.Background(), "legacy", "/home/alice", t.TempDir())
+	if err == nil || !strings.Contains(err.Error(), "creating import staging directory "+filepath.Join(stage, "home")) || !strings.Contains(err.Error(), "check free space and permissions under the tenant root") {
+		t.Fatalf("unhelpful staging mkdir error: %v", err)
+	}
+}

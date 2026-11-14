@@ -180,7 +180,7 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) 
 	rel := strings.TrimPrefix(keep, "/")
 	parent := filepath.Join(stage, filepath.Dir(rel))
 	if err := m.Runner.MkdirAll(parent, 0755); err != nil {
-		return err
+		return fmt.Errorf("creating import staging directory %s: %w; check free space and permissions under the tenant root", parent, err)
 	}
 	if err := m.run(ctx, "docker", "cp", "-a", "--", from+":"+keep, parent+"/"); err != nil {
 		return fmt.Errorf("copying %s:%s to private staging: %w", from, keep, err)
@@ -192,7 +192,7 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) 
 		}
 	}
 	if err := m.Runner.MkdirAll(destination, 0755); err != nil {
-		return err
+		return fmt.Errorf("creating %s in tenant volume: %w; inspect the volume or choose a clean tenant volume", destination, err)
 	}
 	if err := m.run(ctx, "rsync", "-aHAX", filepath.Join(stage, rel), destination+"/"); err != nil {
 		return fmt.Errorf("copying kept path %s into tenant volume: %w", keep, err)
@@ -215,7 +215,7 @@ func safeImportDestination(root, destination string) error {
 			continue
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("inspecting import destination %s: %w; inspect the tenant volume", current, err)
 		}
 		if !fi.IsDir() {
 			return fmt.Errorf("import destination %s is not an ordinary directory; remove the symlink or choose a clean tenant volume", current)
