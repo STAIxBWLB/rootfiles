@@ -286,3 +286,28 @@ func TestArchiveAllocationAccountsForSmallFiles(t *testing.T) {
 		t.Fatal("negative size accepted")
 	}
 }
+
+func TestDockerKeepMissingOrFailingToolIsReadOnly(t *testing.T) {
+	for _, missing := range []bool{false, true} {
+		t.Run(strconv.FormatBool(missing), func(t *testing.T) {
+			m, _, _ := importFixture(t, "", normalKeepArchive())
+			binary := filepath.Join(os.Getenv("PATH"), "docker")
+			if missing {
+				if err := os.Remove(binary); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if err := os.WriteFile(binary, []byte("#!/bin/sh\nexit 9\n"), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := m.measureDockerKeep(context.Background(), "legacy", "/home/alice"); err == nil {
+				t.Fatal("missing/failing Docker accepted")
+			}
+			entries, _ := os.ReadDir(m.Root)
+			if len(entries) != 0 {
+				t.Fatal("query failure wrote staging")
+			}
+		})
+	}
+}

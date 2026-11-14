@@ -220,7 +220,7 @@ func safeImportDestination(root, destination string) error {
 	return nil
 }
 
-// Both supported mkfs defaults use 4KiB blocks. Allow an extra block per entry
+// Round to 4KiB allocation units for ext4/xfs. Allow an extra block per entry
 // for inode/directory metadata rather than treating a tiny file as one byte.
 // The existing 5% volume margin remains additional to this estimate.
 func archiveAllocation(h *tar.Header) (uint64, error) {
