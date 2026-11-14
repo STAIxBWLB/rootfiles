@@ -38,7 +38,10 @@ func loadForInspection(cmd *cobra.Command) (*config.Config, string, error) {
 	}
 	cfg, err := config.LoadWithOverrides(profile, configPath, sys, loadOverrides(cmd))
 	if err != nil {
-		return nil, source, configLoadError(fmt.Errorf("%s: %w", source, err), profile, configPath)
+		if unknownSelectedProfile(profile, configPath) {
+			return nil, source, configLoadError(fmt.Errorf("%s: %w", source, err), profile, configPath)
+		}
+		return nil, source, err
 	}
 	applyFlagOverrides(cmd, cfg)
 	applyAccountFlags(cmd, cfg)

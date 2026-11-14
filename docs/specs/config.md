@@ -44,7 +44,7 @@ The config schema (`Config` and its module structs), the embedded profiles and t
 
 - `rootfiles config show [--reveal]`: prints the merged config for the same target `check` would use (`loadForInspection` via `resolveTarget`), with env and flag overrides; the tunnel token is masked unless `--reveal`.
 - `rootfiles config validate`: same loading, prints the source and exits non-zero on any error. On Rocky it also runs `ValidateCapabilities`.
-- Fatal inspection load errors use the [CLI runtime known-recovery contract](cli-runtime.md): exit 1, no stdout, and a separate validation command naming the actual target. An unknown selected profile lists the available profiles and points to root help.
+- Fatal inspection load errors retain exit 1 and no stdout. An unknown selected profile lists the available profiles and points to root help under the [CLI runtime known-recovery contract](cli-runtime.md). Other inspection load errors have no next step: repeating `config validate` is not a known fix.
 - `rootfiles config init [--extends P] [--file F] [--overwrite] [--from-system]`: writes a template extending the suggested profile, or a snapshot of the running host (`SnapshotCurrent` in `internal/config/snapshot.go`, works on hosts not set up by rootfiles); a capture may hold the tunnel token, so the file always ends 0600 and owned by the caller, new or overwritten; an existing file needs `--overwrite` (`--force` is a deprecated alias), and a symlink, special file or file owned by another non-root user is refused.
 
 ## Distro support

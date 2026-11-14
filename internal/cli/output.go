@@ -47,16 +47,20 @@ func withNext(err error, next string) error {
 // configLoadError is only for fatal loads. Overview reports retain their
 // original load error and fallback payload.
 func configLoadError(err error, profile, configPath string) error {
+	if unknownSelectedProfile(profile, configPath) {
+		return withNext(fmt.Errorf("%w; available profiles: %s", err, strings.Join(config.AvailableProfiles(), ", ")), "rootfiles --help")
+	}
 	if configPath != "" {
 		return withNext(err, "rootfiles config validate --config "+fleet.ShellQuote(configPath))
 	}
 	if profile == "" {
 		profile = "minimal"
 	}
-	if !slices.Contains(config.AvailableProfiles(), profile) {
-		return withNext(fmt.Errorf("%w; available profiles: %s", err, strings.Join(config.AvailableProfiles(), ", ")), "rootfiles --help")
-	}
 	return withNext(err, "rootfiles config validate --profile "+fleet.ShellQuote(profile))
+}
+
+func unknownSelectedProfile(profile, configPath string) bool {
+	return configPath == "" && profile != "" && !slices.Contains(config.AvailableProfiles(), profile)
 }
 
 // Exit codes shared by read-only commands, suitable for monitoring:

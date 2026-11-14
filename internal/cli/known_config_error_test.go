@@ -24,7 +24,7 @@ func TestFatalConfigLoadNextSteps(t *testing.T) {
 	}
 	for _, args := range [][]string{
 		{"check", "--json"}, {"apply", "--dry-run", "--yes"},
-		{"config", "show"}, {"config", "validate"}, {"gpu", "list"},
+		{"gpu", "list"},
 	} {
 		for _, ascii := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/ascii=%t", strings.Join(args, "_"), ascii), func(t *testing.T) {
@@ -60,20 +60,48 @@ func TestFatalConfigLoadNextSteps(t *testing.T) {
 
 func TestUnknownProfileNextStep(t *testing.T) {
 	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
-	root := NewRootCmd("test", "abc")
-	var out, stderr bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&stderr)
-	root.SetArgs([]string{"check", "--profile", "not-a-profile", "--json", "--ascii", "--color=never"})
-	err := executeCommand(context.Background(), root)
-	var exit *ExitError
-	if !errors.As(err, &exit) || exit.Code != 1 {
-		t.Fatalf("error = %v, want exit 1", err)
+	for _, args := range [][]string{{"check", "--json"}, {"config", "show"}, {"config", "validate"}} {
+		t.Run(strings.Join(args, "_"), func(t *testing.T) {
+			root := NewRootCmd("test", "abc")
+			var out, stderr bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&stderr)
+			root.SetArgs(append(args, "--profile", "not-a-profile", "--ascii", "--color=never"))
+			err := executeCommand(context.Background(), root)
+			var exit *ExitError
+			if !errors.As(err, &exit) || exit.Code != 1 {
+				t.Fatalf("error = %v, want exit 1", err)
+			}
+			if out.Len() != 0 || strings.Count(stderr.String(), "\n") != 2 ||
+				!strings.Contains(stderr.String(), "available profiles: "+strings.Join(config.AvailableProfiles(), ", ")) ||
+				!strings.Contains(stderr.String(), "-> rootfiles --help\n") {
+				t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
+			}
+		})
 	}
-	if out.Len() != 0 || strings.Count(stderr.String(), "\n") != 2 ||
-		!strings.Contains(stderr.String(), "available profiles: "+strings.Join(config.AvailableProfiles(), ", ")) ||
-		!strings.Contains(stderr.String(), "-> rootfiles --help\n") {
-		t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
+}
+
+func TestConfigInspectionDoesNotSuggestRepeatingValidation(t *testing.T) {
+	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
+	f := filepath.Join(t.TempDir(), "bad.yaml")
+	if err := os.WriteFile(f, []byte("extends: minimal\nssh:\n  port: 70000\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, action := range []string{"show", "validate"} {
+		t.Run(action, func(t *testing.T) {
+			root := NewRootCmd("test", "abc")
+			var out, stderr bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&stderr)
+			root.SetArgs([]string{"config", action, "--config", f, "--ascii", "--color=never"})
+			err := executeCommand(context.Background(), root)
+			var exit *ExitError
+			if err == nil || (errors.As(err, &exit) && (exit.Code != 1 || exit.Next != "")) ||
+				out.Len() != 0 || !strings.Contains(stderr.String(), "ssh.port") ||
+				strings.Contains(stderr.String(), "rootfiles config validate") || strings.Contains(stderr.String(), "->") {
+				t.Fatalf("error=%v stdout=%q stderr=%q", err, out.String(), stderr.String())
+			}
+		})
 	}
 }
 

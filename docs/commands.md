@@ -23,7 +23,7 @@ rootfiles: rootfiles apply: changes the system and must run as root
   -> sudo rootfiles 'apply' '--ascii'
 ```
 
-The same arguments are shell-quoted in a `sudo` retry. If they contain a password or token, the next step shows the command's `--help` instead. A held lock suggests `ps -p` for its holder, never deleting the lock file. Fatal config loads suggest `rootfiles config validate` with the selected config or profile; unknown profiles list the available names and point to `rootfiles --help`. These errors exit 1 and leave JSON stdout empty. Without `--ascii`, UTF-8 locales use `→` for the next step.
+The same arguments are shell-quoted in a `sudo` retry. If they contain a password or token, the next step shows the command's `--help` instead. A held lock suggests `ps -p` for its holder, never deleting the lock file. Fatal config loads outside `config show/validate` suggest `rootfiles config validate` with the selected config or profile; unknown profiles list the available names and point to `rootfiles --help`. These errors exit 1 and leave JSON stdout empty. Without `--ascii`, UTF-8 locales use `→` for the next step.
 
 ### Output formats
 
