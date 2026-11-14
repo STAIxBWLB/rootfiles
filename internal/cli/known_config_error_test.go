@@ -121,6 +121,36 @@ func TestWithNextPreservesCauseAndProfileTarget(t *testing.T) {
 	}
 }
 
+func TestWithNextPreservesWhitespaceExceptLineBreaks(t *testing.T) {
+	cause := errors.New("config 'two  spaces\tand tab': first\r\n  second\n\tthird\rfourth")
+	err := withNext(cause, "rootfiles --help")
+	var exit *ExitError
+	if !errors.As(err, &exit) || !errors.Is(err, cause) ||
+		exit.Msg != "config 'two  spaces\tand tab': first;   second; \tthird; fourth" {
+		t.Fatalf("whitespace changed beyond line breaks: %q", err)
+	}
+}
+
+func TestConfigJoinedErrorsUseSemicolonOnOneCauseLine(t *testing.T) {
+	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
+	f := filepath.Join(t.TempDir(), "bad.yaml")
+	if err := os.WriteFile(f, []byte("extends: minimal\nssh:\n  port: 70000\n  max_auth_tries: 101\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	root := NewRootCmd("test", "test")
+	var stdout, stderr bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"check", "--config", f, "--json", "--ascii", "--color=never"})
+	err := executeCommand(context.Background(), root)
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != 1 || stdout.Len() != 0 ||
+		strings.Count(stderr.String(), "\n") != 2 ||
+		!strings.Contains(stderr.String(), "ssh.port: port 70000 out of range; ssh.max_auth_tries: 101 out of range\n") {
+		t.Fatalf("error=%v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+	}
+}
+
 func TestFatalProfileLoadNextStep(t *testing.T) {
 	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
 	t.Setenv("ROOTFILES_HOME_BASE", "relative-home")

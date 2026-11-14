@@ -23,12 +23,12 @@ rootfiles: rootfiles apply: changes the system and must run as root
   -> sudo rootfiles 'apply' '--ascii'
 ```
 
-The same arguments are shell-quoted in a `sudo` retry. If they contain a password, password suffix or token, or any `ROOTFILES_*` environment variable is set, the next step shows the command's `--help` instead. This avoids a sudo retry that loses its environment-selected target. A held lock suggests `ps -p` for its holder, never deleting the lock file. Fatal config loads outside `config show/validate` suggest `rootfiles config validate` with the selected config or profile; unknown profiles list the available names and point to `rootfiles --help`. Except for unknown profiles (which retain root help), when `--home-base` or `--vlan-address` was set, a fatal load has no next step: the bare validation command would omit the override. These errors exit 1 and leave JSON stdout empty. Without `--ascii`, UTF-8 locales use `→` for the next step.
+On Linux, the same arguments are shell-quoted in a `sudo` retry. If they contain a password, password suffix or token, or any `ROOTFILES_*` environment variable is set, the next step shows the command's `--help` instead. This avoids a sudo retry that loses its environment-selected target. On other systems, a non-root native mutation still reports the root requirement first, but its next step is `rootfiles fleet --help` (`requireRootAndLock`). A held lock suggests `ps -p` for its holder, never deleting the lock file. Fatal config loads outside `config show/validate` suggest `rootfiles config validate` with the selected config or profile; unknown profiles list the available names and point to `rootfiles --help`. Except for unknown profiles (which retain root help), when `--home-base` or `--vlan-address` was set, a fatal load has no next step: the bare validation command would omit the override. These errors exit 1 and leave JSON stdout empty. Without `--ascii`, UTF-8 locales use `→` for the next step.
 
 ### Output formats
 
 - `--json` selects JSON on report commands; `-o/--output` selects a report format: `text` (default) or `json`; `check` and `doctor` also take `prometheus` (text exposition for the node exporter textfile collector).
-- Text output uses per-stream color policy: explicit `--color`, then nonempty `NO_COLOR`, nonzero `FORCE_COLOR` or `CLICOLOR_FORCE`, `FORCE_COLOR=0` or `CLICOLOR=0`, then TTY with `TERM` other than `dumb`. JSON never contains decoration. `--ascii` or a non-UTF-8 locale selects ASCII markers.
+- Text output resolves color separately for stdout and stderr (`ui.ResolveColor`); JSON and raw payloads bypass decoration. See [environment variables](#environment-variables) for color, width and locale precedence. `--ascii` forces ASCII markers and relation separators.
 - Fleet commands accept only `text` and `json`, and refuse anything else before connecting.
 
 ### Root flags and their readers
@@ -84,9 +84,21 @@ Only these variables are read. Flags win over the environment.
 | `ROOTFILES_STATE_DIR` | every command | State, history, applied-config copy, file backups, scheduled reports | `/var/lib/rootfiles` |
 | `ROOTFILES_LOG_FILE` | mutating commands | JSON audit log | `/var/log/rootfiles.log` |
 | `ROOTFILES_LOCK_FILE` | mutating commands | Global lock file | `/run/rootfiles.lock` |
-| `NO_COLOR` | text reports | Disables colour | unset |
+| `NO_COLOR` | human output | Nonempty disables color unless `--color=always` overrides it | unset |
+| `FORCE_COLOR` | human output | Nonempty other than `0` requests color; `0` requests no color, subject to the precedence below | unset |
+| `CLICOLOR_FORCE` | human output | Nonempty other than `0` requests color; `0` does not force color off | unset |
+| `CLICOLOR` | human output | `0` requests no color after force-color requests are checked; other values do not force color on | unset |
+| `TERM` | human output | `dumb` disables automatic TTY color when no earlier color rule applies | inherited |
+| `COLUMNS` | human report layout | Positive fallback width; a readable TTY's actual width wins (`ui.OutputWidth`). On a pipe, unset or invalid means no wrapping limit | unset |
+| `LC_ALL` | human output | First locale considered for automatic ASCII markers and relation separators | inherited |
+| `LC_CTYPE` | human output | Locale considered only when `LC_ALL` is empty | inherited |
+| `LANG` | human output | Locale considered only when both `LC_ALL` and `LC_CTYPE` are empty | inherited |
 | `XDG_CONFIG_HOME` | `fleet` | Default inventory `$XDG_CONFIG_HOME/rootfiles/fleet.yaml` | `~/.config` |
 | `XDG_STATE_HOME` | `fleet` | Run log `$XDG_STATE_HOME/rootfiles/fleet.jsonl` | `~/.local/state` |
+
+For each stream, `ui.ResolveColor` uses the first matching rule: `--color=never` / `always` disables / enables color; nonempty `NO_COLOR` disables it; nonempty, nonzero `FORCE_COLOR` or `CLICOLOR_FORCE` enables it; `FORCE_COLOR=0` or `CLICOLOR=0` disables it; otherwise a TTY enables color unless `TERM=dumb`, and a pipe stays plain. `--color=auto` uses the environment and TTY rules. JSON and raw payloads stay undecorated regardless.
+
+`ui.ASCIIMarkers` uses `--ascii` first, then the first nonempty value of `LC_ALL`, `LC_CTYPE`, `LANG`. That locale must contain `UTF-8` or `UTF8` (case-insensitive) to use Unicode; another locale or no locale selects ASCII. `ui.OutputWidth` uses the actual TTY width when available, then a positive `COLUMNS`. `ui.WriteTable` still caps fixed columns and can exceed a narrow requested width to retain its flexible-column minimum.
 
 The config-loading variables apply wherever a config is loaded, after the file and before the CLI flags. The fleet controller does not pass its own `ROOTFILES_*` variables into the site configs it resolves. `tenant ops` clears every `ROOTFILES_*` variable before it runs.
 

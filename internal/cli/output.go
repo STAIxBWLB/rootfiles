@@ -41,7 +41,8 @@ func withNext(err error, next string) error {
 	if err == nil {
 		return nil
 	}
-	return &ExitError{Code: 1, Msg: strings.Join(strings.Fields(err.Error()), " "), Next: next, cause: err}
+	msg := strings.NewReplacer("\r\n", "; ", "\n", "; ", "\r", "; ").Replace(err.Error())
+	return &ExitError{Code: 1, Msg: msg, Next: next, cause: err}
 }
 
 // configLoadError is only for fatal loads. Overview reports retain their
