@@ -52,6 +52,8 @@ type legacyContainer struct {
 	}
 }
 
+var importFreeSpace = freeSpace
+
 // Import writes a spec from a running legacy container, copies its host
 // keys, password hashes and kept data into a new volume, stops the old
 // container (kept for rollback) and starts the tenant container.
@@ -136,6 +138,9 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 	merged := old.GraphDriver.Data["MergedDir"]
 	type copyItem struct{ src, dst string }
 	var items []copyItem
+	var dockerKeep []dockerKeepItem
+	var archiveBytes uint64
+	var scratchBytes uint64
 	p := m.Paths(s.Name)
 	if o.Data != "" {
 		items = append(items, copyItem{strings.TrimSuffix(o.Data, "/") + "/", filepath.Join(p.Mount, "data") + "/"})
@@ -146,7 +151,17 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 			return nil, fmt.Errorf("--keep %s: only paths under /home or /tmp can be kept", k)
 		}
 		if merged == "" {
-			return nil, fmt.Errorf("cannot read the writable layer of %s (no overlay MergedDir)", o.From)
+			n, parents, err := m.measureDockerKeep(ctx, o.From, k)
+			if err != nil {
+				return nil, err
+			}
+			if ^uint64(0)-archiveBytes < n {
+				return nil, fmt.Errorf("kept data size overflows; import fewer paths")
+			}
+			archiveBytes += n
+			scratchBytes = max(scratchBytes, n)
+			dockerKeep = append(dockerKeep, dockerKeepItem{path: k, parents: parents})
+			continue
 		}
 		// A symlink inside the container (say /home -> /) would resolve
 		// against the host's root here, so the path must stay in the layer.
@@ -156,7 +171,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 		}
 		items = append(items, copyItem{merged + "/." + k, p.Mount + "/"})
 	}
-	var total uint64
+	total := archiveBytes
 	for _, it := range items {
 		src := strings.Replace(it.src, "/./", "/", 1)
 		n, err := m.du(ctx, src)
@@ -166,11 +181,14 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 		total += n
 	}
 	size, _ := s.Volume.Bytes()
-	free := freeSpace(m.Root)
+	free := importFreeSpace(m.Root)
 	m.printf("Import plan for tenant %s from %s:\n", s.Name, o.From)
 	m.printf("  image %s, ssh port %d, gpus %v, users %d, volume %s %s\n", s.Image, s.SSHPort, s.GPUs, len(s.Users), s.Volume.Filesystem(), s.Volume.Size)
 	for _, it := range items {
 		m.printf("  copy %s -> %s\n", it.src, it.dst)
+	}
+	for _, k := range dockerKeep {
+		m.printf("  copy %s:%s -> %s/ (Docker archive, numeric owners)\n", o.From, k.path, p.Mount)
 	}
 	for _, n := range notes {
 		m.printf("  "+ui.MarkWarn+" %s\n", n)
@@ -181,6 +199,10 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 	}
 	if total > free {
 		return nil, fmt.Errorf("data to copy (%s) exceeds the free space on %s (%s)", human(total), m.Root, human(free))
+	}
+	// Copies are sequential; only the largest keep needs temporary space at once.
+	if scratchBytes > free-total {
+		return nil, fmt.Errorf("data and temporary Docker copy need %s plus %s on %s; only %s is free; free space or import fewer paths", human(total), human(scratchBytes), m.Root, human(free))
 	}
 
 	if m.ReserveGPUs != nil {
@@ -220,6 +242,11 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 		}
 		if err := m.run(ctx, "rsync", args...); err != nil {
 			return nil, fmt.Errorf("copying %s: %w", it.src, err)
+		}
+	}
+	for _, k := range dockerKeep {
+		if err := m.copyDockerKeep(ctx, o.From, k.path, p.Mount, k.parents...); err != nil {
+			return nil, err
 		}
 	}
 	for _, a := range [][]string{{"update", "--restart=no", o.From}, {"stop", o.From}} {
