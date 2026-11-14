@@ -123,6 +123,24 @@ func Last() (*Run, error) {
 // Lock is a held process lock.
 type Lock struct{ f *os.File }
 
+// LockHeldError identifies an occupied lock without making callers parse text.
+// PID is zero when the holder file does not contain a positive numeric PID.
+type LockHeldError struct {
+	PID  int
+	Path string
+	Err  error
+}
+
+func (e *LockHeldError) Error() string {
+	pid := "unknown"
+	if e.PID > 0 {
+		pid = strconv.Itoa(e.PID)
+	}
+	return fmt.Sprintf("another rootfiles command is running (pid %s); lock: %s", pid, e.Path)
+}
+
+func (e *LockHeldError) Unwrap() error { return e.Err }
+
 // Acquire takes the global rootfiles lock without blocking. It fails with a
 // message naming the holder's PID when another mutating command runs.
 func Acquire() (*Lock, error) {
@@ -137,11 +155,14 @@ func Acquire() (*Lock, error) {
 	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		holder, _ := os.ReadFile(path)
 		f.Close()
-		pid := strings.TrimSpace(string(holder))
-		if pid == "" {
-			pid = "unknown"
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
+			return nil, fmt.Errorf("locking %s: %w", path, err)
 		}
-		return nil, fmt.Errorf("another rootfiles command is running (pid %s); lock: %s", pid, path)
+		pid, parseErr := strconv.Atoi(strings.TrimSpace(string(holder)))
+		if parseErr != nil || pid <= 0 {
+			pid = 0
+		}
+		return nil, &LockHeldError{PID: pid, Path: path, Err: err}
 	}
 	_ = f.Truncate(0)
 	_, _ = f.WriteAt([]byte(strconv.Itoa(os.Getpid())+"\n"), 0)

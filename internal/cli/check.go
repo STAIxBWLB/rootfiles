@@ -51,7 +51,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 
 	cfg, err := config.LoadWithOverrides(profileName, configPath, sysInfo, loadOverrides(cmd))
 	if err != nil {
-		return fmt.Errorf("loading config: %w", err)
+		return configLoadError(cmd, fmt.Errorf("loading config: %w", err), profileName, configPath)
 	}
 	applyFlagOverrides(cmd, cfg)
 	applyAccountFlags(cmd, cfg)

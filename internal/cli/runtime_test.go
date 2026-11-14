@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -139,6 +140,8 @@ func TestRedactArgs(t *testing.T) {
 		{"inline token", []string{"apply", "--tunnel-token=secret"}, []string{"apply", "--tunnel-token=***"}},
 		{"password", []string{"user", "passwd", "alice", "--password", "secret"}, []string{"user", "passwd", "alice", "--password", "***"}},
 		{"inline password", []string{"user", "passwd", "alice", "--password=secret"}, []string{"user", "passwd", "alice", "--password=***"}},
+		{"suffix", []string{"user", "passwd", "alice", "--suffix", "secret"}, []string{"user", "passwd", "alice", "--suffix", "***"}},
+		{"inline suffix", []string{"user", "passwd", "alice", "--suffix=secret"}, []string{"user", "passwd", "alice", "--suffix=***"}},
 		{"positional", []string{"tunnel", "setup", "secret"}, []string{"tunnel", "setup", "***"}},
 		{"install alias positional", []string{"tunnel", "install", "secret"}, []string{"tunnel", "install", "***"}},
 		{"install alias interspersed", []string{"tunnel", "install", "--config", "site.yaml", "secret"}, []string{"tunnel", "install", "--config", "site.yaml", "***"}},
@@ -167,6 +170,8 @@ func TestRedactArgs(t *testing.T) {
 
 func TestRedactAuditAndBackupNotes(t *testing.T) {
 	for _, args := range [][]string{
+		{"user", "passwd", "alice", "--suffix", "sentinel-secret"},
+		{"user", "passwd", "alice", "--suffix=sentinel-secret"},
 		{"apply", "--tunnel-token", "sentinel-secret"},
 		{"apply", "--tunnel-token=sentinel-secret"},
 		{"tunnel", "setup", "sentinel-secret"},
@@ -279,7 +284,8 @@ func TestReadOnlyCommandsRejectVLANAddress(t *testing.T) {
 				root.SetErr(io.Discard)
 				root.SetArgs(append([]string{command}, flags...))
 				err := root.Execute()
-				if err == nil || !strings.Contains(err.Error(), "rootfiles "+command+" does not use --vlan-address") || !strings.Contains(err.Error(), "remove these flags") {
+				var exit *ExitError
+				if err == nil || !strings.Contains(err.Error(), "rootfiles "+command+": does not use --vlan-address") || !errors.As(err, &exit) || exit.Next != "remove --vlan-address from this command" {
 					t.Fatalf("non-reader refusal lost: %v", err)
 				}
 				entries, err := os.ReadDir(stateDir)
