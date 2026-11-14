@@ -129,7 +129,10 @@ func newFleetReadCmd(op string) *cobra.Command {
 	return c
 }
 
+var readFleetHost = fleet.SSHRunner.ReadOnly
+
 func runReadPool(ctx context.Context, r fleet.SSHRunner, hosts []fleet.NamedHost, op string, workers int) []fleet.Result {
+	read := readFleetHost
 	out := make([]fleet.Result, len(hosts))
 	jobs := make(chan int)
 	var wg sync.WaitGroup
@@ -138,7 +141,7 @@ func runReadPool(ctx context.Context, r fleet.SSHRunner, hosts []fleet.NamedHost
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				out[i] = r.ReadOnly(ctx, hosts[i], op)
+				out[i] = read(r, ctx, hosts[i], op)
 			}
 		}()
 	}
