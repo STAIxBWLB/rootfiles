@@ -227,7 +227,11 @@ func rootRetryCommand(cmd *cobra.Command) string {
 // requireRootAndLock checks for root and takes the global lock.
 func requireRootAndLock(cmd *cobra.Command) error {
 	if geteuid() != 0 {
-		return withNext(fmt.Errorf("%s: changes the system and must run as root", cmd.CommandPath()), rootRetryCommand(cmd))
+		next := "rootfiles fleet --help"
+		if nativeHostOS == "linux" {
+			next = rootRetryCommand(cmd)
+		}
+		return withNext(fmt.Errorf("%s: changes the system and must run as root", cmd.CommandPath()), next)
 	}
 	if nativeHostOS != "linux" {
 		return withNext(fmt.Errorf("native host mutations: require Linux (current OS: %s)", nativeHostOS), "rootfiles fleet --help")

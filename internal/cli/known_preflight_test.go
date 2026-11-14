@@ -144,6 +144,18 @@ func TestKnownRootPreflightNeverEchoesPasswordSuffix(t *testing.T) {
 
 func TestKnownLinuxAndRefusedFlagNextSteps(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
+		t.Run("non-root-non-linux/"+strconv.FormatBool(ascii), func(t *testing.T) {
+			knownPreflightFixture(t)
+			geteuid = func() int { return 1000 }
+			nativeHostOS = "darwin"
+			err := executeKnownPreflight(t, []string{"apply"}, ascii, "rootfiles fleet --help")
+			if !strings.Contains(err.Error(), "must run as root") {
+				t.Fatalf("root-before-OS order changed: %v", err)
+			}
+			if _, err := os.Stat(state.LockPath()); !os.IsNotExist(err) {
+				t.Fatalf("non-root preflight reached lock: %v", err)
+			}
+		})
 		t.Run("linux/"+strconv.FormatBool(ascii), func(t *testing.T) {
 			knownPreflightFixture(t)
 			nativeHostOS = "darwin"

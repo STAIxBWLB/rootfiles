@@ -184,7 +184,7 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string, 
 		defer func() {
 			cleanupCtx := importCleanupContext(ctx)
 			if err := m.run(cleanupCtx, "rm", "-r", "--", stage); err != nil {
-				m.printf("Import temporary directory %s could not be removed: %v\n", stage, err)
+				m.printf("Import temporary directory %s could not be removed: %v; remove it manually to reclaim space\n", stage, err)
 			}
 		}()
 		if err := m.run(ctx, "chmod", "0700", stage); err != nil {

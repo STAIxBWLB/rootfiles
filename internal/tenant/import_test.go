@@ -452,6 +452,35 @@ func TestDockerKeepStagingMkdirErrorNamesStepAndRecovery(t *testing.T) {
 	}
 }
 
+func TestDockerKeepCleanupFailureNamesDirectoryAndRecovery(t *testing.T) {
+	m, _, out := importFixture(t, "", normalKeepArchive())
+	m.Runner.DryRun = false
+	stage := filepath.Join(m.Root, ".rootfiles-import-cleanup-failure")
+	if err := os.Mkdir(stage, 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("IMPORT_STAGE", stage)
+	for name, script := range map[string]string{
+		"mktemp": "#!/bin/sh\nprintf '%s\\n' \"$IMPORT_STAGE\"\n",
+		"chmod":  "#!/bin/sh\nexit 0\n",
+		"docker": "#!/bin/sh\nexit 0\n",
+		"rsync":  "#!/bin/sh\nexit 0\n",
+		"rm":     "#!/bin/sh\nprintf 'fixture cleanup failure' >&2\nexit 1\n",
+	} {
+		if err := os.WriteFile(filepath.Join(os.Getenv("PATH"), name), []byte(script), 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := m.copyDockerKeep(context.Background(), "legacy", "/home/alice", t.TempDir()); err != nil {
+		t.Fatalf("cleanup warning became fatal: %v", err)
+	}
+	if !strings.Contains(out.String(), "Import temporary directory "+stage+" could not be removed:") ||
+		!strings.Contains(out.String(), "fixture cleanup failure") ||
+		!strings.Contains(out.String(), "remove it manually to reclaim space") {
+		t.Fatalf("cleanup warning lacks target, cause or recovery: %q", out.String())
+	}
+}
+
 func TestImportNestedKeepRestoresParentAttributes(t *testing.T) {
 	m, _, _ := importFixture(t, "", []*tar.Header{{Name: "projects/", Typeflag: tar.TypeDir, Mode: 0750, Uid: 1000, Gid: 1000}})
 	var archive bytes.Buffer
