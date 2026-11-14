@@ -119,7 +119,9 @@ func TestKnownRootPreflightNeverEchoesPasswordSuffix(t *testing.T) {
 			err := executeCommand(context.Background(), root)
 			var exit *ExitError
 			if !errors.As(err, &exit) || exit.Code != 1 || exit.Next != "sudo rootfiles user passwd --help" ||
-				stdout.Len() != 0 || strings.Contains(stderr.String(), "fixture-secret") || strings.Contains(exit.Next, "***") {
+				!strings.Contains(stdout.String(), "Flag --suffix has been deprecated") ||
+				strings.Contains(stdout.String()+stderr.String(), "fixture-secret") || strings.Contains(exit.Next, "***") ||
+				strings.Count(stderr.String(), "\n") != 2 {
 				t.Fatalf("exit=%v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
 			}
 		})
