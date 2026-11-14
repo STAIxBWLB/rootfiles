@@ -100,7 +100,7 @@ Root command. Run `rootfiles help <command>` or `rootfiles <command> --help` for
 | `--vlan-address` | unset | Private network address of the tunnel, a CIDR such as `203.0.113.10/32`. |
 | `--color` | `auto` | Color policy: `auto`, `always` or `never`, resolved separately for stdout and stderr. |
 | `--ascii` | `false` | Use ASCII markers (also automatic for a non-UTF-8 locale). |
-| `--verbose` | `false` | Enable INFO diagnostics; place before `check` to distinguish its local report flag. |
+| `--verbose` | `false` | Enable INFO diagnostics except on `check`, whose local verbose flag shadows it in every position. |
 | `-v`, `--version` | | Print the version and commit. |
 
 Unknown commands exit 2 with Cobra suggestions (for example, `rootfiles stauts` suggests `status`); bare parent commands print help. Usage classification follows flag/argument parsing, not diagnostic message words.
@@ -141,7 +141,7 @@ Capture what is needed to rebuild this host after an OS reinstall ([operations.m
 
 ### rootfiles check
 
-Report which modules have pending changes. Read-only: every module runs `Check` only. `check -v` or `check --verbose` expands the report while keeping the console logger at WARN when no root diagnostic flag is given. `rootfiles --verbose check` enables root INFO diagnostics; add local `-v` to get report details too.
+Report which modules have pending changes. Read-only: every module runs `Check` only. `check -v`, `check --verbose` and `rootfiles --verbose check` all expand the report while keeping the console logger at WARN. Check has no INFO diagnostic mode; its local verbose flag shadows the root flag in every position.
 
 | Flag | Default | Purpose |
 |---|---|---|

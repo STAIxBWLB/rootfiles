@@ -59,7 +59,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	logger := newLogger(cmd, true, slog.LevelInfo)
+	logger := newLogger(cmd, true, slog.LevelWarn)
 	rc := readOnlyRunContext(cfg, sysInfo, logger)
 	rc.Out = cmd.OutOrStdout()
 	rc.Err = cmd.ErrOrStderr()

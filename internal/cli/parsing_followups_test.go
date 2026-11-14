@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,8 +21,8 @@ func TestRootAndCheckVerboseHaveSeparateMeanings(t *testing.T) {
 	}{
 		{"local-short", []string{"check", "-v"}, false, true},
 		{"local-long", []string{"check", "--verbose"}, false, true},
-		{"root", []string{"--verbose", "check"}, true, false},
-		{"both", []string{"--verbose", "check", "-v"}, true, true},
+		{"root-prefix-shadowed", []string{"--verbose", "check"}, false, true},
+		{"both-local", []string{"--verbose", "check", "-v"}, false, true},
 		{"other-command", []string{"status", "--verbose"}, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -74,7 +75,7 @@ func TestUnknownCommandSuggestionsAreUsageErrors(t *testing.T) {
 }
 
 func TestUsageClassificationUsesErrorSource(t *testing.T) {
-	for _, args := range [][]string{{"status", "--missing"}, {"--missing=value", "status"}, {"--color"}} {
+	for _, args := range [][]string{{"status", "--missing"}, {"--missing=value", "status"}, {"--nosuch", "status"}, {"--color"}} {
 		root := NewRootCmd("test", "test")
 		root.SetOut(&bytes.Buffer{})
 		root.SetErr(&bytes.Buffer{})
@@ -178,5 +179,37 @@ func TestGeneratedCompletionKeepsGlobalFlagArityAndWriter(t *testing.T) {
 		if !strings.HasPrefix(stdout.String(), "# bash completion") || stderr.Len() != 0 {
 			t.Fatalf("completion flags=%v output=%q stderr=%q", flags, stdout.String(), stderr.String())
 		}
+	}
+}
+
+func TestFleetLeafFlagBeforeSubcommandStillParses(t *testing.T) {
+	root := NewRootCmd("test", "test")
+	cmd, _, err := root.Find([]string{"fleet", "targets"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory := filepath.Join(t.TempDir(), "inventory.yaml")
+	parsed := ""
+	cmd.RunE = func(c *cobra.Command, _ []string) error { parsed, _ = c.Flags().GetString("inventory"); return nil }
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"fleet", "--inventory", inventory, "targets"})
+	if err := executeCommand(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	if parsed != inventory {
+		t.Fatalf("inventory=%q want %q", parsed, inventory)
+	}
+}
+
+func TestGeneratedCompletionArgumentValidationIsUsage(t *testing.T) {
+	root := NewRootCmd("test", "test")
+	root.SetOut(&bytes.Buffer{})
+	root.SetErr(&bytes.Buffer{})
+	root.SetArgs([]string{"completion", "bash", "extra"})
+	err := executeCommand(context.Background(), root)
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != 2 || !exit.Usage {
+		t.Fatalf("generated argument error lost its source: %v", err)
 	}
 }

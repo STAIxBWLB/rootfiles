@@ -25,7 +25,6 @@ func NewRootCmd(version, commit string) *cobra.Command {
 		Long:              "rootfiles: Declarative server configuration management with modular profiles.",
 		PersistentPreRunE: preflight,
 		SilenceUsage:      true,
-		TraverseChildren:  true,
 		SilenceErrors:     true, // main prints the error once
 	}
 	root.Version = version + " (" + commit + ")"
@@ -128,8 +127,6 @@ func rawPassthroughOutput(cmd *cobra.Command, args []string) bool {
 // Args runs after parsing but before any preflight or command body. Wrapping
 // each validator also covers child commands with their own persistent hooks.
 func installOutputBoundary(cmd *cobra.Command) {
-	// Traverse needs persistent flag arities before it dispatches to a child.
-	cmd.InheritedFlags()
 	if !cmd.Runnable() {
 		cmd.RunE = func(c *cobra.Command, _ []string) error { return c.Help() }
 	}
@@ -175,16 +172,8 @@ func unknownCommandError(cmd *cobra.Command, name string) error {
 	return usageError(errors.New(message))
 }
 
-func isFlagParsingError(err error) bool {
-	var missing *pflag.NotExistError
-	var required *pflag.ValueRequiredError
-	var value *pflag.InvalidValueError
-	var syntax *pflag.InvalidSyntaxError
-	return errors.As(err, &missing) || errors.As(err, &required) || errors.As(err, &value) || errors.As(err, &syntax)
-}
-
-// Completion closures capture the current output writer, so create them only
-// after callers set it, then give the generated tree the same parsing boundary.
+// Generated completion commands need the same argument/output hooks. Create
+// them after callers set the writer, which Cobra captures in its closures.
 func prepareCompletionBoundary(root *cobra.Command) {
 	for _, command := range root.Commands() {
 		if command.Name() == "completion" {
@@ -210,16 +199,6 @@ func executeCommand(ctx context.Context, root *cobra.Command) error {
 	}
 	if cmd == nil {
 		cmd = root
-	}
-	if errors.Is(err, pflag.ErrHelp) {
-		_ = configureOutput(cmd)
-		return cmd.Help()
-	}
-	// Cobra Traverse parses parent flags before execute calls FlagErrorFunc.
-	// Those failures return the root command and pflag error types, rather than
-	// an error from the selected command body; no message matching is needed.
-	if cmd == root && isFlagParsingError(err) {
-		err = usageError(err)
 	}
 	var exit *ExitError
 	_ = configureOutput(cmd)
