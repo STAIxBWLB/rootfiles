@@ -16,6 +16,6 @@
   ✓  gpu: already satisfied
   ~  cloudflared: Install cloudflared binary
   ~  storage: Create data directory <fixture>/site/data
-  ~  storage: Create symlink <fixture>/site/data-link ~ <fixture>/site/data
+  ~  storage: Create symlink <fixture>/site/data-link → <fixture>/site/data
   ~  storage: Create Docker storage directory <fixture>/site/docker
   ✗  network: blocked: Firewall verification (blocked: firewalld is active; choose one firewall manager and disable modules.network.ufw or stop firewalld through the host firewall change process before applying)

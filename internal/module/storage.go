@@ -54,7 +54,7 @@ func (m *StorageModule) Check(_ context.Context, rc *RunContext) (*CheckResult, 
 		if isSymlinkTo(link, target) {
 			continue
 		}
-		desc := fmt.Sprintf("Create symlink %s "+ui.MarkPending+" %s", link, target)
+		desc := fmt.Sprintf("Create symlink %s "+ui.MarkNext+" %s", link, target)
 		if err := symlinkBlocker(link); err != nil {
 			desc += fmt.Sprintf(" (blocked: %v)", err)
 		}
@@ -120,7 +120,7 @@ func (m *StorageModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult
 			continue
 		}
 		if err := symlinkBlocker(link); err != nil {
-			return nil, fmt.Errorf("cannot create symlink %s "+ui.MarkPending+" %s: %w", link, target, err)
+			return nil, fmt.Errorf("cannot create symlink %s "+ui.MarkNext+" %s: %w", link, target, err)
 		}
 		if err := rc.Runner.MkdirAll(target, 0755); err != nil {
 			return nil, fmt.Errorf("creating symlink target %s: %w", target, err)
@@ -131,9 +131,9 @@ func (m *StorageModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult
 			}
 		}
 		if err := rc.Runner.Symlink(target, link); err != nil {
-			return nil, fmt.Errorf("creating symlink %s "+ui.MarkPending+" %s: %w", link, target, err)
+			return nil, fmt.Errorf("creating symlink %s "+ui.MarkNext+" %s: %w", link, target, err)
 		}
-		messages = append(messages, fmt.Sprintf("symlink %s "+ui.MarkPending+" %s", link, target))
+		messages = append(messages, fmt.Sprintf("symlink %s "+ui.MarkNext+" %s", link, target))
 		changed = true
 	}
 
