@@ -11,18 +11,31 @@ import (
 	"strings"
 )
 
-// measureDockerKeep reads without writing even in dry run. Inspect every parent
-// separately so a symlink in the source path cannot be hidden by Docker's
-// container-root resolution of the final path.
-func (m *Manager) measureDockerKeep(ctx context.Context, from, keep string) (uint64, error) {
+type keepParent struct {
+	path     string
+	uid, gid int
+	mode     int64
+}
+
+type dockerKeepItem struct {
+	path    string
+	parents []keepParent
+}
+
+// measureDockerKeep reads without writing even in dry run. Parent probes also
+// retain the attributes rsync --relative carries on the overlay2 path.
+func (m *Manager) measureDockerKeep(ctx context.Context, from, keep string) (uint64, []keepParent, error) {
 	parts := strings.Split(strings.TrimPrefix(keep, "/"), "/")
+	var parents []keepParent
 	for i := 1; i < len(parts); i++ {
-		prefix := "/" + strings.Join(parts[:i], "/")
-		if _, err := m.dockerArchiveSize(ctx, from, prefix, true); err != nil {
-			return 0, err
+		attr := keepParent{path: "/" + strings.Join(parts[:i], "/")}
+		if _, err := m.dockerArchiveSize(ctx, from, attr.path, &attr); err != nil {
+			return 0, nil, err
 		}
+		parents = append(parents, attr)
 	}
-	return m.dockerArchiveSize(ctx, from, keep, false)
+	size, err := m.dockerArchiveSize(ctx, from, keep, nil)
+	return size, parents, err
 }
 
 type archiveCounter struct {
@@ -39,7 +52,7 @@ func (r *archiveCounter) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, parent bool) (uint64, error) {
+func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, parent *keepParent) (uint64, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	reader, writer := io.Pipe()
 	done := make(chan error, 1)
@@ -61,16 +74,16 @@ func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, pare
 			break
 		}
 		if err != nil {
-			return 0, fmt.Errorf("--keep %s: reading Docker archive: %w", keep, err)
+			return 0, fmt.Errorf("--keep %s: reading Docker archive: %w; stop writes in the source container and retry", keep, err)
 		}
 		name := strings.TrimSuffix(h.Name, "/")
 		if !safeArchiveName(name) || (name != root && !strings.HasPrefix(name, root+"/")) {
 			return 0, fmt.Errorf("--keep %s: archive path %q escapes the selected path; choose an ordinary path inside the container", keep, h.Name)
 		}
 		if _, exists := entries[name]; exists {
-			return 0, fmt.Errorf("--keep %s: duplicate archive path %q", keep, name)
+			return 0, fmt.Errorf("--keep %s: duplicate archive path %q; stop writes in the source container and retry", keep, name)
 		}
-		if len(entries) == 0 && (name != root || h.Typeflag == tar.TypeSymlink || h.Typeflag == tar.TypeLink || (parent && h.Typeflag != tar.TypeDir)) {
+		if len(entries) == 0 && (name != root || h.Typeflag == tar.TypeSymlink || h.Typeflag == tar.TypeLink || (parent != nil && h.Typeflag != tar.TypeDir)) {
 			return 0, fmt.Errorf("--keep %s: not an ordinary path inside the container (symlink source); choose its real /home or /tmp path", keep)
 		}
 		switch h.Typeflag {
@@ -91,10 +104,11 @@ func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, pare
 		entries[name] = h.Typeflag
 		needed, err := archiveAllocation(h)
 		if err != nil || ^uint64(0)-allocation < needed {
-			return 0, fmt.Errorf("--keep %s: archive size overflow", keep)
+			return 0, fmt.Errorf("--keep %s: archive size overflow; import fewer paths", keep)
 		}
 		allocation += needed
-		if parent {
+		if parent != nil {
+			parent.uid, parent.gid, parent.mode = h.Uid, h.Gid, h.Mode&07777
 			return 0, nil
 		} // Only the directory itself is relevant to a parent probe.
 	}
@@ -116,7 +130,7 @@ func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, pare
 	// Drain padding and wait for the command error through the pipe, so a failed
 	// docker cp cannot be mistaken for a successfully terminated tar stream.
 	if _, err := io.Copy(io.Discard, counter); err != nil {
-		return 0, fmt.Errorf("--keep %s: Docker archive failed: %w", keep, err)
+		return 0, fmt.Errorf("--keep %s: Docker archive failed: %w; check the source container and kept path, then retry", keep, err)
 	}
 	return max(counter.count, allocation), nil
 }
@@ -156,12 +170,12 @@ func escapesContainer(base, target string) bool {
 // copyDockerKeep uses Docker's confined extraction into a fresh private host
 // directory. No untrusted archive is extracted over an existing volume tree.
 // -a preserves numeric UID/GID; rsync never follows the staged symbolic links.
-func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) error {
+func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string, parents ...keepParent) error {
 	stage := filepath.Join(m.Root, ".rootfiles-import-DRYRUN")
 	if !m.Runner.DryRun {
 		result, err := m.Runner.Run(ctx, "mktemp", "-d", filepath.Join(m.Root, ".rootfiles-import-XXXXXXXX"))
 		if err != nil {
-			return fmt.Errorf("creating private import staging: %w", err)
+			return fmt.Errorf("creating private import staging: %w; check free space and permissions under %s", err, m.Root)
 		}
 		stage = strings.TrimSpace(result.Stdout)
 		if filepath.Dir(stage) != filepath.Clean(m.Root) || !strings.HasPrefix(filepath.Base(stage), ".rootfiles-import-") {
@@ -174,7 +188,7 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) 
 			}
 		}()
 		if err := m.run(ctx, "chmod", "0700", stage); err != nil {
-			return fmt.Errorf("setting private import staging permissions: %w", err)
+			return fmt.Errorf("setting private import staging permissions: %w; check ownership and permissions under %s", err, m.Root)
 		}
 	}
 	rel := strings.TrimPrefix(keep, "/")
@@ -183,7 +197,7 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) 
 		return fmt.Errorf("creating import staging directory %s: %w; check free space and permissions under the tenant root", parent, err)
 	}
 	if err := m.run(ctx, "docker", "cp", "-a", "--", from+":"+keep, parent+"/"); err != nil {
-		return fmt.Errorf("copying %s:%s to private staging: %w", from, keep, err)
+		return fmt.Errorf("copying %s:%s to private staging: %w; check the source path and free space, stop writes in the source container and retry", from, keep, err)
 	}
 	destination := filepath.Join(mount, filepath.Dir(rel))
 	if !m.Runner.DryRun {
@@ -194,8 +208,17 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) 
 	if err := m.Runner.MkdirAll(destination, 0755); err != nil {
 		return fmt.Errorf("creating %s in tenant volume: %w; inspect the volume or choose a clean tenant volume", destination, err)
 	}
+	for _, attr := range parents {
+		target := filepath.Join(mount, strings.TrimPrefix(attr.path, "/"))
+		if err := m.run(ctx, "chown", "--", fmt.Sprintf("%d:%d", attr.uid, attr.gid), target); err != nil {
+			return fmt.Errorf("restoring import parent ownership on %s: %w; inspect the tenant volume permissions and retry", target, err)
+		}
+		if err := m.run(ctx, "chmod", fmt.Sprintf("%04o", attr.mode), "--", target); err != nil {
+			return fmt.Errorf("restoring import parent mode on %s: %w; inspect the tenant volume permissions and retry", target, err)
+		}
+	}
 	if err := m.run(ctx, "rsync", "-aHAX", filepath.Join(stage, rel), destination+"/"); err != nil {
-		return fmt.Errorf("copying kept path %s into tenant volume: %w", keep, err)
+		return fmt.Errorf("copying kept path %s into tenant volume: %w; inspect the tenant volume at %s and its free space, then retry", keep, err, mount)
 	}
 	return nil
 }
@@ -205,7 +228,7 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) 
 func safeImportDestination(root, destination string) error {
 	rel, err := filepath.Rel(root, destination)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("import destination leaves tenant volume")
+		return fmt.Errorf("import destination leaves tenant volume; choose a clean tenant volume and retry")
 	}
 	current := root
 	for _, part := range append([]string{""}, strings.Split(rel, string(filepath.Separator))...) {

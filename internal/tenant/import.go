@@ -138,7 +138,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 	merged := old.GraphDriver.Data["MergedDir"]
 	type copyItem struct{ src, dst string }
 	var items []copyItem
-	var dockerKeep []string
+	var dockerKeep []dockerKeepItem
 	var archiveBytes uint64
 	p := m.Paths(s.Name)
 	if o.Data != "" {
@@ -150,7 +150,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 			return nil, fmt.Errorf("--keep %s: only paths under /home or /tmp can be kept", k)
 		}
 		if merged == "" {
-			n, err := m.measureDockerKeep(ctx, o.From, k)
+			n, parents, err := m.measureDockerKeep(ctx, o.From, k)
 			if err != nil {
 				return nil, err
 			}
@@ -158,7 +158,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 				return nil, fmt.Errorf("kept data size overflows; import fewer paths")
 			}
 			archiveBytes += n
-			dockerKeep = append(dockerKeep, k)
+			dockerKeep = append(dockerKeep, dockerKeepItem{path: k, parents: parents})
 			continue
 		}
 		// A symlink inside the container (say /home -> /) would resolve
@@ -186,7 +186,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 		m.printf("  copy %s -> %s\n", it.src, it.dst)
 	}
 	for _, k := range dockerKeep {
-		m.printf("  copy %s:%s -> %s/ (Docker archive, numeric owners)\n", o.From, k, p.Mount)
+		m.printf("  copy %s:%s -> %s/ (Docker archive, numeric owners)\n", o.From, k.path, p.Mount)
 	}
 	for _, n := range notes {
 		m.printf("  "+ui.MarkWarn+" %s\n", n)
@@ -243,7 +243,7 @@ func (m *Manager) Import(ctx context.Context, o ImportOptions) (*Spec, error) {
 		}
 	}
 	for _, k := range dockerKeep {
-		if err := m.copyDockerKeep(ctx, o.From, k, p.Mount); err != nil {
+		if err := m.copyDockerKeep(ctx, o.From, k.path, p.Mount, k.parents...); err != nil {
 			return nil, err
 		}
 	}

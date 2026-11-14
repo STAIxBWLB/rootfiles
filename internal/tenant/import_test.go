@@ -57,6 +57,7 @@ func importFixture(t *testing.T, merged string, entries []*tar.Header) (*Manager
 	t.Setenv("IMPORT_INSPECT", string(inspect))
 	t.Setenv("IMPORT_ARCHIVE", archiveFile)
 	t.Setenv("IMPORT_PARENT", filepath.Join(dir, "home.tar"))
+	t.Setenv("IMPORT_ALICE_PARENT", "")
 	logFile := filepath.Join(dir, "calls")
 	t.Setenv("IMPORT_CALLS", logFile)
 	script := `#!/bin/sh
@@ -74,7 +75,8 @@ case "$1 $2" in
  "$IMPORT_TAR" -xpf "$IMPORT_ARCHIVE" --no-same-owner -C "$5" ;;
 "cp --") case "$3" in
  legacy:/home) /bin/cat "$IMPORT_PARENT" ;;
- legacy:/home/alice) /bin/cat "$IMPORT_ARCHIVE" ;;
+ legacy:/home/alice) /bin/cat "${IMPORT_ALICE_PARENT:-$IMPORT_ARCHIVE}" ;;
+ legacy:/home/alice/projects) /bin/cat "$IMPORT_ARCHIVE" ;;
  *) exit 1 ;;
  esac ;;
 *) exit 1 ;;
@@ -232,7 +234,7 @@ func TestImportFallbackSourceParentSymlink(t *testing.T) {
 	if err := os.WriteFile(os.Getenv("IMPORT_PARENT"), archive.Bytes(), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.measureDockerKeep(context.Background(), "legacy", "/home/alice"); err == nil || !strings.Contains(err.Error(), "symlink source") {
+	if _, _, err := m.measureDockerKeep(context.Background(), "legacy", "/home/alice"); err == nil || !strings.Contains(err.Error(), "symlink source") {
 		t.Fatalf("parent symlink err=%v", err)
 	}
 }
@@ -302,7 +304,7 @@ func TestDockerKeepMissingOrFailingToolIsReadOnly(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if _, err := m.measureDockerKeep(context.Background(), "legacy", "/home/alice"); err == nil {
+			if _, _, err := m.measureDockerKeep(context.Background(), "legacy", "/home/alice"); err == nil {
 				t.Fatal("missing/failing Docker accepted")
 			}
 			entries, _ := os.ReadDir(m.Root)
@@ -445,5 +447,39 @@ func TestDockerKeepStagingMkdirErrorNamesStepAndRecovery(t *testing.T) {
 	err := m.copyDockerKeep(context.Background(), "legacy", "/home/alice", t.TempDir())
 	if err == nil || !strings.Contains(err.Error(), "creating import staging directory "+filepath.Join(stage, "home")) || !strings.Contains(err.Error(), "check free space and permissions under the tenant root") {
 		t.Fatalf("unhelpful staging mkdir error: %v", err)
+	}
+}
+
+func TestImportNestedKeepRestoresParentAttributes(t *testing.T) {
+	m, _, _ := importFixture(t, "", []*tar.Header{{Name: "projects/", Typeflag: tar.TypeDir, Mode: 0750, Uid: 1000, Gid: 1000}})
+	var archive bytes.Buffer
+	tw := tar.NewWriter(&archive)
+	if err := tw.WriteHeader(&tar.Header{Name: "alice/", Typeflag: tar.TypeDir, Mode: 0700, Uid: 1000, Gid: 1000}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	parent := filepath.Join(t.TempDir(), "alice-parent.tar")
+	if err := os.WriteFile(parent, archive.Bytes(), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("IMPORT_ALICE_PARENT", parent)
+	var commands bytes.Buffer
+	m.Runner.Logger = slog.New(slog.NewTextHandler(&commands, nil))
+	if _, err := m.Import(context.Background(), ImportOptions{Tenant: "imported", From: "legacy", Size: "128M", Keep: []string{"/home/alice/projects"}}); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(m.Paths("imported").Mount, "home", "alice")
+	for _, want := range []string{"chown -- 1000:1000 " + target, "chmod 0700 -- " + target} {
+		if !strings.Contains(commands.String(), want) {
+			t.Fatalf("missing parent metadata command %q:\n%s", want, commands.String())
+		}
+	}
+	for _, dir := range []string{m.Root, m.SpecDir, m.UnitDir} {
+		entries, _ := os.ReadDir(dir)
+		if len(entries) != 0 {
+			t.Fatalf("dry-run metadata plan wrote %s", dir)
+		}
 	}
 }
