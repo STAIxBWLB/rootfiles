@@ -33,7 +33,7 @@ type Module interface {
 
 ## Conventions
 
-- Go 1.26.10+ (CI and release use the version in `go.mod`), conventional commits
+- Go 1.26.11+ (CI and release use the version in `go.mod`), conventional commits
 - Profiles embedded via go:embed in `internal/config/profiles/`
 - `--yes` propagates via RunContext, bypasses all prompts
 - `--dry-run` logs commands without executing (write ops gated)
