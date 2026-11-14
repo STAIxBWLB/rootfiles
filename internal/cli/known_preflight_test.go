@@ -101,6 +101,31 @@ func TestKnownRootPreflightNeverReplaysSecrets(t *testing.T) {
 	}
 }
 
+func TestKnownRootPreflightNeverEchoesPasswordSuffix(t *testing.T) {
+	for _, inline := range []bool{false, true} {
+		t.Run(strconv.FormatBool(inline), func(t *testing.T) {
+			knownPreflightFixture(t)
+			geteuid = func() int { return 1000 }
+			args := []string{"user", "passwd", "alice", "--suffix", "fixture-secret"}
+			if inline {
+				args = []string{"user", "passwd", "alice", "--suffix=fixture-secret"}
+			}
+			os.Args = append([]string{"rootfiles"}, args...)
+			root := NewRootCmd("test", "test")
+			var stdout, stderr bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&stderr)
+			root.SetArgs(append(args, "--ascii", "--color=never"))
+			err := executeCommand(context.Background(), root)
+			var exit *ExitError
+			if !errors.As(err, &exit) || exit.Code != 1 || exit.Next != "sudo rootfiles user passwd --help" ||
+				stdout.Len() != 0 || strings.Contains(stderr.String(), "fixture-secret") || strings.Contains(exit.Next, "***") {
+				t.Fatalf("exit=%v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+			}
+		})
+	}
+}
+
 func TestKnownLinuxAndRefusedFlagNextSteps(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
 		t.Run("linux/"+strconv.FormatBool(ascii), func(t *testing.T) {

@@ -107,7 +107,7 @@ func TestConfigInspectionDoesNotSuggestRepeatingValidation(t *testing.T) {
 
 func TestWithNextPreservesCauseAndProfileTarget(t *testing.T) {
 	cause := errors.New("loading config: invalid setting\n  another detail")
-	err := configLoadError(cause, "minimal", "")
+	err := configLoadError(NewRootCmd("test", "abc"), cause, "minimal", "")
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Code != 1 || !errors.Is(err, cause) ||
 		exit.Next != "rootfiles config validate --profile 'minimal'" || strings.Contains(exit.Msg, "\n") {
@@ -132,5 +132,29 @@ func TestFatalProfileLoadNextStep(t *testing.T) {
 		strings.Count(stderr.String(), "\n") != 2 ||
 		!strings.Contains(stderr.String(), "-> rootfiles config validate --profile 'minimal'\n") {
 		t.Fatalf("error=%v stdout=%q stderr=%q", err, out.String(), stderr.String())
+	}
+}
+
+func TestConfigLoadOverridesDoNotSuggestIncompleteValidation(t *testing.T) {
+	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
+	for _, args := range [][]string{{"check", "--json"}, {"apply", "--dry-run", "--yes"}, {"tunnel", "setup", "--dry-run"}} {
+		for _, flag := range []string{"vlan-address", "home-base"} {
+			t.Run(strings.Join(args, "_")+"/"+flag, func(t *testing.T) {
+				root := NewRootCmd("test", "test")
+				var stdout, stderr bytes.Buffer
+				root.SetOut(&stdout)
+				root.SetErr(&stderr)
+				argv := append(append([]string{}, args...), "--profile", "minimal", "--"+flag, "invalid", "--ascii", "--color=never")
+				root.SetArgs(argv)
+				err := executeCommand(context.Background(), root)
+				var exit *ExitError
+				if err == nil || (errors.As(err, &exit) && (exit.Code != 1 || exit.Next != "")) ||
+					stdout.Len() != 0 || strings.Count(stderr.String(), "\n") != 1 ||
+					!strings.HasPrefix(stderr.String(), "rootfiles: ") || !strings.Contains(stderr.String(), "invalid") ||
+					strings.Contains(stderr.String(), "->") {
+					t.Fatalf("error=%v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+				}
+			})
+		}
 	}
 }

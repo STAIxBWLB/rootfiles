@@ -34,7 +34,7 @@ type Module interface {
 ## Conventions
 
 - Go 1.26.11+ (CI and release use the version in `go.mod`), conventional commits
-- Before adding or changing user-facing errors or refusals, apply the Error messages pass in `REVIEW.md`.
+- Before adding or changing user-facing errors or refusals, apply the Error messages pass in `REVIEW.md`. Verify that a recovery command diagnoses the same effective target and overrides; omit the next step when no such command is known.
 - Profiles embedded via go:embed in `internal/config/profiles/`
 - `--yes` propagates via RunContext, bypasses all prompts
 - `--dry-run` logs commands without executing (write ops gated)

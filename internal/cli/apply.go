@@ -62,7 +62,7 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	// Load config
 	cfg, err := config.LoadWithOverrides(profileName, configPath, sysInfo, loadOverrides(cmd))
 	if err != nil {
-		return configLoadError(fmt.Errorf("loading config: %w", err), profileName, configPath)
+		return configLoadError(cmd, fmt.Errorf("loading config: %w", err), profileName, configPath)
 	}
 
 	// Apply CLI flag overrides

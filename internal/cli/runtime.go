@@ -171,7 +171,7 @@ func redactArgsWithSecrets(args []string) ([]string, bool) {
 		}
 		if !flagsEnded && strings.HasPrefix(arg, "--") {
 			name, _, inline := strings.Cut(strings.TrimPrefix(arg, "--"), "=")
-			if name == "tunnel-token" || name == "password" {
+			if name == "tunnel-token" || name == "password" || name == "suffix" {
 				if inline {
 					out[i] = "--" + name + "=***"
 					masked = true
