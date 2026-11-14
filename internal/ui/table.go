@@ -11,7 +11,10 @@ import (
 // WriteTable renders borderless report rows. Non-flexible columns are capped
 // at 32 cells and shortened visibly, preserving identifiers as single cells.
 // Callers must offer --json or a detail command for the complete values.
-func WriteTable(w io.Writer, headings []string, rows [][]string, flexible int) {
+// A flexible column keeps at least 20 cells (or its full header width), even
+// when this makes the line exceed a narrow terminal. The first write error
+// stops rendering and is returned to the caller.
+func WriteTable(w io.Writer, headings []string, rows [][]string, flexible int) error {
 	columns := make([]int, 0, len(headings))
 	for i := range headings {
 		present := false
@@ -26,7 +29,7 @@ func WriteTable(w io.Writer, headings []string, rows [][]string, flexible int) {
 		}
 	}
 	if len(columns) == 0 {
-		return
+		return nil
 	}
 	widths := make(map[int]int, len(columns))
 	for _, i := range columns {
@@ -46,7 +49,7 @@ func WriteTable(w io.Writer, headings []string, rows [][]string, flexible int) {
 			}
 		}
 		if _, exists := widths[flexible]; exists {
-			widths[flexible] = max(1, limit-fixed)
+			widths[flexible] = max(20, ansi.StringWidth(strings.ToUpper(headings[flexible])), limit-fixed)
 		}
 	} else if _, exists := widths[flexible]; exists {
 		for _, row := range rows {
@@ -56,7 +59,7 @@ func WriteTable(w io.Writer, headings []string, rows [][]string, flexible int) {
 		}
 	}
 	out := displayWriter(w)
-	printRow := func(row []string, heading bool) {
+	printRow := func(row []string, heading bool) error {
 		cells := make(map[int][]string, len(columns))
 		height := 1
 		for _, i := range columns {
@@ -92,13 +95,21 @@ func WriteTable(w io.Writer, headings []string, rows [][]string, flexible int) {
 				}
 				parts = append(parts, value+padding)
 			}
-			fmt.Fprintln(out, "  "+strings.TrimRight(strings.Join(parts, "  "), " "))
+			if _, err := fmt.Fprintln(out, "  "+strings.TrimRight(strings.Join(parts, "  "), " ")); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if err := printRow(headings, true); err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := printRow(row, false); err != nil {
+			return err
 		}
 	}
-	printRow(headings, true)
-	for _, row := range rows {
-		printRow(row, false)
-	}
+	return nil
 }
 
 func shortenCell(value string, width int) string {

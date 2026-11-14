@@ -51,12 +51,15 @@ func TestDoctorSummaryUsesASCIIForEveryMarker(t *testing.T) {
 			}
 			lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 			summary := lines[len(lines)-1]
+			if !strings.Contains(out.String(), "  -  unknown") || !strings.Contains(out.String(), "skipped: fixture unknown") {
+				t.Fatalf("skipped row marker/word differs from summary: %q", out.String())
+			}
 			for _, r := range summary {
 				if r > 127 {
 					t.Fatalf("non-ASCII summary marker in %q", summary)
 				}
 			}
-			for _, token := range []string{"x  1 failed", "!  1 warnings", "ok 1 ok", "?  1 unknown"} {
+			for _, token := range []string{"x  1 failed", "!  1 warnings", "ok 1 ok", "-  1 skipped"} {
 				if !strings.Contains(summary, token) {
 					t.Errorf("missing %q in summary %q", token, summary)
 				}

@@ -109,7 +109,7 @@ func TestStandardLogsRequireVerbose(t *testing.T) {
 		var stderr bytes.Buffer
 		cmd.SetErr(&stderr)
 		if verbose {
-			cmd.Flags().Set("verbose", "true")
+			root.PersistentFlags().Set("verbose", "true")
 		}
 		logger := newLogger(cmd, true, slog.LevelInfo)
 		logger.Info("query", "cmd", "fixture")

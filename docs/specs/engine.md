@@ -56,7 +56,7 @@ The Module interface, the registry and execution order, and the three commands t
 
 - Check must stay side-effect free: no writes, no installs, no metadata refresh; Runner writes are dry-run gated but `Runner.Query` is not, so a Check must only query.
 - `ensureMetaDir` refuses a legacy `<home_base>/.rootfiles` file without moving it, including in dry run, and names the manual relocation to `.rootfiles/users.json`. Shared JSON ledger reads distinguish absence from corruption; atomic sibling writes and destination replacement go through Runner so dry-run and backups apply.
-- `RunContext.Out` receives command text through `Output()`; nil retains stdout for existing callers. `RunAll` status rows use shared UI bullets (two spaces after the marker); outcome statuses, service calls and dry-run policy are unchanged. Text-only routing never decorates machine payloads.
+- `RunContext.Out` receives command text through `Output()`; nil retains stdout for existing callers. Optional `RunContext.Err` receives CLI-configured diagnostics; users warnings fall back to the existing library warning writer when it is nil. `RunAll` status rows use shared UI bullets (two spaces after the marker); outcome statuses, service calls and dry-run policy are unchanged. Text-only routing never decorates machine payloads.
 
 - Not planned (retired 2026-11-10, from the 2026-09 improvement plan): a common disk-space and network-reachability preflight. `doctor` already reports disk use against thresholds, and package or download failures already stop with their error. A refusal on low disk would block `apply` on converged hosts whose root filesystem is close to full, which contract #115 forbids.
 

@@ -25,6 +25,7 @@ func NewRootCmd(version, commit string) *cobra.Command {
 		Long:              "rootfiles: Declarative server configuration management with modular profiles.",
 		PersistentPreRunE: preflight,
 		SilenceUsage:      true,
+		TraverseChildren:  true,
 		SilenceErrors:     true, // main prints the error once
 	}
 	root.Version = version + " (" + commit + ")"
@@ -127,6 +128,8 @@ func rawPassthroughOutput(cmd *cobra.Command, args []string) bool {
 // Args runs after parsing but before any preflight or command body. Wrapping
 // each validator also covers child commands with their own persistent hooks.
 func installOutputBoundary(cmd *cobra.Command) {
+	// Traverse needs persistent flag arities before it dispatches to a child.
+	cmd.InheritedFlags()
 	if !cmd.Runnable() {
 		cmd.RunE = func(c *cobra.Command, _ []string) error { return c.Help() }
 	}
@@ -136,7 +139,7 @@ func installOutputBoundary(cmd *cobra.Command) {
 			return err
 		}
 		if args == nil && c.HasSubCommands() && len(values) > 0 {
-			return usageError(fmt.Errorf("unknown command %q for %q", values[0], c.CommandPath()))
+			return unknownCommandError(c, values[0])
 		}
 		if args != nil {
 			if err := args(c, values); err != nil {
@@ -159,9 +162,48 @@ func installOutputBoundary(cmd *cobra.Command) {
 	}
 }
 
+func unknownCommandError(cmd *cobra.Command, name string) error {
+	message := fmt.Sprintf("unknown command %q for %q", name, cmd.CommandPath())
+	if !cmd.DisableSuggestions {
+		if cmd.SuggestionsMinimumDistance <= 0 {
+			cmd.SuggestionsMinimumDistance = 2
+		}
+		if suggestions := cmd.SuggestionsFor(name); len(suggestions) > 0 {
+			message += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t") + "\n"
+		}
+	}
+	return usageError(errors.New(message))
+}
+
+func isFlagParsingError(err error) bool {
+	var missing *pflag.NotExistError
+	var required *pflag.ValueRequiredError
+	var value *pflag.InvalidValueError
+	var syntax *pflag.InvalidSyntaxError
+	return errors.As(err, &missing) || errors.As(err, &required) || errors.As(err, &value) || errors.As(err, &syntax)
+}
+
+// Completion closures capture the current output writer, so create them only
+// after callers set it, then give the generated tree the same parsing boundary.
+func prepareCompletionBoundary(root *cobra.Command) {
+	for _, command := range root.Commands() {
+		if command.Name() == "completion" {
+			return
+		}
+	}
+	root.InitDefaultCompletionCmd()
+	for _, command := range root.Commands() {
+		if command.Name() == "completion" {
+			installOutputBoundary(command)
+			return
+		}
+	}
+}
+
 // executeCommand owns diagnostics so the writer and parsed display flags are
 // the same for successful reports, usage failures and operational failures.
 func executeCommand(ctx context.Context, root *cobra.Command) error {
+	prepareCompletionBoundary(root)
 	cmd, err := root.ExecuteContextC(ctx)
 	if err == nil {
 		return nil
@@ -169,13 +211,17 @@ func executeCommand(ctx context.Context, root *cobra.Command) error {
 	if cmd == nil {
 		cmd = root
 	}
-	var exit *ExitError
-	if !errors.As(err, &exit) {
-		// Cobra discovers unknown commands before flag/argument validation.
-		if strings.HasPrefix(err.Error(), "unknown command ") {
-			err = usageError(err)
-		}
+	if errors.Is(err, pflag.ErrHelp) {
+		_ = configureOutput(cmd)
+		return cmd.Help()
 	}
+	// Cobra Traverse parses parent flags before execute calls FlagErrorFunc.
+	// Those failures return the root command and pflag error types, rather than
+	// an error from the selected command body; no message matching is needed.
+	if cmd == root && isFlagParsingError(err) {
+		err = usageError(err)
+	}
+	var exit *ExitError
 	_ = configureOutput(cmd)
 	if errors.As(err, &exit) {
 		if exit.Msg != "" {

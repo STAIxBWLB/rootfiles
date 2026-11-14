@@ -97,7 +97,7 @@ Single-port SSH (sshpiper)
 
 ## Behaviour
 
-- CLI-created managers keep the command writer. NewTenantManager honors an explicit writer (including io.Discard); a nil argument inherits rc.Output. The tenant package uses UI marker constants without changing its existing text, data or command strings.
+- CLI-created managers keep the command writer. NewTenantManager honors an explicit writer (including io.Discard); a nil argument inherits rc.Output. The tenant package uses UI marker constants without changing its existing text, data or command strings. CLI audit warnings and per-tenant failures use the configured command stderr, honoring its color/ASCII policy.
 
 - `tenant passwd` is the single password command; `reset` resolves as its alias with the same mutation preflight. Help shows one password command and lists positional arguments separately from flags.
 

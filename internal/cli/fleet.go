@@ -164,8 +164,7 @@ func writeFleetResults(w io.Writer, results []fleet.Result, format string) error
 	for _, r := range results {
 		rows = append(rows, []string{r.Host, r.State, strings.ReplaceAll(r.Reason, "\n", " ")})
 	}
-	ui.WriteTable(w, []string{"HOST", "STATE", "REASON"}, rows, 2)
-	return nil
+	return ui.WriteTable(w, []string{"HOST", "STATE", "REASON"}, rows, 2)
 }
 func allOK(rs []fleet.Result) bool {
 	for _, r := range rs {

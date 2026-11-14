@@ -25,8 +25,8 @@
 ▸ GPU Allocations
   Total GPUs:     2 × fixture GPU
   Assigned:       2 GPU(s) across 2 user(s)
-  alice 0
-  bob 1
+  *  alice  0
+  *  bob  1
 
 ▸ Tunnel
   cloudflared:    cloudflared version 2026.11.10 <fixture>&"quoted"

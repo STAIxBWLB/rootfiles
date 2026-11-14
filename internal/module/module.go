@@ -24,7 +24,9 @@ type Module interface {
 // RunContext carries config and runtime options to all modules.
 type RunContext struct {
 	// Out receives command text; nil preserves the traditional stdout default.
-	Out    io.Writer
+	Out io.Writer
+	// Err receives diagnostics; nil keeps legacy library warning destinations.
+	Err    io.Writer
 	Config *config.Config
 	Runner *exec.Runner
 	APT    exec.PackageManager
