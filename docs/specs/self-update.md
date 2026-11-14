@@ -31,7 +31,7 @@ Release artifacts (`.goreleaser.yaml`)
 - Linux only. The archive is downloaded to a temp dir and its SHA-256 must match the line for that exact archive name in the release's `checksums.txt`; a missing line or mismatch aborts before anything is replaced.
 - `replaceBinary` stages the new binary as a sibling temp file in the target directory, chmods 0755, and `os.Rename`s it over the resolved (`EvalSymlinks`) current binary. Never write over the running executable (ETXTBSY) or stage on another filesystem (rename must be atomic). The staging file is removed on any failure.
 - After a replace, `ensureRootAlias` creates or repairs the `root` symlink only when the binary is `/usr/local/bin/rootfiles` or `/usr/bin/rootfiles`; errors there never fail the update.
-- Updating replaces only the binary. It then runs the new binary's `check`; exit code 2 prints the "Apply pending" hint. Nothing is applied automatically. Release notes must carry an `### Action needed` apply step for changes to generated files (AGENTS.md).
+- Updating replaces only the binary. It then runs the new binary's local `check -o json`; only exit code 2 with valid JSON on stdout prints the "Apply pending" hint. Any other nonzero post-check result prints one warning with its diagnostic and a next step, but the update itself still succeeds because the binary was replaced. Nothing is applied automatically. Release notes must carry an `### Action needed` apply step for changes to generated files (AGENTS.md).
 - `update` is in `mutatingCommands` (root plus global lock); `--dry-run` is exempt and stops after download, checksum and extraction.
 - The download, verify and replace path uses `os.*` and `net/http` directly, not `rc.Runner`: it replaces the tool itself, not host configuration.
 

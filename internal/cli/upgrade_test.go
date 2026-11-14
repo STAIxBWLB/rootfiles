@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -9,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -277,5 +280,77 @@ func TestUpdateCheck(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestFinishUpdateRequiresJSONBeforeApplyPending(t *testing.T) {
+	for _, tc := range []struct {
+		name, stdout, stderr string
+		code                 int
+		pending, warning     bool
+	}{
+		{"clean", "{\"satisfied\":true}", "", 0, false, false},
+		{"drift", "{\"satisfied\":false,\"modules\":[]}", "", 2, true, false},
+		{"usage", "", "rootfiles: unknown flag: --x\n  -> rootfiles check --help\n", 2, false, true},
+		{"malformed-report", "{partial", "rootfiles: check failed\n", 2, false, true},
+		{"malformed-without-stderr", "{partial", "", 2, false, true},
+		{"other-failure", "", "Error: check failed\n", 1, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			binary := filepath.Join(dir, "rootfiles")
+			argsFile := filepath.Join(dir, "args")
+			t.Setenv("PATH", dir)
+			t.Setenv("POST_CHECK_ARGS", argsFile)
+			t.Setenv("POST_CHECK_STDOUT", tc.stdout)
+			t.Setenv("POST_CHECK_STDERR", tc.stderr)
+			t.Setenv("POST_CHECK_EXIT", strconv.Itoa(tc.code))
+			script := "#!/bin/sh\nprintf '%s\\n' \"$*\" > \"$POST_CHECK_ARGS\"\nprintf '%s' \"$POST_CHECK_STDOUT\"\nprintf '%s' \"$POST_CHECK_STDERR\" >&2\nexit \"$POST_CHECK_EXIT\"\n"
+			if err := os.WriteFile(binary, []byte(script), 0755); err != nil {
+				t.Fatal(err)
+			}
+			cmd := newUpgradeCmd("v0.1.0")
+			cmd.SetContext(context.Background())
+			var stdout, stderr bytes.Buffer
+			cmd.SetOut(&stdout)
+			cmd.SetErr(&stderr)
+			if err := finishUpdate(cmd, binary, "v0.2.0"); err != nil {
+				t.Fatalf("successful replacement became failure: %v", err)
+			}
+			args, err := os.ReadFile(argsFile)
+			if err != nil || string(args) != "check -o json\n" {
+				t.Fatalf("post-check args=%q err=%v", args, err)
+			}
+			if !strings.Contains(stdout.String(), "Updated to v0.2.0") {
+				t.Fatalf("update success absent: %q", stdout.String())
+			}
+			if strings.Contains(stdout.String(), "Apply pending:") != tc.pending {
+				t.Fatalf("pending output=%q", stdout.String())
+			}
+			if got := strings.Count(stderr.String(), "rootfiles: warning: post-update check could not run:"); got != map[bool]int{false: 0, true: 1}[tc.warning] {
+				t.Fatalf("warnings=%d stderr=%q", got, stderr.String())
+			}
+			if tc.warning && (!strings.Contains(stderr.String(), "check --help") || strings.Contains(stderr.String(), "\n\n")) {
+				t.Fatalf("warning missing next step or extra block: %q", stderr.String())
+			}
+			if tc.name == "usage" && !strings.Contains(stderr.String(), "rootfiles: unknown flag: --x") {
+				t.Fatalf("diagnostic lost: %q", stderr.String())
+			}
+		})
+	}
+}
+
+func TestFinishUpdateWarnsWhenCheckCannotStart(t *testing.T) {
+	cmd := newUpgradeCmd("v0.1.0")
+	cmd.SetContext(context.Background())
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	binary := filepath.Join(t.TempDir(), "missing")
+	if err := finishUpdate(cmd, binary, "v0.2.0"); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stdout.String(), "Apply pending:") || !strings.Contains(stderr.String(), "post-update check could not run") || !strings.Contains(stderr.String(), "no such file") {
+		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

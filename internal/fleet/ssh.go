@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 const remoteBinary = "/usr/local/bin/rootfiles"
@@ -245,6 +246,7 @@ func (r SSHRunner) runWithTimeout(ctx context.Context, h NamedHost, op, remote s
 			return result
 		}
 		if result.ExitCode == 2 && (op == "check" || op == "doctor") {
+			result.Reason = shortReason(out.String(), stderr.String())
 			return decodeRemote(result, out.Bytes(), 2)
 		}
 		result.State = "error"
@@ -257,7 +259,8 @@ func (r SSHRunner) runWithTimeout(ctx context.Context, h NamedHost, op, remote s
 func decodeRemote(res Result, data []byte, exit int) Result {
 	res.ExitCode = exit
 	trim := bytes.TrimSpace(data)
-	if len(trim) > 0 && json.Valid(trim) {
+	validJSON := len(trim) > 0 && json.Valid(trim)
+	if validJSON {
 		res.Remote = append(json.RawMessage(nil), trim...)
 	}
 	if exit == 0 && isReadOnlyCommand(res.Command) && len(res.Remote) == 0 {
@@ -269,10 +272,10 @@ func decodeRemote(res Result, data []byte, exit int) Result {
 	case exit == 0:
 		res.State = "ok"
 		res.Reason = ""
-	case exit == 2 && res.Command == "check":
+	case exit == 2 && validJSON && res.Command == "check":
 		res.State = "drift"
 		res.Reason = "configuration drift detected"
-	case exit == 2 && res.Command == "doctor":
+	case exit == 2 && validJSON && res.Command == "doctor":
 		res.State = "findings"
 		res.Reason = "doctor reported findings"
 	default:
@@ -322,11 +325,18 @@ func looksPrivilege(s string) bool {
 }
 
 // shortReason picks the line that explains a remote failure: the last
-// cobra "Error:" line, else the last stderr line, else the head of the output.
+// rootfiles diagnostic, then an older cobra error, then the last stderr line
+// other than a next step, before falling back to the original output.
 func shortReason(stdout, stderr string) string {
-	s := lastLine(stdout+"\n"+stderr, func(l string) bool { return strings.HasPrefix(l, "Error:") })
+	combined := stdout + "\n" + stderr
+	s := lastLine(combined, func(l string) bool { return strings.HasPrefix(l, "rootfiles: ") })
 	if s == "" {
-		s = lastLine(stderr, func(l string) bool { return l != "" })
+		s = lastLine(combined, func(l string) bool { return strings.HasPrefix(l, "Error:") })
+	}
+	if s == "" {
+		s = lastLine(stderr, func(l string) bool {
+			return l != "" && !strings.HasPrefix(l, ui.MarkNext+" ") && !strings.HasPrefix(l, "-> ")
+		})
 	}
 	if s == "" {
 		s = strings.TrimSpace(stdout + "\n" + stderr)
