@@ -8,62 +8,56 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 )
 
 func TestFleetReadPoolBoundsFakeSSHConcurrency(t *testing.T) {
-	dir := t.TempDir()
-	active, peak := filepath.Join(dir, "active"), filepath.Join(dir, "peak")
-	lock := filepath.Join(dir, "lock")
-	ready := filepath.Join(dir, "ready")
-	for _, p := range []string{active, peak} {
-		if err := os.WriteFile(p, []byte("0"), 0600); err != nil {
-			t.Fatal(err)
+	previous := readFleetHost
+	t.Cleanup(func() { readFleetHost = previous })
+	synctest.Test(t, func(t *testing.T) {
+		var active, peak atomic.Int32
+		release := make(chan struct{})
+		readFleetHost = func(_ fleet.SSHRunner, _ context.Context, h fleet.NamedHost, op string) fleet.Result {
+			n := active.Add(1)
+			for seen := peak.Load(); seen < n; seen = peak.Load() {
+				if peak.CompareAndSwap(seen, n) {
+					break
+				}
+			}
+			<-release
+			active.Add(-1)
+			return fleet.Result{Host: h.Name, Command: op, State: "ok"}
 		}
-	}
-	quote := func(s string) string { return "'" + s + "'" }
-	bin := filepath.Join(dir, "ssh")
-	script := "#!/bin/sh\n" +
-		"lock=" + quote(lock) + "\nactive=" + quote(active) + "\npeak=" + quote(peak) + "\nready=" + quote(ready) + "\n" +
-		"while ! mkdir \"$lock\" 2>/dev/null; do sleep 0.01; done\n" +
-		"n=$(cat \"$active\"); n=$((n+1)); echo $n > \"$active\"; m=$(cat \"$peak\"); [ $n -le $m ] || echo $n > \"$peak\"; [ $n -lt 2 ] || : > \"$ready\"; rmdir \"$lock\"\n" +
-		// Latch the overlap so a waiter cannot miss 2 after its peer exits.
-		// A deadline makes a serialized pool fail rather than wait forever.
-		"deadline=$(($(date +%s)+5)); status=0\n" +
-		"while [ ! -f \"$ready\" ]; do\n" +
-		"  if [ $(date +%s) -ge $deadline ]; then status=1; break; fi\n" +
-		"  sleep 0.01\n" +
-		"done\n" +
-		"while ! mkdir \"$lock\" 2>/dev/null; do sleep 0.01; done\n" +
-		"n=$(cat \"$active\"); n=$((n-1)); echo $n > \"$active\"; rmdir \"$lock\"\n" +
-		"[ $status -eq 0 ] || { echo 'fake SSH timed out waiting for concurrency 2' >&2; exit 1; }\n" +
-		"printf '{}\\n'\n"
-	if err := os.WriteFile(bin, []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
-	hosts := make([]fleet.NamedHost, 4)
-	for i := range hosts {
-		hosts[i] = fleet.NamedHost{Name: strconv.Itoa(i), Host: fleet.Host{SSH: "fake"}, Sudo: "none"}
-	}
-	results := runReadPool(context.Background(), fleet.SSHRunner{Binary: bin}, hosts, "status", 2)
-	for _, result := range results {
-		if result.State != "ok" {
-			t.Fatalf("unexpected fake SSH results: %#v", results)
+		hosts := make([]fleet.NamedHost, 4)
+		for i := range hosts {
+			hosts[i] = fleet.NamedHost{Name: strconv.Itoa(i), Host: fleet.Host{SSH: "fake"}, Sudo: "none"}
 		}
-	}
-	got, err := os.ReadFile(peak)
-	if err != nil {
-		t.Fatal(err)
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(string(got)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n > 2 || n < 2 {
-		t.Fatalf("peak SSH concurrency = %d, want 2", n)
-	}
+		done := make(chan []fleet.Result, 1)
+		go func() {
+			// A wiring regression must not fall through to real SSH.
+			done <- runReadPool(context.Background(), fleet.SSHRunner{Binary: os.DevNull}, hosts, "status", 2)
+		}()
+		synctest.Wait()
+		atBarrier, maxAtBarrier := active.Load(), peak.Load()
+		// Release and join before failing so negative mutations leave no goroutines.
+		close(release)
+		results := <-done
+		if atBarrier != 2 || maxAtBarrier != 2 {
+			t.Fatalf("active SSH reads = %d, peak SSH concurrency = %d, want 2", atBarrier, maxAtBarrier)
+		}
+		if peak.Load() != 2 {
+			t.Fatalf("peak SSH concurrency = %d, want 2", peak.Load())
+		}
+		for i, result := range results {
+			if result.State != "ok" || result.Host != hosts[i].Name || result.Command != "status" {
+				t.Fatalf("unexpected fake SSH results: %#v", results)
+			}
+		}
+	})
 }
 
 func TestInvalidMutationTimeoutFailsBeforeSSH(t *testing.T) {
