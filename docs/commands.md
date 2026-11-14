@@ -141,7 +141,7 @@ Capture what is needed to rebuild this host after an OS reinstall ([operations.m
 
 ### rootfiles check
 
-Report which modules have pending changes. Read-only: every module runs `Check` only. `check -v` or `check --verbose` expands the report while keeping the console logger at WARN. `rootfiles --verbose check` enables root INFO diagnostics; add local `-v` to get report details too.
+Report which modules have pending changes. Read-only: every module runs `Check` only. `check -v` or `check --verbose` expands the report while keeping the console logger at WARN when no root diagnostic flag is given. `rootfiles --verbose check` enables root INFO diagnostics; add local `-v` to get report details too.
 
 | Flag | Default | Purpose |
 |---|---|---|
