@@ -87,7 +87,7 @@ func TestUpdateCheckKeepsTextAndExitCodeOnCommandWriter(t *testing.T) {
 		code          int
 	}{
 		{"v1.0.0", "Already at version v1.0.0, nothing to do.\n", 0},
-		{"v2.0.0", "Current: v1.0.0 " + ui.MarkNext + " Target: v2.0.0\nUpdate available. Run `sudo rootfiles update` to install.\n", exitDrift},
+		{"v2.0.0", "Current: v1.0.0 " + ui.Relation + " Target: v2.0.0\nUpdate available. Run `sudo rootfiles update` to install.\n", exitDrift},
 	} {
 		var output bytes.Buffer
 		root := NewRootCmd("v1.0.0", "test")

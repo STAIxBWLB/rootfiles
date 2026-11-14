@@ -15,6 +15,9 @@ const (
 	MarkActive  = "*"
 	MarkNext    = "→"
 	MarkSection = "▸"
+
+	// Relation is a fixed text separator in machine-facing descriptions, not a status marker.
+	Relation = "→"
 )
 
 var asciiReplacer = stringsReplacer()
