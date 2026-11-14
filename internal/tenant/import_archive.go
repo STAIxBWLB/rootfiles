@@ -54,7 +54,7 @@ func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, pare
 	root := path.Base(keep)
 	entries := map[string]byte{}
 	links := map[string]string{}
-	var logical uint64
+	var allocation uint64
 	for {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -89,10 +89,11 @@ func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, pare
 			return 0, fmt.Errorf("--keep %s: unsupported archive entry %s; remove device or special files before import", keep, name)
 		}
 		entries[name] = h.Typeflag
-		if h.Size < 0 || ^uint64(0)-logical < uint64(h.Size) {
+		needed, err := archiveAllocation(h)
+		if err != nil || ^uint64(0)-allocation < needed {
 			return 0, fmt.Errorf("--keep %s: archive size overflow", keep)
 		}
-		logical += uint64(h.Size)
+		allocation += needed
 		if parent {
 			return 0, nil
 		} // Only the directory itself is relevant to a parent probe.
@@ -117,7 +118,7 @@ func (m *Manager) dockerArchiveSize(ctx context.Context, from, keep string, pare
 	if _, err := io.Copy(io.Discard, counter); err != nil {
 		return 0, fmt.Errorf("--keep %s: Docker archive failed: %w", keep, err)
 	}
-	return max(counter.count, logical), nil
+	return max(counter.count, allocation), nil
 }
 
 func safeArchiveName(name string) bool {
@@ -217,4 +218,22 @@ func safeImportDestination(root, destination string) error {
 		}
 	}
 	return nil
+}
+
+// Both supported mkfs defaults use 4KiB blocks. Allow an extra block per entry
+// for inode/directory metadata rather than treating a tiny file as one byte.
+// The existing 5% volume margin remains additional to this estimate.
+func archiveAllocation(h *tar.Header) (uint64, error) {
+	const block uint64 = 4096
+	if h.Size < 0 {
+		return 0, fmt.Errorf("negative archive size")
+	}
+	n := uint64(h.Size)
+	if n > ^uint64(0)-2*block {
+		return 0, fmt.Errorf("archive allocation overflow")
+	}
+	if h.Typeflag == tar.TypeReg || h.Typeflag == tar.TypeRegA {
+		return ((n+block-1)/block)*block + block, nil
+	}
+	return 2 * block, nil
 }

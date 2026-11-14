@@ -237,7 +237,7 @@ func TestImportFallbackSourceParentSymlink(t *testing.T) {
 }
 
 func TestImportFallbackRequiresFreeSpaceBeforeChanges(t *testing.T) {
-	for _, free := range []uint64{1, 5000} {
+	for _, free := range []uint64{1, 25000} {
 		t.Run(strconv.FormatUint(free, 10), func(t *testing.T) {
 			m, log, _ := importFixture(t, "", normalKeepArchive())
 			old := importFreeSpace
@@ -266,5 +266,23 @@ func TestImportOverlayEscapeStillRefused(t *testing.T) {
 	_, err := m.Import(context.Background(), ImportOptions{Tenant: "imported", From: "legacy", Size: "128M", Keep: []string{"/home/alice"}})
 	if err == nil || !strings.Contains(err.Error(), "not a path inside") {
 		t.Fatalf("overlay escape err=%v", err)
+	}
+}
+
+func TestArchiveAllocationAccountsForSmallFiles(t *testing.T) {
+	const files = 16384
+	var needed uint64
+	for i := 0; i < files; i++ {
+		n, err := archiveAllocation(&tar.Header{Typeflag: tar.TypeReg, Size: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		needed += n
+	}
+	if needed <= (64<<20)*95/100 {
+		t.Fatalf("small files could pass 64M volume preflight: %d", needed)
+	}
+	if _, err := archiveAllocation(&tar.Header{Typeflag: tar.TypeReg, Size: -1}); err == nil {
+		t.Fatal("negative size accepted")
 	}
 }
