@@ -49,8 +49,13 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		cfg = config.Fallback(sys, homeBaseFlag(cmd))
 	}
 
-	rc := readOnlyRunContext(cfg, sys, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	if diagnosticVerbose(cmd) {
+		logger = newLogger(cmd, true, slog.LevelInfo)
+	}
+	rc := readOnlyRunContext(cfg, sys, logger)
 	rc.Out = cmd.OutOrStdout()
+	rc.Err = cmd.ErrOrStderr()
 	findings := doctorChecks(cmd.Context(), rc)
 	if loadErr != nil {
 		findings = append(findings, module.Finding{Check: "configuration", Level: module.LevelFail, Detail: loadErr.Error()})
@@ -101,15 +106,17 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		ui.WriteHeader(out, "rootfiles doctor")
 		for _, f := range findings {
 			marker := ui.OKMark()
+			detail := f.Detail
 			switch f.Level {
 			case module.LevelWarn:
 				marker = ui.WarnMark()
 			case module.LevelFail:
 				marker = ui.StyleError.Render(ui.MarkFail)
 			case module.LevelSkip:
-				marker = ui.StyleHint.Render("-")
+				marker = ui.StyleHint.Render(ui.MarkAbsent)
+				detail = "skipped: " + detail
 			}
-			ui.WriteBullet(out, marker, fmt.Sprintf("%-16s %s", f.Check, f.Detail))
+			ui.WriteBullet(out, marker, fmt.Sprintf("%-16s %s", f.Check, detail))
 			if f.Hint != "" && f.Level != module.LevelOK {
 				fmt.Fprintf(out, "      %s\n", ui.StyleAccent.Render(ui.MarkNext+" "+f.Hint))
 			}
@@ -122,7 +129,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		ascii = ui.ASCIIMarkers(ascii)
 		parts := []string{}
 		for _, entry := range []struct{ level, marker, word string }{
-			{module.LevelFail, ui.FailMark(), "failed"}, {module.LevelWarn, ui.WarnMark(), "warnings"}, {module.LevelOK, ui.OKMark(), "ok"}, {module.LevelSkip, ui.MarkUnknown, "unknown"},
+			{module.LevelFail, ui.FailMark(), "failed"}, {module.LevelWarn, ui.WarnMark(), "warnings"}, {module.LevelOK, ui.OKMark(), "ok"}, {module.LevelSkip, ui.StyleHint.Render(ui.MarkAbsent), "skipped"},
 		} {
 			if count := counts[entry.level]; count > 0 {
 				parts = append(parts, fmt.Sprintf("%s %d %s", ui.MarkerCell(entry.marker, ascii), count, entry.word))

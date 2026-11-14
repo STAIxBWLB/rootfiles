@@ -77,7 +77,8 @@ func OutputWidth(w io.Writer) int {
 	return width
 }
 
-// Only semantic markers in a row prefix are substituted; glyphs in values stay verbatim.
+// Status markers are substituted only in row prefixes. Relation separators
+// are handled separately because they also occur within human text.
 var asciiLineMarkers = regexp.MustCompile("(?m)^[ \t]*(?:\x1b\\[[0-9;]*m)*(?:✓|✗|⚠|→|▸)(?:\x1b\\[[0-9;]*m)*(?: |$)")
 
 // WrapText wraps only free text chosen by the caller. Tables must preserve their
@@ -116,6 +117,7 @@ func (w *outputWriter) Write(p []byte) (int, error) {
 		s = asciiLineMarkers.ReplaceAllStringFunc(s, func(line string) string {
 			return asciiReplacer.Replace(line)
 		})
+		s = strings.ReplaceAll(s, Relation, RelationASCII)
 	}
 	n, err := io.WriteString(w.Writer, s)
 	if err == nil && n != len(s) {

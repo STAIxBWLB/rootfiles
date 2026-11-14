@@ -1,8 +1,9 @@
 package ui
 
 import (
-	"github.com/charmbracelet/x/ansi"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -16,8 +17,10 @@ const (
 	MarkNext    = "→"
 	MarkSection = "▸"
 
-	// Relation is a fixed text separator in machine-facing descriptions, not a status marker.
-	Relation = "→"
+	// Relation stays fixed in machine descriptions; human writers use its ASCII
+	// form when the display policy requires ASCII.
+	Relation      = "→"
+	RelationASCII = "->"
 )
 
 var asciiReplacer = stringsReplacer()

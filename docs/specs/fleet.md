@@ -50,7 +50,7 @@ Invariants an agent must keep:
 
 ## Behaviour
 
-- Report commands accept `--json` as an alias for `-o/--output json`, alongside `-o/--output text`. Text results use a shared table with HOST, STATE and REASON columns; REASON wraps to the terminal width (or explicit `COLUMNS` on a pipe), so one host may occupy multiple display lines. JSON results use the shared CLI encoder with HTML escaping enabled, retaining the previous bytes and without human wrapping. Native reports keep HTML escaping disabled. Controller findings use shared exitDrift (still 2); remote command lines are unchanged.
+- Report commands accept `--json` as an alias for `-o/--output json`, alongside `-o/--output text`. Text results use a shared table with HOST, STATE and REASON columns; REASON wraps to the terminal width (or explicit `COLUMNS` on a pipe), subject to a minimum of 20 cells or its heading width. A narrower terminal may have overflowing lines instead of one-character wrapping. A host may occupy multiple display lines. JSON results use the shared CLI encoder with HTML escaping enabled, retaining the previous bytes and without human wrapping. Native reports keep HTML escaping disabled. Text results return the first output-writer error, as JSON results do. Controller findings use shared exitDrift (still 2); remote command lines are unchanged.
 - Controller argument/flag parsing errors exit 2; other controller or inventory errors exit 1.
 
 - `fleet targets` honors explicit host/group/all selectors; an omitted selector retains whole-inventory rendering. Explicit empty/unmatched selectors never fall back to all hosts.

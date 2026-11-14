@@ -249,6 +249,7 @@ func loadRunContext(cmd *cobra.Command, tolerateLoadErr bool, modules []string) 
 	return &module.RunContext{
 		Config: cfg,
 		Out:    cmd.OutOrStdout(),
+		Err:    cmd.ErrOrStderr(),
 		Runner: runner,
 		APT:    pm,
 		DryRun: dryRun,

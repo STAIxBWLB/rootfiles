@@ -127,6 +127,7 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	rc := &module.RunContext{
 		Config: cfg,
 		Out:    out,
+		Err:    cmd.ErrOrStderr(),
 		Runner: runner,
 		APT:    apt,
 		DryRun: dryRun,

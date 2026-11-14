@@ -87,6 +87,14 @@ func checkHomeBase(base string) error {
 // warnOut receives the warnings of read-only reports; tests capture it.
 var warnOut io.Writer = os.Stderr
 
+// userWarningOutput keeps explicit CLI diagnostics separate from report stdout.
+func userWarningOutput(rc *RunContext) io.Writer {
+	if rc.Err != nil {
+		return rc.Err
+	}
+	return warnOut
+}
+
 // requireTrustedMetadata refuses the user and GPU databases under the home
 // base when a user other than root could control them: checkHomeBase
 // rejects the base, or <base>/.rootfiles (a directory, or the legacy flat
@@ -143,7 +151,7 @@ func rootOnlyTree(path string, uid uint32) error {
 // WarnUntrustedMetadata lets a read-only report go on, naming the reason.
 func WarnUntrustedMetadata(rc *RunContext) {
 	if err := requireTrustedMetadata(rc); err != nil {
-		ui.WriteText(warnOut, ui.MarkWarn+" untrusted rootfiles metadata (%v); this report reads it anyway\n", err)
+		ui.WriteText(userWarningOutput(rc), ui.MarkWarn+" untrusted rootfiles metadata (%v); this report reads it anyway\n", err)
 	}
 }
 
@@ -509,7 +517,7 @@ func BackupUsers(rc *RunContext, outputPath string) error {
 	var db UsersDB
 	dbPath := filepath.Join(homeBase, ".rootfiles", "users.json")
 	if err := requireTrustedMetadata(rc); err != nil {
-		ui.WriteText(warnOut, ui.MarkWarn+" %v; leaving the users database out of the backup\n", err)
+		ui.WriteText(userWarningOutput(rc), ui.MarkWarn+" %v; leaving the users database out of the backup\n", err)
 	} else if data, err := rc.Runner.ReadFile(dbPath); err == nil {
 		json.Unmarshal(data, &db)
 	}

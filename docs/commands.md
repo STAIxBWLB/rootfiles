@@ -100,8 +100,10 @@ Root command. Run `rootfiles help <command>` or `rootfiles <command> --help` for
 | `--vlan-address` | unset | Private network address of the tunnel, a CIDR such as `203.0.113.10/32`. |
 | `--color` | `auto` | Color policy: `auto`, `always` or `never`, resolved separately for stdout and stderr. |
 | `--ascii` | `false` | Use ASCII markers (also automatic for a non-UTF-8 locale). |
-| `--verbose` | `false` | Show diagnostic logs and command details. |
+| `--verbose` | `false` | Enable INFO diagnostics except on `check`, whose local verbose flag shadows it in every position. |
 | `-v`, `--version` | | Print the version and commit. |
+
+Unknown commands exit 2 with Cobra suggestions (for example, `rootfiles stauts` suggests `status`); bare parent commands print help. Usage classification follows flag/argument parsing, not diagnostic message words.
 
 See [Root flags and their readers](#root-flags-and-their-readers) for which command reads which flag.
 
@@ -139,14 +141,14 @@ Capture what is needed to rebuild this host after an OS reinstall ([operations.m
 
 ### rootfiles check
 
-Report which modules have pending changes. Read-only: every module runs `Check` only.
+Report which modules have pending changes. Read-only: every module runs `Check` only. `check -v`, `check --verbose` and `rootfiles --verbose check` all expand the report while keeping the console logger at WARN. Check has no INFO diagnostic mode; its local verbose flag shadows the root flag in every position.
 
 | Flag | Default | Purpose |
 |---|---|---|
 | `--module` | all enabled | Check only these modules. |
 | `-o`, `--output` | `text` | `text`, `json` or `prometheus`. |
 | `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
-| `-v`, `--verbose` | `false` | Show the command behind each pending change. |
+| `-v`, `--verbose` | `false` | Show the command behind each pending change; report details only, without INFO query logs. |
 
 - Target: `--profile`, `--config` or `ROOTFILES_PROFILE`, else the last applied target, else the detected suggestion ([configuration.md](configuration.md#which-config-a-command-uses)).
 - JSON: `version`, `profile`, `config_path`, `applied_config_sha256`, `satisfied`, and `modules[]` with `name`, `satisfied` and `changes[]` (`description`, `command`, `state`; `state` is `blocked` when the operator must act first).

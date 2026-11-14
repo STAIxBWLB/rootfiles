@@ -136,7 +136,7 @@ func installOutputBoundary(cmd *cobra.Command) {
 			return err
 		}
 		if args == nil && c.HasSubCommands() && len(values) > 0 {
-			return usageError(fmt.Errorf("unknown command %q for %q", values[0], c.CommandPath()))
+			return unknownCommandError(c, values[0])
 		}
 		if args != nil {
 			if err := args(c, values); err != nil {
@@ -159,9 +159,40 @@ func installOutputBoundary(cmd *cobra.Command) {
 	}
 }
 
+func unknownCommandError(cmd *cobra.Command, name string) error {
+	message := fmt.Sprintf("unknown command %q for %q", name, cmd.CommandPath())
+	if !cmd.DisableSuggestions {
+		if cmd.SuggestionsMinimumDistance <= 0 {
+			cmd.SuggestionsMinimumDistance = 2
+		}
+		if suggestions := cmd.SuggestionsFor(name); len(suggestions) > 0 {
+			message += "\n\nDid you mean this?\n\t" + strings.Join(suggestions, "\n\t") + "\n"
+		}
+	}
+	return usageError(errors.New(message))
+}
+
+// Generated completion commands need the same argument/output hooks. Create
+// them after callers set the writer, which Cobra captures in its closures.
+func prepareCompletionBoundary(root *cobra.Command) {
+	for _, command := range root.Commands() {
+		if command.Name() == "completion" {
+			return
+		}
+	}
+	root.InitDefaultCompletionCmd()
+	for _, command := range root.Commands() {
+		if command.Name() == "completion" {
+			installOutputBoundary(command)
+			return
+		}
+	}
+}
+
 // executeCommand owns diagnostics so the writer and parsed display flags are
 // the same for successful reports, usage failures and operational failures.
 func executeCommand(ctx context.Context, root *cobra.Command) error {
+	prepareCompletionBoundary(root)
 	cmd, err := root.ExecuteContextC(ctx)
 	if err == nil {
 		return nil
@@ -170,12 +201,6 @@ func executeCommand(ctx context.Context, root *cobra.Command) error {
 		cmd = root
 	}
 	var exit *ExitError
-	if !errors.As(err, &exit) {
-		// Cobra discovers unknown commands before flag/argument validation.
-		if strings.HasPrefix(err.Error(), "unknown command ") {
-			err = usageError(err)
-		}
-	}
 	_ = configureOutput(cmd)
 	if errors.As(err, &exit) {
 		if exit.Msg != "" {

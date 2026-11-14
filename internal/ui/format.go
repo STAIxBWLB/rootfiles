@@ -76,7 +76,9 @@ func WriteText(w io.Writer, format string, args ...any) {
 func WriteLine(w io.Writer, args ...any) { fmt.Fprintln(displayWriter(w), args...) }
 
 // WriteRaw writes a payload without interpreting format verbs or adding bytes.
-func WriteRaw(w io.Writer, text string) { io.WriteString(w, text) }
+func WriteRaw(w io.Writer, text string) {
+	io.WriteString(ConfigureWriter(w, "auto", false, true), text)
+}
 
 // hangingText wraps only the free-text part, preserving the label/marker column.
 func hangingText(w io.Writer, prefix, text string) string {

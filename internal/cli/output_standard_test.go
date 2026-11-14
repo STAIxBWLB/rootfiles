@@ -105,11 +105,11 @@ func TestStandardUsageAndFailureDiagnostics(t *testing.T) {
 func TestStandardLogsRequireVerbose(t *testing.T) {
 	for _, verbose := range []bool{false, true} {
 		root := NewRootCmd("test", "test")
-		cmd, _, _ := root.Find([]string{"check"})
+		cmd, _, _ := root.Find([]string{"status"})
 		var stderr bytes.Buffer
 		cmd.SetErr(&stderr)
 		if verbose {
-			cmd.Flags().Set("verbose", "true")
+			root.PersistentFlags().Set("verbose", "true")
 		}
 		logger := newLogger(cmd, true, slog.LevelInfo)
 		logger.Info("query", "cmd", "fixture")

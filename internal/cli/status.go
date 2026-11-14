@@ -64,8 +64,12 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
+	if diagnosticVerbose(cmd) {
+		logger = newLogger(cmd, true, slog.LevelInfo)
+	}
 	rc := readOnlyRunContext(cfg, sysInfo, logger)
 	rc.Out = cmd.OutOrStdout()
+	rc.Err = cmd.ErrOrStderr()
 
 	if rc.Config.Users.HomeBase != "" {
 		warnStatusMetadata(rc) // on stderr, so JSON stays clean
@@ -384,7 +388,7 @@ func renderGPUSection(out io.Writer, report statusReport) {
 		for _, g := range a.GPUs {
 			ids = append(ids, fmt.Sprintf("%d", g))
 		}
-		ui.WriteBullet(out, ui.StyleValue.Render(a.Username), strings.Join(ids, ","))
+		ui.WriteBullet(out, ui.StyleSuccess.Render(ui.MarkActive), fmt.Sprintf("%s  %s", ui.StyleValue.Render(a.Username), strings.Join(ids, ",")))
 	}
 }
 

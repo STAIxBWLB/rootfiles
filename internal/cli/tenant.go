@@ -61,19 +61,19 @@ func tenantDo(cmd *cobra.Command, t, action string, fn func(ctx context.Context,
 	}
 	err = fn(cmd.Context(), rc, m)
 	if !rc.DryRun {
-		recordTenant(t, action, err)
+		recordTenant(cmd, t, action, err)
 	}
 	return err
 }
 
-func recordTenant(t, action string, err error) {
+func recordTenant(cmd *cobra.Command, t, action string, err error) {
 	actor, _ := tenant.Actor()
 	result := "ok"
 	if err != nil {
 		result = "error: " + strings.SplitN(err.Error(), "\n", 2)[0]
 	}
 	if aerr := tenant.Audit(actor, t, action, result); aerr != nil {
-		ui.WriteText(os.Stderr, ui.MarkWarn+" tenant audit log: %v\n", aerr)
+		ui.WriteText(cmd.ErrOrStderr(), ui.MarkWarn+" tenant audit log: %v\n", aerr)
 	}
 }
 
@@ -274,10 +274,10 @@ func newTenantApplyCmd() *cobra.Command {
 					err = m.Apply(cmd.Context(), s)
 				}
 				if !rc.DryRun {
-					recordTenant(t, "apply", err)
+					recordTenant(cmd, t, "apply", err)
 				}
 				if err != nil {
-					ui.WriteText(os.Stderr, ui.MarkFail+" %s: %v\n", t, err)
+					ui.WriteText(cmd.ErrOrStderr(), ui.MarkFail+" %s: %v\n", t, err)
 					failed = append(failed, t)
 				}
 			}
@@ -576,7 +576,7 @@ host's applied configuration. Every attempt is audited.`,
 			actor, viaSudo := tenant.Actor()
 			refuse := func(err error) error {
 				if aerr := tenant.Audit(actor, t, "ops "+action, "refused: "+err.Error()); aerr != nil {
-					ui.WriteText(os.Stderr, ui.MarkWarn+" tenant audit log: %v\n", aerr)
+					ui.WriteText(cmd.ErrOrStderr(), ui.MarkWarn+" tenant audit log: %v\n", aerr)
 				}
 				return err
 			}
@@ -620,7 +620,7 @@ host's applied configuration. Every attempt is audited.`,
 				err = issuePassword(ctx, cmd, m, s, args[2])
 				action += " " + args[2]
 			}
-			recordTenant(t, "ops "+action, err)
+			recordTenant(cmd, t, "ops "+action, err)
 			return err
 		},
 	}
@@ -652,7 +652,7 @@ running: it only rewrites each tenant's derived files. It still needs root.`,
 					err = m.Sync(cmd.Context(), s)
 				}
 				if err != nil {
-					ui.WriteText(os.Stderr, ui.MarkFail+" %s: %v\n", t, err)
+					ui.WriteText(cmd.ErrOrStderr(), ui.MarkFail+" %s: %v\n", t, err)
 					failed = append(failed, t)
 				}
 			}
