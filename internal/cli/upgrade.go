@@ -167,12 +167,13 @@ func finishUpdate(cmd *cobra.Command, binary, version string) error {
 		ui.WriteLine(cmd.OutOrStdout(), "Apply pending: this release plans changes on this host. Review with `sudo rootfiles check`, then run `sudo rootfiles apply`.")
 		return nil
 	}
-	diagnostic := strings.TrimSpace(stderr.String())
-	if diagnostic == "" {
-		diagnostic = strings.TrimSpace(stdout.String())
+	detail := strings.TrimSpace(stderr.String())
+	if detail == "" {
+		detail = strings.TrimSpace(stdout.String())
 	}
-	if diagnostic == "" {
-		diagnostic = err.Error()
+	diagnostic := err.Error()
+	if detail != "" {
+		diagnostic += ": " + detail
 	}
 	ui.WriteText(cmd.ErrOrStderr(), "rootfiles: warning: post-update check could not run: %q; inspect with %s check --help.\n", diagnostic, fleet.ShellQuote(binary))
 	return nil

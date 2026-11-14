@@ -293,6 +293,7 @@ func TestFinishUpdateRequiresJSONBeforeApplyPending(t *testing.T) {
 		{"drift", "{\"satisfied\":false,\"modules\":[]}", "", 2, true, false},
 		{"usage", "", "rootfiles: unknown flag: --x\n  -> rootfiles check --help\n", 2, false, true},
 		{"malformed-report", "{partial", "rootfiles: check failed\n", 2, false, true},
+		{"malformed-without-stderr", "{partial", "", 2, false, true},
 		{"other-failure", "", "Error: check failed\n", 1, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
