@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/STAIxBWLB/rootfiles/internal/exec"
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
@@ -119,7 +121,8 @@ func rejectUnusedNativeFlags(cmd *cobra.Command) error {
 		}
 	})
 	if len(refused) > 0 {
-		return fmt.Errorf("%s does not use %s; remove these flags or use them with apply/config inspection", cmd.CommandPath(), strings.Join(refused, ", "))
+		return withNext(fmt.Errorf("%s: does not use %s", cmd.CommandPath(), strings.Join(refused, ", ")),
+			"remove "+strings.Join(refused, ", ")+" from this command")
 	}
 	return nil
 }
@@ -147,6 +150,14 @@ func readOnlyFlagSet(cmd *cobra.Command) bool {
 // redactArgs copies command arguments (without the executable), hiding named
 // secret values and the first positional operand of tunnel setup.
 func redactArgs(args []string) []string {
+	out, _ := redactArgsWithSecrets(args)
+	return out
+}
+
+// redactArgsWithSecrets also records masking, even when a secret is literally
+// the mask text. Such invocations must never be replayed as a next step.
+func redactArgsWithSecrets(args []string) ([]string, bool) {
+	masked := false
 	out := append([]string(nil), args...)
 	flags := newRootFlags()
 	positional := 0
@@ -163,9 +174,11 @@ func redactArgs(args []string) []string {
 			if name == "tunnel-token" || name == "password" {
 				if inline {
 					out[i] = "--" + name + "=***"
+					masked = true
 				} else if i+1 < len(args) {
 					i++
 					out[i] = "***"
+					masked = true
 				}
 			} else if flag := flags.Lookup(name); flag != nil && !inline && flag.NoOptDefVal == "" && i+1 < len(args) {
 				i++
@@ -183,24 +196,41 @@ func redactArgs(args []string) []string {
 		default:
 			if tunnelSetup {
 				out[i] = "***"
+				masked = true
 			}
 		}
 		positional++
 	}
-	return out
+	return out, masked
+}
+
+// rootRetryCommand retains argument boundaries without echoing secret values.
+func rootRetryCommand(cmd *cobra.Command) string {
+	args := os.Args[1:]
+	if _, masked := redactArgsWithSecrets(args); masked {
+		return "sudo " + cmd.CommandPath() + " --help"
+	}
+	quoted := make([]string, len(args))
+	for i, arg := range args {
+		quoted[i] = fleet.ShellQuote(arg)
+	}
+	return strings.TrimSpace("sudo rootfiles " + strings.Join(quoted, " "))
 }
 
 // requireRootAndLock checks for root and takes the global lock.
 func requireRootAndLock(cmd *cobra.Command) error {
 	if geteuid() != 0 {
-		return fmt.Errorf("'%s' changes the system and must run as root (try: sudo %s ...)",
-			cmd.CommandPath(), cmd.CommandPath())
+		return withNext(fmt.Errorf("%s: changes the system and must run as root", cmd.CommandPath()), rootRetryCommand(cmd))
 	}
 	if nativeHostOS != "linux" {
-		return fmt.Errorf("native host mutations require Linux; use the fleet controller on %s", nativeHostOS)
+		return withNext(fmt.Errorf("native host mutations: require Linux (current OS: %s)", nativeHostOS), "rootfiles fleet --help")
 	}
 	lock, err := state.Acquire()
 	if err != nil {
+		var held *state.LockHeldError
+		if errors.As(err, &held) && held.PID > 0 {
+			return withNext(err, fmt.Sprintf("ps -p %d", held.PID))
+		}
 		return err
 	}
 	heldLock = lock

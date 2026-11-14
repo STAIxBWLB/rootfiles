@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"os"
@@ -279,7 +280,8 @@ func TestReadOnlyCommandsRejectVLANAddress(t *testing.T) {
 				root.SetErr(io.Discard)
 				root.SetArgs(append([]string{command}, flags...))
 				err := root.Execute()
-				if err == nil || !strings.Contains(err.Error(), "rootfiles "+command+" does not use --vlan-address") || !strings.Contains(err.Error(), "remove these flags") {
+				var exit *ExitError
+				if err == nil || !strings.Contains(err.Error(), "rootfiles "+command+": does not use --vlan-address") || !errors.As(err, &exit) || exit.Next != "remove --vlan-address from this command" {
 					t.Fatalf("non-reader refusal lost: %v", err)
 				}
 				entries, err := os.ReadDir(stateDir)

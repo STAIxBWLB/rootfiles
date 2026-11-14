@@ -16,6 +16,15 @@ Every `rootfiles` command and flag, with exit codes, output formats and environm
 
 Cobra argument/flag parsing errors exit 2. Missing required flags retain exit 1. The report-result uses of 2 below remain separately documented.
 
+Operational errors with a known recovery step print the cause and next step on separate stderr lines, for example with `--ascii`:
+
+```text
+rootfiles: rootfiles apply: changes the system and must run as root
+  -> sudo rootfiles 'apply' '--ascii'
+```
+
+The same arguments are shell-quoted in a `sudo` retry. If they contain a password or token, the next step shows the command's `--help` instead. A held lock suggests `ps -p` for its holder, never deleting the lock file. Fatal config loads suggest `rootfiles config validate` with the selected config or profile; unknown profiles list the available names and point to `rootfiles --help`. These errors exit 1 and leave JSON stdout empty. Without `--ascii`, UTF-8 locales use `→` for the next step.
+
 ### Output formats
 
 - `--json` selects JSON on report commands; `-o/--output` selects a report format: `text` (default) or `json`; `check` and `doctor` also take `prometheus` (text exposition for the node exporter textfile collector).

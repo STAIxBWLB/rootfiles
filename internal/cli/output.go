@@ -11,11 +11,14 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
@@ -26,10 +29,35 @@ type ExitError struct {
 	Msg   string
 	Next  string
 	Usage bool
+	cause error
 }
 
 func (e *ExitError) Error() string { return e.Msg }
 func (e *ExitError) ExitCode() int { return e.Code }
+func (e *ExitError) Unwrap() error { return e.cause }
+
+// withNext attaches a known recovery step to an operational failure.
+func withNext(err error, next string) error {
+	if err == nil {
+		return nil
+	}
+	return &ExitError{Code: 1, Msg: strings.Join(strings.Fields(err.Error()), " "), Next: next, cause: err}
+}
+
+// configLoadError is only for fatal loads. Overview reports retain their
+// original load error and fallback payload.
+func configLoadError(err error, profile, configPath string) error {
+	if configPath != "" {
+		return withNext(err, "rootfiles config validate --config "+fleet.ShellQuote(configPath))
+	}
+	if profile == "" {
+		profile = "minimal"
+	}
+	if !slices.Contains(config.AvailableProfiles(), profile) {
+		return withNext(fmt.Errorf("%w; available profiles: %s", err, strings.Join(config.AvailableProfiles(), ", ")), "rootfiles --help")
+	}
+	return withNext(err, "rootfiles config validate --profile "+fleet.ShellQuote(profile))
+}
 
 // Exit codes shared by read-only commands, suitable for monitoring:
 // 0 = everything satisfied, 2 = pending changes / problems found.

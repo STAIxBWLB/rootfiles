@@ -222,7 +222,7 @@ func loadRunContext(cmd *cobra.Command, tolerateLoadErr bool, modules []string) 
 	cfg, cfgErr := config.LoadWithOverrides(profileName, configPath, sysInfo, loadOverrides(cmd))
 	if cfgErr != nil {
 		if !tolerateLoadErr {
-			return nil, cfgErr
+			return nil, configLoadError(cfgErr, profileName, configPath)
 		}
 		logger.Warn("loading config failed, continuing without it", "profile", profileName, "config", configPath, "err", cfgErr)
 		cfg = config.Fallback(sysInfo, homeBaseFlag(cmd))
