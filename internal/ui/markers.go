@@ -1,31 +1,41 @@
 package ui
 
-// Single-glyph markers used in CLI reports. The glyph carries meaning; colour
-// comes from the Style paired with it (markers.go + styles.go are a tuple).
-//
-//	Marker       Glyph  Style         Meaning
-//	MarkOK       ✓      StyleSuccess  satisfied / succeeded / present
-//	MarkFail     ✗      StyleError    hard failure / check failed
-//	MarkPending  →      StyleWarning  pending change / not yet applied
-//	MarkWarn     ⚠      StyleWarning  attention needed, non-fatal
-//
-// Callers should not inline glyph literals; use these constants so the marker
-// alphabet stays consistent and searchable across commands.
+import (
+	"github.com/charmbracelet/x/ansi"
+	"strings"
+)
+
 const (
 	MarkOK      = "✓"
 	MarkFail    = "✗"
-	MarkPending = "→"
 	MarkWarn    = "⚠"
+	MarkAbsent  = "-"
+	MarkUnknown = "?"
+	MarkPending = "~"
+	MarkActive  = "*"
+	MarkNext    = "→"
+	MarkSection = "▸"
 )
 
-// OKMark returns the OK glyph styled for success.
-func OKMark() string { return StyleSuccess.Render(MarkOK) }
+var asciiReplacer = stringsReplacer()
 
-// FailMark returns the fail glyph styled as a hard failure.
-func FailMark() string { return StyleError.Render(MarkFail) }
+func stringsReplacer() *strings.Replacer {
+	return strings.NewReplacer(MarkOK, "ok", MarkFail, "x", MarkWarn, "!", MarkNext, "->", MarkSection, ">")
+}
 
-// PendingMark returns the pending-change arrow styled as warning.
-func PendingMark() string { return StyleWarning.Render(MarkPending) }
+// MarkerCell reserves two cells for every semantic marker.
+func MarkerCell(marker string, ascii bool) string {
+	if ascii {
+		marker = asciiReplacer.Replace(marker)
+	}
+	if n := 2 - ansi.StringWidth(marker); n > 0 {
+		marker += strings.Repeat(" ", n)
+	}
+	return marker
+}
 
-// WarnMark returns the warning glyph styled as warning.
-func WarnMark() string { return StyleWarning.Render(MarkWarn) }
+func OKMark() string      { return StyleSuccess.Render(MarkOK) }
+func FailMark() string    { return StyleError.Render(MarkFail) }
+func PendingMark() string { return StyleHint.Render(MarkPending) }
+func WarnMark() string    { return StyleWarning.Render(MarkWarn) }
+func NextMark() string    { return StyleAccent.Render(MarkNext) }

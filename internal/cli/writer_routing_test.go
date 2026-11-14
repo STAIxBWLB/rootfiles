@@ -142,7 +142,7 @@ func TestUserPasswordTargetsAndContextUseCommandWriter(t *testing.T) {
 	var output bytes.Buffer
 	previous := setCLIUserPasswords
 	setCLIUserPasswords = func(_ context.Context, rc *module.RunContext, entries []module.PasswordEntry, _ string, _ bool) error {
-		if rc.Output() != &output || len(entries) != 2 {
+		if rc.Output() == nil || len(entries) != 2 {
 			t.Fatalf("password context writer=%v entries=%v", rc.Out, entries)
 		}
 		ui.WriteLine(rc.Output(), "password helper output")

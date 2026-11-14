@@ -28,6 +28,9 @@ import (
 // then after with the routed implementation. Neither capture executes Apply.
 // Before captures use 769b013 plus only the output-field seam; after captures use the routed code.
 func TestProfileModuleDryRunOutputContract(t *testing.T) {
+	t.Setenv("LC_ALL", "C.UTF-8")
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("COLUMNS", "")
 	for _, profile := range config.AvailableProfiles() {
 		t.Run(profile, func(t *testing.T) {
 			rc, fixtureRoot := outputProfileFixture(t, profile)

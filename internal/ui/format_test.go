@@ -4,16 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
-
-	"github.com/charmbracelet/lipgloss"
 )
-
-func init() {
-	// Force plain output for deterministic assertions. lipgloss otherwise auto-
-	// detects the terminal profile at init time and may emit ANSI escapes even
-	// when stdout is redirected during `go test`.
-	lipgloss.SetColorProfile(0) // termenv.Ascii
-}
 
 func TestWriteHeader_FramesTitle(t *testing.T) {
 	var buf bytes.Buffer
@@ -22,14 +13,15 @@ func TestWriteHeader_FramesTitle(t *testing.T) {
 	if !strings.Contains(out, "rootfiles status") {
 		t.Errorf("header missing title, got %q", out)
 	}
-	// WriteHeader emits a leading blank line before the title row.
+	// The title is the first report line.
 	lines := strings.Split(out, "\n")
-	if len(lines) < 2 || lines[0] != "" {
-		t.Errorf("expected leading blank line, got %q", out)
+	if len(lines) != 2 || lines[0] != " rootfiles status" {
+		t.Errorf("expected one title line, got %q", out)
 	}
 }
 
 func TestWriteSection_PrefixesWithArrow(t *testing.T) {
+	t.Setenv("LC_ALL", "C.UTF-8")
 	var buf bytes.Buffer
 	WriteSection(&buf, "System")
 	out := buf.String()
@@ -66,6 +58,7 @@ func TestWriteKV_RealValue(t *testing.T) {
 }
 
 func TestWriteBullet_IndentAndMarker(t *testing.T) {
+	t.Setenv("LC_ALL", "C.UTF-8")
 	var buf bytes.Buffer
 	WriteBullet(&buf, MarkOK, "locale")
 	out := buf.String()

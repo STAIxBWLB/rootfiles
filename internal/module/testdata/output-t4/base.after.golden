@@ -1,3 +1,3 @@
   ✓  locale: already satisfied
-  →  packages: Install 18 packages: [ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common]
-  →  ssh: Deploy custom sshd configuration
+  ~  packages: Install 18 packages: [ca-certificates curl wget gnupg lsb-release git git-lfs vim tmux tree jq htop unzip zip build-essential locales zsh software-properties-common]
+  ~  ssh: Deploy custom sshd configuration

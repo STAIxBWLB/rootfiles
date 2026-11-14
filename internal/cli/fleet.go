@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"text/tabwriter"
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
@@ -54,7 +54,10 @@ func validateFleetFlags(cmd *cobra.Command) error {
 		return fmt.Errorf("fleet commands do not use %s; put host settings in the fleet inventory or each host's remote site config", strings.Join(ignored, ", "))
 	}
 	if cmd.Flags().Lookup("output") != nil {
-		format, _ := cmd.Flags().GetString("output")
+		format, err := outputFormat(cmd)
+		if err != nil {
+			return err
+		}
 		if format != "text" && format != "json" {
 			return fmt.Errorf("--output must be text or json; choose the fleet report format before connecting")
 		}
@@ -111,7 +114,7 @@ func newFleetReadCmd(op string) *cobra.Command {
 		}
 		runner := fleet.SSHRunner{Binary: "ssh"}
 		results := runReadPool(c.Context(), runner, hosts, op, parallel)
-		format, _ := c.Flags().GetString("output")
+		format, _ := outputFormat(c)
 		if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
 			return err
 		}
@@ -122,7 +125,7 @@ func newFleetReadCmd(op string) *cobra.Command {
 	}}
 	fleetCommonFlags(c)
 	c.Flags().Int("parallel", 0, "Maximum concurrent SSH processes (inventory default when omitted)")
-	c.Flags().StringP("output", "o", "text", "Output format: text or json")
+	addOutputFlag(c)
 	return c
 }
 
@@ -154,16 +157,12 @@ func writeFleetResults(w io.Writer, results []fleet.Result, format string) error
 	if format != "text" {
 		return fmt.Errorf("output must be text or json")
 	}
-	tw := tabwriter.NewWriter(w, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(tw, "HOST\tSTATE\tREASON")
+	rows := make([][]string, 0, len(results))
 	for _, r := range results {
-		reason := r.Reason
-		if reason == "" {
-			reason = "-"
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", r.Host, r.State, strings.ReplaceAll(reason, "\n", " "))
+		rows = append(rows, []string{r.Host, r.State, strings.ReplaceAll(r.Reason, "\n", " ")})
 	}
-	return tw.Flush()
+	ui.WriteTable(w, []string{"HOST", "STATE", "REASON"}, rows, 2)
+	return nil
 }
 func allOK(rs []fleet.Result) bool {
 	for _, r := range rs {
@@ -235,7 +234,7 @@ func fleetRerunCommand(c *cobra.Command, args, hosts []string) string {
 }
 
 func finishFleetMutation(c *cobra.Command, op string, args []string, results []fleet.Result, dry bool) error {
-	format, _ := c.Flags().GetString("output")
+	format, _ := outputFormat(c)
 	if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
 		return err
 	}
@@ -285,7 +284,7 @@ func newFleetApplyCmd() *cobra.Command {
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
-	c.Flags().StringP("output", "o", "text", "Output format: text or json")
+	addOutputFlag(c)
 	return c
 }
 func newFleetUpdateCmd() *cobra.Command {
@@ -309,7 +308,7 @@ func newFleetUpdateCmd() *cobra.Command {
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
 	c.Flags().String("version", "", "Pinned release version (vX.Y.Z)")
-	c.Flags().StringP("output", "o", "text", "Output format: text or json")
+	addOutputFlag(c)
 	return c
 }
 func newFleetBootstrapCmd() *cobra.Command {
@@ -333,7 +332,7 @@ func newFleetBootstrapCmd() *cobra.Command {
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
 	c.Flags().String("version", "", "Pinned release version (vX.Y.Z)")
-	c.Flags().StringP("output", "o", "text", "Output format: text or json")
+	addOutputFlag(c)
 	return c
 }
 func newFleetScheduleCmd() *cobra.Command {
@@ -366,7 +365,7 @@ func newFleetScheduleCmd() *cobra.Command {
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
 	c.Flags().String("on-calendar", "", "OnCalendar expression for `fleet schedule enable` (omitted: remote default daily)")
-	c.Flags().StringP("output", "o", "text", "Output format: text or json")
+	addOutputFlag(c)
 	return c
 }
 
