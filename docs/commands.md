@@ -11,10 +11,10 @@ Every `rootfiles` command and flag, with exit codes, output formats and environm
 | Code | Meaning |
 |---|---|
 | 0 | Success. For report commands: nothing to report (all satisfied, no failures, every host `ok`, already current). |
-| 1 | Error: invalid input, a failed load or a failed run. The error is printed once as `rootfiles: ...` on stderr. Flag and argument usage errors exit 2 with usage and a help hint. |
-| 2 | Report result: pending changes (`check`), failed findings (`doctor`), drift (`user audit`), an available update (`update --check`, `tunnel update --check`), or a fleet host that is not `ok`. |
+| 1 | Operational or validation error, including missing required flags. The error is printed once as `rootfiles: ...` on stderr. Argument/flag parsing errors use 2 instead. |
+| 2 | Argument/flag parsing error (with usage and a help hint), or report result: pending changes (`check`), failed findings (`doctor`), drift (`user audit`), an available update (`update --check`, `tunnel update --check`), or a fleet host that is not `ok`. |
 
-Every command uses 2 for Cobra flag or argument usage errors. The report-result uses of 2 below remain separately documented.
+Cobra argument/flag parsing errors exit 2. Missing required flags retain exit 1. The report-result uses of 2 below remain separately documented.
 
 ### Output formats
 
@@ -366,7 +366,7 @@ Read-only overview: system, profile, last apply, module satisfaction, GPU alloca
 | `-o`, `--output` | `text` | `text` or `json`. |
 | `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 
-Exit code 0 for the overview, including reported findings; 1 for invalid input. When the config does not load, `status` reports the error and skips the user and GPU databases unless an absolute home base is known.
+Exit code 0 for the overview, including reported findings; 2 for argument/flag parsing errors, and 1 for other invocation errors. When the config does not load, `status` reports the error and skips the user and GPU databases unless an absolute home base is known.
 
 ### rootfiles tenant
 

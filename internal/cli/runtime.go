@@ -235,7 +235,8 @@ func auditf(cmd *cobra.Command, msg string, args ...any) {
 // audit log for real (non-dry-run) mutating runs.
 func newLogger(cmd *cobra.Command, dryRun bool, level slog.Level) *slog.Logger {
 	verbose, _ := cmd.Flags().GetBool("verbose")
-	if !verbose && level < slog.LevelWarn {
+	preview, _ := cmd.Flags().GetBool("dry-run")
+	if !verbose && !preview && level < slog.LevelWarn {
 		level = slog.LevelWarn
 	}
 	console := slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{Level: level})

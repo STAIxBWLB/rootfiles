@@ -87,7 +87,7 @@ func usageError(err error) error {
 	return &ExitError{Code: 2, Msg: err.Error(), Usage: true}
 }
 
-func configureOutput(cmd *cobra.Command) error {
+func configureOutput(cmd *cobra.Command, args ...string) error {
 	mode, _ := cmd.Flags().GetString("color")
 	if mode == "" {
 		mode, _ = cmd.Root().PersistentFlags().GetString("color")
@@ -99,12 +99,29 @@ func configureOutput(cmd *cobra.Command) error {
 	}
 	ascii, _ := cmd.Flags().GetBool("ascii")
 	machine, _ := cmd.Flags().GetBool("json")
+	machine = machine || rawPassthroughOutput(cmd, args)
 	if f := cmd.Flags().Lookup("output"); cmd.Flags().Lookup("json") != nil && f != nil && (f.Value.String() == "json" || f.Value.String() == "prometheus") {
 		machine = true
 	}
 	cmd.SetOut(ui.ConfigureWriter(cmd.OutOrStdout(), mode, ascii, machine))
 	cmd.SetErr(ui.ConfigureWriter(cmd.ErrOrStderr(), mode, ascii, false))
 	return nil
+}
+
+// Raw payloads use the same undecorated stdout path as JSON. Diagnostics keep
+// their independent human stderr policy.
+func rawPassthroughOutput(cmd *cobra.Command, args []string) bool {
+	switch strings.TrimPrefix(cmd.CommandPath(), cmd.Root().Name()+" ") {
+	case "tenant logs", "config show":
+		return true
+	case "tenant ops":
+		return len(args) > 1 && args[1] == "logs"
+	case "fleet targets":
+		push, _ := cmd.Flags().GetString("push")
+		return push == ""
+	default:
+		return false
+	}
 }
 
 // Args runs after parsing but before any preflight or command body. Wrapping
@@ -115,7 +132,7 @@ func installOutputBoundary(cmd *cobra.Command) {
 	}
 	args := cmd.Args
 	cmd.Args = func(c *cobra.Command, values []string) error {
-		if err := configureOutput(c); err != nil {
+		if err := configureOutput(c, values...); err != nil {
 			return err
 		}
 		if args == nil && c.HasSubCommands() && len(values) > 0 {

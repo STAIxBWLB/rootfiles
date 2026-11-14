@@ -118,12 +118,14 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 		for _, f := range findings {
 			counts[f.Level]++
 		}
+		ascii, _ := cmd.Flags().GetBool("ascii")
+		ascii = ui.ASCIIMarkers(ascii)
 		parts := []string{}
 		for _, entry := range []struct{ level, marker, word string }{
 			{module.LevelFail, ui.FailMark(), "failed"}, {module.LevelWarn, ui.WarnMark(), "warnings"}, {module.LevelOK, ui.OKMark(), "ok"}, {module.LevelSkip, ui.MarkUnknown, "unknown"},
 		} {
 			if count := counts[entry.level]; count > 0 {
-				parts = append(parts, fmt.Sprintf("%s %d %s", entry.marker, count, entry.word))
+				parts = append(parts, fmt.Sprintf("%s %d %s", ui.MarkerCell(entry.marker, ascii), count, entry.word))
 			}
 		}
 		if len(parts) > 0 {
