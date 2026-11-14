@@ -28,6 +28,23 @@ func knownPreflightFixture(t *testing.T) {
 	t.Setenv("LC_ALL", "C.UTF-8")
 }
 
+// Clear test path overrides only when the fixed non-root preflight cannot
+// reach the lock, audit, config load or any host command.
+func knownNonRootFixture(t *testing.T) {
+	t.Helper()
+	knownPreflightFixture(t)
+	geteuid = func() int { return 1000 }
+	for _, entry := range os.Environ() {
+		name, value, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(name, "ROOTFILES_") {
+			t.Setenv(name, value) // register restoration before temporarily unsetting
+			if err := os.Unsetenv(name); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
 func executeKnownPreflight(t *testing.T, args []string, ascii bool, wantNext string) error {
 	t.Helper()
 	args = append(append([]string(nil), args...), "--color=never")
@@ -65,8 +82,7 @@ func executeKnownPreflight(t *testing.T, args []string, ascii bool, wantNext str
 func TestKnownRootPreflightQuotesOriginalArgs(t *testing.T) {
 	for _, ascii := range []bool{false, true} {
 		t.Run(strconv.FormatBool(ascii), func(t *testing.T) {
-			knownPreflightFixture(t)
-			geteuid = func() int { return 1000 }
+			knownNonRootFixture(t)
 			next := "sudo rootfiles 'apply' '--config' '/tmp/team'\\''s config.yaml' '--color=never'"
 			if ascii {
 				next += " '--ascii'"
@@ -89,8 +105,7 @@ func TestKnownRootPreflightNeverReplaysSecrets(t *testing.T) {
 		{"literal mask", []string{"user", "passwd", "alice", "--password", "***"}, "sudo rootfiles user passwd --help"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			knownPreflightFixture(t)
-			geteuid = func() int { return 1000 }
+			knownNonRootFixture(t)
 			err := executeKnownPreflight(t, tc.args, true, tc.next)
 			var exit *ExitError
 			errors.As(err, &exit)
@@ -104,8 +119,7 @@ func TestKnownRootPreflightNeverReplaysSecrets(t *testing.T) {
 func TestKnownRootPreflightNeverEchoesPasswordSuffix(t *testing.T) {
 	for _, inline := range []bool{false, true} {
 		t.Run(strconv.FormatBool(inline), func(t *testing.T) {
-			knownPreflightFixture(t)
-			geteuid = func() int { return 1000 }
+			knownNonRootFixture(t)
 			args := []string{"user", "passwd", "alice", "--suffix", "fixture-secret"}
 			if inline {
 				args = []string{"user", "passwd", "alice", "--suffix=fixture-secret"}
@@ -162,6 +176,26 @@ func TestKnownLockPreflightPreservesTypedError(t *testing.T) {
 			var held *state.LockHeldError
 			if !errors.As(err, &held) || held.PID != os.Getpid() || held.Path != state.LockPath() {
 				t.Fatalf("typed lock error lost: %v", err)
+			}
+		})
+	}
+}
+
+func TestKnownRootPreflightEnvironmentUsesHelp(t *testing.T) {
+	for _, tc := range []struct{ name, value string }{
+		{"ROOTFILES_PROFILE", "minimal"},
+		{"ROOTFILES_HOME_BASE", "/fixture/home"},
+		{"ROOTFILES_TUNNEL_TOKEN", "fixture-secret"},
+		{"ROOTFILES_TEST_EMPTY", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			knownNonRootFixture(t)
+			t.Setenv(tc.name, tc.value)
+			err := executeKnownPreflight(t, []string{"apply", "--yes"}, true, "sudo rootfiles apply --help")
+			var exit *ExitError
+			errors.As(err, &exit)
+			if strings.Contains(exit.Error()+exit.Next, tc.name) || strings.Contains(exit.Next, "fixture-secret") {
+				t.Fatalf("environment leaked into diagnostic: %v", exit)
 			}
 		})
 	}

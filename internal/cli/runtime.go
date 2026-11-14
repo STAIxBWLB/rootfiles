@@ -207,8 +207,15 @@ func redactArgsWithSecrets(args []string) ([]string, bool) {
 // rootRetryCommand retains argument boundaries without echoing secret values.
 func rootRetryCommand(cmd *cobra.Command) string {
 	args := os.Args[1:]
+	help := "sudo " + cmd.CommandPath() + " --help"
 	if _, masked := redactArgsWithSecrets(args); masked {
-		return "sudo " + cmd.CommandPath() + " --help"
+		return help
+	}
+	// sudo may reset the environment and silently select another target.
+	for _, entry := range os.Environ() {
+		if strings.HasPrefix(entry, "ROOTFILES_") {
+			return help
+		}
 	}
 	quoted := make([]string, len(args))
 	for i, arg := range args {

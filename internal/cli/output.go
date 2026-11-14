@@ -47,13 +47,13 @@ func withNext(err error, next string) error {
 // configLoadError is only for fatal loads. Overview reports retain their
 // original load error and fallback payload.
 func configLoadError(cmd *cobra.Command, err error, profile, configPath string) error {
+	if unknownSelectedProfile(profile, configPath) {
+		return withNext(fmt.Errorf("%w; available profiles: %s", err, strings.Join(config.AvailableProfiles(), ", ")), "rootfiles --help")
+	}
 	// A bare validation command would omit these loadOverrides inputs and
 	// could succeed even though this invocation failed.
 	if cmd.Flags().Changed("home-base") || cmd.Flags().Changed("vlan-address") {
 		return err
-	}
-	if unknownSelectedProfile(profile, configPath) {
-		return withNext(fmt.Errorf("%w; available profiles: %s", err, strings.Join(config.AvailableProfiles(), ", ")), "rootfiles --help")
 	}
 	if configPath != "" {
 		return withNext(err, "rootfiles config validate --config "+fleet.ShellQuote(configPath))

@@ -61,23 +61,26 @@ func TestFatalConfigLoadNextSteps(t *testing.T) {
 func TestUnknownProfileNextStep(t *testing.T) {
 	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
 	for _, args := range [][]string{{"check", "--json"}, {"config", "show"}, {"config", "validate"}} {
-		t.Run(strings.Join(args, "_"), func(t *testing.T) {
-			root := NewRootCmd("test", "abc")
-			var out, stderr bytes.Buffer
-			root.SetOut(&out)
-			root.SetErr(&stderr)
-			root.SetArgs(append(args, "--profile", "not-a-profile", "--ascii", "--color=never"))
-			err := executeCommand(context.Background(), root)
-			var exit *ExitError
-			if !errors.As(err, &exit) || exit.Code != 1 {
-				t.Fatalf("error = %v, want exit 1", err)
-			}
-			if out.Len() != 0 || strings.Count(stderr.String(), "\n") != 2 ||
-				!strings.Contains(stderr.String(), "available profiles: "+strings.Join(config.AvailableProfiles(), ", ")) ||
-				!strings.Contains(stderr.String(), "-> rootfiles --help\n") {
-				t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
-			}
-		})
+		for _, overrides := range [][]string{nil, {"--home-base", "/fixture/home"}, {"--vlan-address", "invalid"}} {
+			t.Run(strings.Join(append(append([]string{}, args...), overrides...), "_"), func(t *testing.T) {
+				root := NewRootCmd("test", "abc")
+				var out, stderr bytes.Buffer
+				root.SetOut(&out)
+				root.SetErr(&stderr)
+				argv := append(append([]string{}, args...), "--profile", "not-a-profile", "--ascii", "--color=never")
+				root.SetArgs(append(argv, overrides...))
+				err := executeCommand(context.Background(), root)
+				var exit *ExitError
+				if !errors.As(err, &exit) || exit.Code != 1 {
+					t.Fatalf("error = %v, want exit 1", err)
+				}
+				if out.Len() != 0 || strings.Count(stderr.String(), "\n") != 2 ||
+					!strings.Contains(stderr.String(), "available profiles: "+strings.Join(config.AvailableProfiles(), ", ")) ||
+					!strings.Contains(stderr.String(), "-> rootfiles --help\n") {
+					t.Fatalf("stdout=%q stderr=%q", out.String(), stderr.String())
+				}
+			})
+		}
 	}
 }
 
