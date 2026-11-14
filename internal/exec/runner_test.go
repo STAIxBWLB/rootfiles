@@ -66,3 +66,24 @@ func TestQueryGuardOptionalAndAllowsExecution(t *testing.T) {
 		}
 	}
 }
+
+func TestQueryOutputStreamsWithoutCapturing(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "stream-query")
+	if err := os.WriteFile(binary, []byte("#!/bin/sh\nprintf 'archive-bytes'\nprintf 'diagnostic' >&2\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	runner := quietRunner(true)
+	var output strings.Builder
+	result, err := runner.QueryOutput(context.Background(), &output, "stream-query")
+	if err != nil || result.Stdout != "" || result.Stderr != "diagnostic" || output.String() != "archive-bytes" {
+		t.Fatalf("result=%+v output=%q err=%v", result, output.String(), err)
+	}
+	runner.QueryGuard = func(string) error { return errors.New("refused stream") }
+	output.Reset()
+	result, err = runner.QueryOutput(context.Background(), &output, "stream-query")
+	if err == nil || output.Len() != 0 || result.ExitCode != -1 {
+		t.Fatalf("guard result=%+v output=%q err=%v", result, output.String(), err)
+	}
+}

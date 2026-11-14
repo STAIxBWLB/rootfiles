@@ -3,6 +3,7 @@ package exec
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	osexec "os/exec"
@@ -48,6 +49,15 @@ func NewRunner(dryRun bool, logger *slog.Logger) *Runner {
 // Query executes a read-only command that always runs, even in dry-run mode.
 // Use this for status checks (dpkg -s, ufw status, etc.) that don't modify the system.
 func (r *Runner) Query(ctx context.Context, name string, args ...string) (*Result, error) {
+	var stdout strings.Builder
+	result, err := r.QueryOutput(ctx, &stdout, name, args...)
+	result.Stdout = stdout.String()
+	return result, err
+}
+
+// QueryOutput streams read-only stdout to dst, including in dry run, with the
+// same executable guard as Query. Result.Stdout stays empty; bytes are not logged.
+func (r *Runner) QueryOutput(ctx context.Context, dst io.Writer, name string, args ...string) (*Result, error) {
 	cmdStr := name + " " + strings.Join(args, " ")
 	r.Logger.Info("query", "cmd", cmdStr)
 	cmd := osexec.CommandContext(ctx, name, args...)
@@ -56,14 +66,13 @@ func (r *Runner) Query(ctx context.Context, name string, args ...string) (*Resul
 			return &Result{Command: cmdStr, ExitCode: -1}, fmt.Errorf("query %q refused before execution: %w", cmdStr, err)
 		}
 	}
-	var stdout, stderr strings.Builder
-	cmd.Stdout = &stdout
+	var stderr strings.Builder
+	cmd.Stdout = dst
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
 	result := &Result{
 		Command: cmdStr,
-		Stdout:  stdout.String(),
 		Stderr:  stderr.String(),
 	}
 	if cmd.ProcessState != nil {
