@@ -59,9 +59,7 @@ func runCheck(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
-	logger := slog.New(slog.NewTextHandler(cmd.ErrOrStderr(), &slog.HandlerOptions{
-		Level: slog.LevelWarn,
-	}))
+	logger := newLogger(cmd, true, slog.LevelInfo)
 	rc := readOnlyRunContext(cfg, sysInfo, logger)
 	rc.Out = cmd.OutOrStdout()
 	// Check is a strict evaluator, unlike overview reports which retain a

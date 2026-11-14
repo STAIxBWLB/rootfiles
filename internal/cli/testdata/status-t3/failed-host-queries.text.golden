@@ -1,41 +1,39 @@
+ rootfiles status
 
- [1;38;2;121;162;247m rootfiles status [0m 
+▸ System
+  OS:             ubuntu 24.04 (noble)
+  Hostname:       <hostname>
+  Architecture:   amd64
+  Memory:         32 GiB
+  CPU Cores:      8
+  GPU:            none detected
 
-[1;38;2;187;154;247m▸ System[0m
-  [38;2;158;206;105mOS:[0m             [38;2;192;202;245mubuntu 24.04 (noble)[0m
-  [38;2;158;206;105mHostname:[0m       [38;2;192;202;245m<hostname>[0m
-  [38;2;158;206;105mArchitecture:[0m   [38;2;192;202;245mamd64[0m
-  [38;2;158;206;105mMemory:[0m         [38;2;192;202;245m32 GiB[0m
-  [38;2;158;206;105mCPU Cores:[0m      [38;2;192;202;245m8[0m
-  [38;2;158;206;105mGPU:[0m            [38;2;192;202;245mnone detected[0m
+▸ Profile
+  Active:         (none)
+  Suggested:      minimal
+  Config:         <fixture>/site.yaml
 
-[1;38;2;187;154;247m▸ Profile[0m
-  [38;2;158;206;105mActive:[0m         [38;2;192;202;245m(none)[0m
-  [38;2;158;206;105mSuggested:[0m      [38;2;192;202;245mminimal[0m
-  [38;2;158;206;105mConfig:[0m         [38;2;192;202;245m<fixture>/site.yaml[0m
+▸ Last apply
+  no apply recorded on this host
 
-[1;38;2;187;154;247m▸ Last apply[0m
-  [38;2;86;95;137mno apply recorded on this host[0m
+▸ Modules (1/2 satisfied)
+  ✓  system
+  ~  packages
 
-[1;38;2;187;154;247m▸ Modules (1/2 satisfied)[0m
-  [1;38;2;158;206;105m✓[0m  system
-  [1;38;2;224;175;104m→[0m  packages
+  1 module(s) need attention — run 'rootfiles check' for details.
 
-  [38;2;86;95;137m1 module(s) need attention — run 'rootfiles check' for details.[0m
+▸ GPU Allocations
+  Total GPUs:     2 × fixture GPU
+  Assigned:       2 GPU(s) across 2 user(s)
+  alice 0
+  bob 1
 
-[1;38;2;187;154;247m▸ GPU Allocations[0m
-  [38;2;158;206;105mTotal GPUs:[0m     [38;2;192;202;245m2 × fixture GPU[0m
-  [38;2;158;206;105mAssigned:[0m       [38;2;192;202;245m2 GPU(s) across 2 user(s)[0m
-  [38;2;192;202;245malice[0m  0
-  [38;2;192;202;245mbob[0m  1
+▸ Tunnel
+  cloudflared:    cloudflared version 2026.11.10 <fixture>&"quoted"
+  Service:        inactive
+  VLAN:           fixture0 not configured
 
-[1;38;2;187;154;247m▸ Tunnel[0m
-  [38;2;158;206;105mcloudflared:[0m    [38;2;192;202;245mcloudflared version 2026.11.10 <fixture>&"quoted"[0m
-  [38;2;158;206;105mService:[0m        [38;2;192;202;245m[38;2;86;95;137minactive[0m[0m
-  [38;2;158;206;105mVLAN:[0m           [38;2;192;202;245mfixture0 not configured[0m
-
-[1;38;2;187;154;247m▸ Users[0m
-  [38;2;158;206;105mHome base:[0m      [38;2;192;202;245m<fixture>/home[0m
-  [38;2;158;206;105mManaged:[0m        [38;2;192;202;245m2 user(s)[0m
-  [38;2;158;206;105mSystem:[0m         [38;2;192;202;245m2 user(s) (UID 1000-65533)[0m
-
+▸ Users
+  Home base:      <fixture>/home
+  Managed:        2 user(s)
+  System:         2 user(s) (UID 1000-65533)

@@ -61,7 +61,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 				ui.WriteText(out, "Already at version %s, nothing to do.\n", targetVersion)
 				return nil
 			}
-			ui.WriteText(out, "Current: %s "+ui.MarkPending+" Target: %s\n", currentVersion, targetVersion)
+			ui.WriteText(out, "Current: %s "+ui.Relation+" Target: %s\n", currentVersion, targetVersion)
 
 			if checkOnly {
 				ui.WriteLine(out, "Update available. Run `sudo rootfiles update` to install.")

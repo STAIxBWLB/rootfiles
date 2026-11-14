@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -110,10 +111,26 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			}
 			ui.WriteBullet(out, marker, fmt.Sprintf("%-16s %s", f.Check, f.Detail))
 			if f.Hint != "" && f.Level != module.LevelOK {
-				fmt.Fprintf(out, "      %s\n", ui.StyleHint.Render(ui.MarkPending+" "+f.Hint))
+				fmt.Fprintf(out, "      %s\n", ui.StyleAccent.Render(ui.MarkNext+" "+f.Hint))
 			}
 		}
-		fmt.Fprintln(out)
+		counts := map[string]int{}
+		for _, f := range findings {
+			counts[f.Level]++
+		}
+		ascii, _ := cmd.Flags().GetBool("ascii")
+		ascii = ui.ASCIIMarkers(ascii)
+		parts := []string{}
+		for _, entry := range []struct{ level, marker, word string }{
+			{module.LevelFail, ui.FailMark(), "failed"}, {module.LevelWarn, ui.WarnMark(), "warnings"}, {module.LevelOK, ui.OKMark(), "ok"}, {module.LevelSkip, ui.MarkUnknown, "unknown"},
+		} {
+			if count := counts[entry.level]; count > 0 {
+				parts = append(parts, fmt.Sprintf("%s %d %s", ui.MarkerCell(entry.marker, ascii), count, entry.word))
+			}
+		}
+		if len(parts) > 0 {
+			ui.WriteLine(out, strings.Join(parts, "  "))
+		}
 	}
 	if failed > 0 {
 		return &ExitError{Code: exitDrift}

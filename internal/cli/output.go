@@ -22,8 +22,10 @@ import (
 // ExitError carries a process exit code. An empty Msg exits silently
 // (e.g. `check` reporting drift with code 2).
 type ExitError struct {
-	Code int
-	Msg  string
+	Code  int
+	Msg   string
+	Next  string
+	Usage bool
 }
 
 func (e *ExitError) Error() string { return e.Msg }
@@ -37,12 +39,14 @@ const annotPrometheus = "rootfiles/prometheus"
 
 func addOutputFlag(cmd *cobra.Command) {
 	cmd.Flags().StringP("output", "o", "text", "Output format: text or json")
+	cmd.Flags().Bool("json", false, "Output JSON (alias for --output json)")
 }
 
 // addOutputFlagWithMetrics also allows Prometheus text exposition, for the
 // node_exporter textfile collector.
 func addOutputFlagWithMetrics(cmd *cobra.Command) {
 	cmd.Flags().StringP("output", "o", "text", "Output format: text, json or prometheus")
+	cmd.Flags().Bool("json", false, "Output JSON (alias for --output json)")
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}
 	}
@@ -62,6 +66,12 @@ func stringFlagOrAlias(cmd *cobra.Command, flag, alias string) string {
 
 func outputFormat(cmd *cobra.Command) (string, error) {
 	f, _ := cmd.Flags().GetString("output")
+	if jsonOutput, _ := cmd.Flags().GetBool("json"); jsonOutput {
+		if cmd.Flags().Changed("output") && f != "json" {
+			return "", usageError(fmt.Errorf("--json conflicts with --output %s", f))
+		}
+		return "json", nil
+	}
 	switch {
 	case f == "" || f == "text":
 		return "text", nil
@@ -70,7 +80,7 @@ func outputFormat(cmd *cobra.Command) (string, error) {
 	case f == "prometheus" && cmd.Annotations[annotPrometheus] == "true":
 		return "prometheus", nil
 	default:
-		return "", fmt.Errorf("unknown --output %q", f)
+		return "", usageError(fmt.Errorf("unknown --output %q", f))
 	}
 }
 

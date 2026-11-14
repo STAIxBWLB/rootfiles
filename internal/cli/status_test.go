@@ -8,13 +8,7 @@ import (
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
-	"github.com/charmbracelet/lipgloss"
 )
-
-func init() {
-	// Fix the profile so status golden bytes do not depend on the terminal.
-	lipgloss.SetColorProfile(0)
-}
 
 func TestNewStatusCmd_Basics(t *testing.T) {
 	cmd := newStatusCmd()

@@ -836,7 +836,7 @@ func RehomeUser(ctx context.Context, rc *RunContext, username string, removeOld 
 		ui.WriteText(rc.Output(), "Original home kept at %s (delete it once verified)\n", backup)
 	}
 
-	ui.WriteText(rc.Output(), "User %s moved: %s "+ui.MarkPending+" %s (symlink created)\n", username, oldHome, newHome)
+	ui.WriteText(rc.Output(), "User %s moved: %s "+ui.Relation+" %s (symlink created)\n", username, oldHome, newHome)
 	return nil
 }
 

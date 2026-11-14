@@ -21,6 +21,9 @@ import (
 // Unsupported-OS text has no legacy golden: it now displays the capability
 // refusal already present in JSON, instead of checking unsupported modules.
 func TestStatusCollectorByteContract(t *testing.T) {
+	t.Setenv("LC_ALL", "C.UTF-8")
+	t.Setenv("NO_COLOR", "1")
+	t.Setenv("COLUMNS", "")
 	cases := []struct {
 		name string
 	}{

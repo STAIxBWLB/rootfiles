@@ -32,7 +32,7 @@ func TestOutputBoundaryHasNoBarePrintsOrExternalGlyphLiterals(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if strings.ContainsAny(string(data), MarkOK+MarkFail+MarkWarn+MarkPending) {
+		if strings.ContainsAny(string(data), MarkOK+MarkFail+MarkWarn+MarkNext+MarkSection) {
 			t.Errorf("%s has a glyph literal outside ui; use an unstyled ui marker constant", p)
 		}
 		parent := filepath.Base(filepath.Dir(p))
@@ -57,6 +57,12 @@ func TestOutputBoundaryHasNoBarePrintsOrExternalGlyphLiterals(t *testing.T) {
 			}
 		}
 		ast.Inspect(file, func(n ast.Node) bool {
+			if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+				value, err := strconv.Unquote(lit.Value)
+				if err == nil && strings.ContainsRune(value, 27) {
+					t.Errorf("%s contains a raw terminal escape outside ui", p)
+				}
+			}
 			sel, ok := n.(*ast.SelectorExpr)
 			if !ok {
 				return true

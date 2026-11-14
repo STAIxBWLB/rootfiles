@@ -1,51 +1,17 @@
 package ui
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
-// Styles for consistent output across the CLI.
-//
-// Colour semantics (glyph layer is in markers.go):
-//   - StyleHeader   page/report titles — blue, bold, padded
-//   - StyleSection  section dividers   — purple, bold
-//   - StyleKey      left-side labels in key/value rows — green, padded to 14
-//   - StyleValue    right-side values in key/value rows — light blue
-//   - StyleSuccess  positive status (MarkOK) — green, bold
-//   - StyleWarning  non-fatal attention (MarkWarn) — orange, bold
-//   - StyleError    hard failure (MarkFail) — red, bold
-//   - StyleHint     secondary info, neutral-missing, (unset) placeholders — gray
-//
-// lipgloss detects terminal capabilities via termenv, so styles automatically
-// degrade to plain text when stdout is not a TTY or NO_COLOR is set. No manual
-// gating needed.
+// Semantic roles use the terminal's 16 ANSI colors. Stream policy is applied
+// by ConfigureWriter, since lipgloss v2 Render does not detect a terminal.
 var (
-	StyleHeader = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#7AA2F7")).
-			Padding(0, 1)
-
-	StyleSection = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("#BB9AF7"))
-
-	StyleKey = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9ECE6A")).
-			Width(14)
-
-	StyleValue = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#C0CAF5"))
-
-	StyleSuccess = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#9ECE6A")).
-			Bold(true)
-
-	StyleWarning = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#E0AF68")).
-			Bold(true)
-
-	StyleError = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#F7768E")).
-			Bold(true)
-
-	StyleHint = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#565F89"))
+	StyleHeader  = lipgloss.NewStyle().Foreground(lipgloss.Color("4")).Bold(true)
+	StyleSection = lipgloss.NewStyle().Foreground(lipgloss.Color("5")).Bold(true)
+	StyleKey     = lipgloss.NewStyle().Foreground(lipgloss.Color("4"))
+	StyleValue   = lipgloss.NewStyle()
+	StyleSuccess = lipgloss.NewStyle().Foreground(lipgloss.Color("2")).Bold(true)
+	StyleWarning = lipgloss.NewStyle().Foreground(lipgloss.Color("3")).Bold(true)
+	StyleError   = lipgloss.NewStyle().Foreground(lipgloss.Color("1")).Bold(true)
+	StyleHint    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	StyleAccent  = lipgloss.NewStyle().Foreground(lipgloss.Color("6"))
 )

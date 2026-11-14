@@ -168,7 +168,7 @@ func TestModuleMachineChangeMarkersRemainUnstyledBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "Create symlink " + link + " " + ui.MarkPending + " " + target
+	want := "Create symlink " + link + " " + ui.Relation + " " + target
 	found := false
 	for _, change := range storage.Changes {
 		found = found || change.Description == want
@@ -183,7 +183,7 @@ func TestModuleMachineChangeMarkersRemainUnstyledBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cloud.Changes) != 1 || cloud.Changes[0].Command != "download cloudflared "+ui.MarkPending+" "+cloudflaredBinary {
+	if len(cloud.Changes) != 1 || cloud.Changes[0].Command != "download cloudflared "+ui.Relation+" "+cloudflaredBinary {
 		t.Fatalf("machine cloudflared command changed: %+v", cloud.Changes)
 	}
 }

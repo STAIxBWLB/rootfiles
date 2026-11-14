@@ -159,7 +159,7 @@ func (m *CloudflaredModule) Check(_ context.Context, rc *RunContext) (*CheckResu
 	if !rc.Runner.FileExists(cloudflaredBinary) {
 		changes = append(changes, Change{
 			Description: "Install cloudflared binary",
-			Command:     "download cloudflared " + ui.MarkPending + " " + cloudflaredBinary,
+			Command:     "download cloudflared " + ui.Relation + " " + cloudflaredBinary,
 		})
 	}
 

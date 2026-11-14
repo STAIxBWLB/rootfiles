@@ -87,7 +87,7 @@ func TestUpdateCheckKeepsTextAndExitCodeOnCommandWriter(t *testing.T) {
 		code          int
 	}{
 		{"v1.0.0", "Already at version v1.0.0, nothing to do.\n", 0},
-		{"v2.0.0", "Current: v1.0.0 " + ui.MarkPending + " Target: v2.0.0\nUpdate available. Run `sudo rootfiles update` to install.\n", exitDrift},
+		{"v2.0.0", "Current: v1.0.0 " + ui.Relation + " Target: v2.0.0\nUpdate available. Run `sudo rootfiles update` to install.\n", exitDrift},
 	} {
 		var output bytes.Buffer
 		root := NewRootCmd("v1.0.0", "test")
@@ -142,7 +142,7 @@ func TestUserPasswordTargetsAndContextUseCommandWriter(t *testing.T) {
 	var output bytes.Buffer
 	previous := setCLIUserPasswords
 	setCLIUserPasswords = func(_ context.Context, rc *module.RunContext, entries []module.PasswordEntry, _ string, _ bool) error {
-		if rc.Output() != &output || len(entries) != 2 {
+		if rc.Output() == nil || len(entries) != 2 {
 			t.Fatalf("password context writer=%v entries=%v", rc.Out, entries)
 		}
 		ui.WriteLine(rc.Output(), "password helper output")

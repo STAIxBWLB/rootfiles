@@ -11,15 +11,15 @@ Every `rootfiles` command and flag, with exit codes, output formats and environm
 | Code | Meaning |
 |---|---|
 | 0 | Success. For report commands: nothing to report (all satisfied, no failures, every host `ok`, already current). |
-| 1 | Error: invalid input, a failed load or a failed run. The error is printed as `Error: ...` on stderr. |
-| 2 | Report result: pending changes (`check`), failed findings (`doctor`), drift (`user audit`), an available update (`update --check`, `tunnel update --check`), or a fleet host that is not `ok`. |
+| 1 | Operational or validation error, including missing required flags. The error is printed once as `rootfiles: ...` on stderr. Argument/flag parsing errors use 2 instead. |
+| 2 | Argument/flag parsing error (with usage and a help hint), or report result: pending changes (`check`), failed findings (`doctor`), drift (`user audit`), an available update (`update --check`, `tunnel update --check`), or a fleet host that is not `ok`. |
 
-Commands not listed with exit 2 below use only 0 and 1.
+Cobra argument/flag parsing errors exit 2. Missing required flags retain exit 1. The report-result uses of 2 below remain separately documented.
 
 ### Output formats
 
-- `-o/--output` selects a report format: `text` (default) or `json`; `check` and `doctor` also take `prometheus` (text exposition for the node exporter textfile collector).
-- Text output is coloured on a terminal. Colour is dropped when stdout is not a TTY or `NO_COLOR` is set.
+- `--json` selects JSON on report commands; `-o/--output` selects a report format: `text` (default) or `json`; `check` and `doctor` also take `prometheus` (text exposition for the node exporter textfile collector).
+- Text output uses per-stream color policy: explicit `--color`, then nonempty `NO_COLOR`, nonzero `FORCE_COLOR` or `CLICOLOR_FORCE`, `FORCE_COLOR=0` or `CLICOLOR=0`, then TTY with `TERM` other than `dumb`. JSON never contains decoration. `--ascii` or a non-UTF-8 locale selects ASCII markers.
 - Fleet commands accept only `text` and `json`, and refuse anything else before connecting.
 
 ### Root flags and their readers
@@ -98,7 +98,10 @@ Root command. Run `rootfiles help <command>` or `rootfiles <command> --help` for
 | `--ssh-pubkey` | unset | SSH public key for `--user`. |
 | `--tunnel-token` | unset | Cloudflare tunnel token. Redacted in the audit log. |
 | `--vlan-address` | unset | Private network address of the tunnel, a CIDR such as `203.0.113.10/32`. |
-| `--version` | | Print the version and commit. |
+| `--color` | `auto` | Color policy: `auto`, `always` or `never`, resolved separately for stdout and stderr. |
+| `--ascii` | `false` | Use ASCII markers (also automatic for a non-UTF-8 locale). |
+| `--verbose` | `false` | Show diagnostic logs and command details. |
+| `-v`, `--version` | | Print the version and commit. |
 
 See [Root flags and their readers](#root-flags-and-their-readers) for which command reads which flag.
 
@@ -142,6 +145,7 @@ Report which modules have pending changes. Read-only: every module runs `Check` 
 |---|---|---|
 | `--module` | all enabled | Check only these modules. |
 | `-o`, `--output` | `text` | `text`, `json` or `prometheus`. |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 | `-v`, `--verbose` | `false` | Show the command behind each pending change. |
 
 - Target: `--profile`, `--config` or `ROOTFILES_PROFILE`, else the last applied target, else the detected suggestion ([configuration.md](configuration.md#which-config-a-command-uses)).
@@ -185,6 +189,7 @@ Read-only health checks of the live host, as opposed to `check`, which compares 
 | Flag | Default | Purpose |
 |---|---|---|
 | `-o`, `--output` | `text` | `text`, `json` or `prometheus`. |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 | `--strict` | `false` | Count warnings as failures for the exit code. |
 
 - JSON: `findings[]` (`check`, `level` of `ok`, `warn`, `fail` or `skip`, `detail`, `hint`), `failed`, `applied_config_sha256`, `version`.
@@ -224,6 +229,7 @@ Apply each selected host's site config, one host at a time.
 | `--inventory`, `--host`, `--group`, `--all` | | Selection, see [rootfiles fleet](#rootfiles-fleet). |
 | `--timeout`, `--skip-unreachable` | `15m`, `false` | See [rootfiles fleet](#rootfiles-fleet). |
 | `-o`, `--output` | `text` | `text` or `json`. |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 
 ### rootfiles fleet bootstrap
 
@@ -235,6 +241,7 @@ Install a pinned, checksum-verified release on selected hosts where rootfiles is
 | `--inventory`, `--host`, `--group`, `--all` | | Selection. |
 | `--timeout`, `--skip-unreachable` | `15m`, `false` | Rollout limits. |
 | `-o`, `--output` | `text` | `text` or `json`. |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 
 ### rootfiles fleet check
 
@@ -245,10 +252,11 @@ Run `rootfiles check -o json` on the selected hosts in parallel and summarise th
 | `--inventory`, `--host`, `--group`, `--all` | | Selection; required. |
 | `--parallel` | `defaults.parallel` of the inventory (2) | Concurrent SSH processes, 1-128. |
 | `-o`, `--output` | `text` | `text` or `json` (`hosts[]` with `host`, `command`, `state`, `reason`, `remote`, `exit_code`). |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 
 ### rootfiles fleet doctor
 
-Run `rootfiles doctor -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`.
+Run `rootfiles doctor -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
 
 ### rootfiles fleet schedule
 
@@ -260,10 +268,11 @@ Run `rootfiles doctor -o json` on the selected hosts in parallel. Flags as [root
 | `--inventory`, `--host`, `--group`, `--all` | | Selection. |
 | `--timeout`, `--skip-unreachable` | `15m`, `false` | Rollout limits. |
 | `-o`, `--output` | `text` | `text` or `json`. |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 
 ### rootfiles fleet status
 
-Run `rootfiles status -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`.
+Run `rootfiles status -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
 
 ### rootfiles fleet targets
 
@@ -288,6 +297,7 @@ Update the selected hosts to a pinned release, then run a read-only `check` on e
 | `--inventory`, `--host`, `--group`, `--all` | | Selection. |
 | `--timeout`, `--skip-unreachable` | `15m`, `false` | Rollout limits. |
 | `-o`, `--output` | `text` | `text` or `json`. |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 
 ### rootfiles gpu
 
@@ -354,8 +364,9 @@ Read-only overview: system, profile, last apply, module satisfaction, GPU alloca
 |---|---|---|
 | `--module` | all enabled | Report only these modules; also limits the GPU (`gpu`), tunnel (`cloudflared`) and users (`users`) sections. |
 | `-o`, `--output` | `text` | `text` or `json`. |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 
-Exit code 0 for the overview, including reported findings; 1 for invalid input. When the config does not load, `status` reports the error and skips the user and GPU databases unless an absolute home base is known.
+Exit code 0 for the overview, including reported findings; 2 for argument/flag parsing errors, and 1 for other invocation errors. When the config does not load, `status` reports the error and skips the user and GPU databases unless an absolute home base is known.
 
 ### rootfiles tenant
 

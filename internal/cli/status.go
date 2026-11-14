@@ -98,7 +98,6 @@ func renderStatusText(out io.Writer, report statusReport, profileFlag string, la
 	if report.details.usersSelected {
 		renderUsersSection(out, report)
 	}
-	fmt.Fprintln(out)
 }
 
 func renderSystemSection(out io.Writer, sys *config.SystemInfo, hostname string) {
