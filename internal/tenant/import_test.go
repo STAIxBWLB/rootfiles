@@ -178,7 +178,7 @@ func TestDockerKeepCopiesIntoPrivateStaging(t *testing.T) {
 		t.Skip("tar unavailable for fixture")
 	}
 	fixtureBin := os.Getenv("PATH")
-	for name, binary := range map[string]string{"mktemp": "/usr/bin/mktemp", "rm": "/bin/rm"} {
+	for name, binary := range map[string]string{"mktemp": "/usr/bin/mktemp", "rm": "/bin/rm", "chmod": "/bin/chmod"} {
 		if _, err := os.Stat(binary); err != nil {
 			t.Skipf("%s unavailable", binary)
 		}
@@ -309,5 +309,60 @@ func TestDockerKeepMissingOrFailingToolIsReadOnly(t *testing.T) {
 				t.Fatal("query failure wrote staging")
 			}
 		})
+	}
+}
+
+type importHookHandler struct{ hook func(slog.Record) }
+
+func (h importHookHandler) Enabled(context.Context, slog.Level) bool      { return true }
+func (h importHookHandler) Handle(_ context.Context, r slog.Record) error { h.hook(r); return nil }
+func (h importHookHandler) WithAttrs([]slog.Attr) slog.Handler            { return h }
+func (h importHookHandler) WithGroup(string) slog.Handler                 { return h }
+
+func TestDockerKeepCancellationCleansOnlyPrivateStaging(t *testing.T) {
+	m, _, _ := importFixture(t, "", normalKeepArchive())
+	for name, binary := range map[string]string{"mktemp": "/usr/bin/mktemp", "rm": "/bin/rm", "chmod": "/bin/chmod"} {
+		if _, err := os.Stat(binary); err != nil {
+			t.Skipf("%s unavailable", binary)
+		}
+		if err := os.Symlink(binary, filepath.Join(os.Getenv("PATH"), name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	untouched := filepath.Join(m.Root, "existing-volume")
+	if err := os.Mkdir(untouched, 0755); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reached := false
+	m.Runner.Logger = slog.New(importHookHandler{hook: func(r slog.Record) {
+		r.Attrs(func(a slog.Attr) bool {
+			if a.Key == "cmd" && strings.HasPrefix(a.Value.String(), "docker cp -a") {
+				reached = true
+				entries, err := os.ReadDir(m.Root)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, entry := range entries {
+					if strings.HasPrefix(entry.Name(), ".rootfiles-import-") {
+						fi, err := entry.Info()
+						if err != nil || fi.Mode().Perm() != 0700 {
+							t.Fatalf("scratch mode=%v err=%v", fi, err)
+						}
+					}
+				}
+				cancel()
+			}
+			return true
+		})
+	}})
+	m.Runner.DryRun = false
+	if err := m.copyDockerKeep(ctx, "legacy", "/home/alice", t.TempDir()); err == nil || !reached {
+		t.Fatalf("copy cancellation err=%v reached=%v", err, reached)
+	}
+	entries, err := os.ReadDir(m.Root)
+	if err != nil || len(entries) != 1 || entries[0].Name() != "existing-volume" {
+		t.Fatalf("cleanup removed wrong path or leaked staging: %v err=%v", entries, err)
 	}
 }

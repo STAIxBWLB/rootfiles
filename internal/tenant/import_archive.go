@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // measureDockerKeep reads without writing even in dry run. Inspect every parent
@@ -168,10 +169,15 @@ func (m *Manager) copyDockerKeep(ctx context.Context, from, keep, mount string) 
 			return fmt.Errorf("mktemp returned an unexpected staging path; inspect %s before retrying", m.Root)
 		}
 		defer func() {
-			if err := m.run(ctx, "rm", "-r", "--", stage); err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+			defer cancel()
+			if err := m.run(cleanupCtx, "rm", "-r", "--", stage); err != nil {
 				m.printf("Import temporary directory %s could not be removed: %v\n", stage, err)
 			}
 		}()
+		if err := m.run(ctx, "chmod", "0700", stage); err != nil {
+			return fmt.Errorf("setting private import staging permissions: %w", err)
+		}
 	}
 	rel := strings.TrimPrefix(keep, "/")
 	parent := filepath.Join(stage, filepath.Dir(rel))
