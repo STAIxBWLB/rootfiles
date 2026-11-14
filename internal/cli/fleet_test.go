@@ -50,7 +50,7 @@ func TestFleetReadPoolBoundsFakeSSHConcurrency(t *testing.T) {
 	results := runReadPool(context.Background(), fleet.SSHRunner{Binary: bin}, hosts, "status", 2)
 	for _, result := range results {
 		if result.State != "ok" {
-			t.Fatalf("unexpected fake SSH result: %#v", result)
+			t.Fatalf("unexpected fake SSH results: %#v", results)
 		}
 	}
 	got, err := os.ReadFile(peak)
