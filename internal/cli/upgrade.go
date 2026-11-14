@@ -2,10 +2,12 @@ package cli
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +21,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
@@ -136,23 +139,43 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 				ui.WriteText(out, "Symlink:  %s -> %s\n", link, filepath.Base(currentBinary))
 			}
 
-			ui.WriteText(out, "Updated to %s\n", targetVersion)
-			// Updating replaces only the binary; a release that changes
-			// generated files still needs apply. Check exits 2 when it plans changes.
-			checkCtx, cancelCheck := context.WithTimeout(cmd.Context(), 2*time.Minute)
-			defer cancelCheck()
-			check := osexec.CommandContext(checkCtx, currentBinary, "check")
-			var exitErr *osexec.ExitError
-			if err := check.Run(); errors.As(err, &exitErr) && exitErr.ExitCode() == exitDrift {
-				ui.WriteLine(out, "Apply pending: this release plans changes on this host. Review with `sudo rootfiles check`, then run `sudo rootfiles apply`.")
-			}
-			return nil
+			return finishUpdate(cmd, currentBinary, targetVersion)
 		},
 	}
 	cmd.Flags().Bool("check", false, "Only check if an update is available (exit 2 when available)")
 	_ = cmd.Flags().SetAnnotation("check", annotReadOnly, []string{"true"})
 	cmd.Flags().String("version", "", "Update to a specific version (e.g., v0.9.0)")
 	return cmd
+}
+
+// finishUpdate preserves update success once the binary is replaced. Only an
+// exit-2 JSON report proves apply is pending; an invocation failure is warned.
+func finishUpdate(cmd *cobra.Command, binary, version string) error {
+	ui.WriteText(cmd.OutOrStdout(), "Updated to %s\n", version)
+	ctx, cancel := context.WithTimeout(cmd.Context(), 2*time.Minute)
+	defer cancel()
+	check := osexec.CommandContext(ctx, binary, "check", "-o", "json")
+	var stdout, stderr bytes.Buffer
+	check.Stdout = &stdout
+	check.Stderr = &stderr
+	err := check.Run()
+	if err == nil {
+		return nil
+	}
+	var exit *osexec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == exitDrift && json.Valid(stdout.Bytes()) {
+		ui.WriteLine(cmd.OutOrStdout(), "Apply pending: this release plans changes on this host. Review with `sudo rootfiles check`, then run `sudo rootfiles apply`.")
+		return nil
+	}
+	diagnostic := strings.TrimSpace(stderr.String())
+	if diagnostic == "" {
+		diagnostic = strings.TrimSpace(stdout.String())
+	}
+	if diagnostic == "" {
+		diagnostic = err.Error()
+	}
+	ui.WriteText(cmd.ErrOrStderr(), "rootfiles: warning: post-update check could not run: %q; inspect with %s check --help.\n", diagnostic, fleet.ShellQuote(binary))
+	return nil
 }
 
 // fetchLatestVersion queries GitHub API for the latest release tag.

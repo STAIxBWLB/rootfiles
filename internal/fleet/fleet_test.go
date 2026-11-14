@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 func TestLoadInventoryStrictAndSelectUnion(t *testing.T) {
@@ -510,5 +512,75 @@ func TestFleetApplyRunsWithDefaultUmask(t *testing.T) {
 	restore := strings.Index(script, "umask 022; exec "+remoteBinary+" apply")
 	if store < 0 || restore < store {
 		t.Fatalf("apply must run with umask 022 after the 077 config store:\n%s", script)
+	}
+}
+
+func TestReadOnlyExitTwoRequiresJSONReport(t *testing.T) {
+	for _, op := range []string{"check", "doctor"} {
+		for _, payload := range []string{"", "not-json", "{", `{}`, `[]`, `null`} {
+			t.Run(op+"/"+payload, func(t *testing.T) {
+				diagnostic := "rootfiles: unknown flag: --x"
+				script := "#!/bin/sh\nprintf '%s' " + ShellQuote(payload) + "\nprintf '%s\\n' " + ShellQuote(diagnostic) + " " + ShellQuote("  "+ui.MarkNext+" rootfiles help "+op) + " >&2\nexit 2\n"
+				bin := writeFakeSSH(t, script)
+				got := SSHRunner{Binary: bin}.ReadOnly(context.Background(), NamedHost{Name: "one", Host: Host{SSH: "one"}, Sudo: "none"}, op)
+				valid := json.Valid([]byte(payload))
+				if !valid {
+					if got.State != "error" || got.Reason != diagnostic || got.ExitCode != 2 || len(got.Remote) != 0 {
+						t.Fatalf("usage response misclassified: %#v", got)
+					}
+				} else {
+					want := "drift"
+					if op == "doctor" {
+						want = "findings"
+					}
+					if got.State != want || got.ExitCode != 2 || string(got.Remote) != payload {
+						t.Fatalf("valid JSON report misclassified: %#v", got)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestShortReasonDiagnosticPriorityAndNextSteps(t *testing.T) {
+	for _, tc := range []struct{ name, stdout, stderr, want string }{
+		{"last-new-format", "rootfiles: older", "rootfiles: first\nrootfiles: last\nError: legacy\n  " + ui.MarkNext + " next command\n", "rootfiles: last"},
+		{"new-format-beats-ascii-next", "", "rootfiles: unknown flag: --x\n  -> rootfiles help check\n", "rootfiles: unknown flag: --x"},
+		{"legacy-with-next", "", "Error: old failure\n  " + ui.MarkNext + " next command\n", "Error: old failure"},
+		{"last-legacy", "Error: first", "Error: second\nError: last\n", "Error: last"},
+		{"stderr-fallback", "progress", "warning\nactual failure\n  " + ui.MarkNext + " next command\n  -> another command\n", "actual failure"},
+		{"stdout-fallback", "plain output\n", "", "plain output"},
+		{"empty-fallback", "", "", "remote command failed"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shortReason(tc.stdout, tc.stderr); got != tc.want {
+				t.Fatalf("reason=%q want %q", got, tc.want)
+			}
+		})
+	}
+	if got := shortReason("", "rootfiles: "+strings.Repeat("a", 300)); len([]rune(got)) != 240 {
+		t.Fatalf("reason length=%d", len([]rune(got)))
+	}
+}
+
+func TestUpdateExitTwoWithoutJSONIsErrorAndStopsRollout(t *testing.T) {
+	bin := writeFakeSSH(t, `#!/bin/sh
+case "$7" in *"check -o json")
+ printf '%s\n' 'rootfiles: unknown flag: --x' '  -> rootfiles help check' >&2
+ exit 2 ;;
+esac
+printf '%s\n' 'Updated to v1.2.3'
+`)
+	hosts := []NamedHost{{Name: "one", Host: Host{SSH: "one"}, Sudo: "none"}, {Name: "two", Host: Host{SSH: "two"}, Sudo: "none"}}
+	results, err := Update(context.Background(), SSHRunner{Binary: bin}, hosts, "v1.2.3", false)
+	if err != nil || len(results) != 2 {
+		t.Fatalf("results=%#v err=%v", results, err)
+	}
+	got := results[0]
+	if got.State != "error" || got.ExitCode != 2 || !strings.Contains(got.Reason, "rootfiles: unknown flag: --x") || strings.Contains(got.Reason, "->") || !strings.Contains(got.Output, "Updated to v1.2.3") || !strings.Contains(got.Output, "unknown flag") {
+		t.Fatalf("failed post-update check misclassified: %#v", got)
+	}
+	if results[1].State != "skipped" {
+		t.Fatalf("rollout continued past failed check: %#v", results)
 	}
 }
