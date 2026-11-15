@@ -17,14 +17,21 @@ var inventoryPath = filepath.Join("..", "..", "docs", "cli-inventory.md")
 // rather than reaching a reader; `make cli-inventory` rewrites it.
 func TestDocsCommandInventory(t *testing.T) {
 	// Several flag defaults embed an environment value, so the walk pins every
-	// one of them to its built-in default: otherwise the fixture's temp state
-	// directory would change the widths the page records.
-	for _, key := range []string{
-		"ROOTFILES_STATE_DIR", "ROOTFILES_LOG_FILE", "ROOTFILES_LOCK_FILE",
-		"ROOTFILES_PROFILE", "ROOTFILES_USER", "ROOTFILES_SSH_PUBKEY",
-		"ROOTFILES_TUNNEL_TOKEN", "ROOTFILES_YES", "XDG_STATE_HOME", "XDG_CONFIG_HOME",
+	// one of them: otherwise this machine's state directory and home directory
+	// would change the paths the page records, and the page would differ
+	// between a developer's checkout and CI.
+	//
+	// HOME is pinned to a literal rather than cleared: the fleet inventory
+	// default falls back to $HOME when XDG_CONFIG_HOME is empty, so an empty
+	// value there still yields whatever home the walk runs under.
+	for key, value := range map[string]string{
+		"ROOTFILES_STATE_DIR": "", "ROOTFILES_LOG_FILE": "", "ROOTFILES_LOCK_FILE": "",
+		"ROOTFILES_PROFILE": "", "ROOTFILES_USER": "", "ROOTFILES_SSH_PUBKEY": "",
+		"ROOTFILES_TUNNEL_TOKEN": "", "ROOTFILES_YES": "",
+		"XDG_STATE_HOME": "", "XDG_CONFIG_HOME": "",
+		"HOME": InventoryHome,
 	} {
-		t.Setenv(key, "")
+		t.Setenv(key, value)
 	}
 	got := RenderInventory(Inventory(NewRootCmd("dev", "test")))
 	if os.Getenv("ROOTFILES_UPDATE") == "1" {
