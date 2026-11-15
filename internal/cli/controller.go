@@ -193,9 +193,7 @@ func controllerIdentity(ctx context.Context, inv *fleet.Inventory) bool {
 		}
 		info, err := os.Stat(path)
 		if err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0077 == 0 {
-			f, err := os.Open(path)
-			if err == nil {
-				_ = f.Close()
+			if _, err := exec.CommandContext(ctx, "ssh-keygen", "-y", "-P", "", "-f", path).Output(); err == nil {
 				return true
 			}
 		}

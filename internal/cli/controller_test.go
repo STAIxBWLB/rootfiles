@@ -92,6 +92,9 @@ func TestControllerIdentityFileAndUnsafeInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(home, "bin")
+	if err := os.WriteFile(filepath.Join(bin, "ssh-keygen"), []byte("#!/bin/sh\necho fixture-public-key\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(filepath.Join(bin, "ssh-add"), []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
@@ -110,5 +113,24 @@ func TestControllerIdentityFileAndUnsafeInventory(t *testing.T) {
 	var exit *ExitError
 	if !errors.As(err, &exit) || exit.Code != 2 || !strings.Contains(out, "writable by group or others") {
 		t.Fatalf("permissions: %s %v", out, err)
+	}
+}
+
+func TestControllerDoesNotRunLinuxCommands(t *testing.T) {
+	home, inventory := controllerFixture(t)
+	marker := filepath.Join(home, "called")
+	for _, name := range []string{"sshd", "systemctl", "apt", "dnf"} {
+		stub := "#!/bin/sh\nprintf called >> '" + marker + "'\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(home, "bin", name), []byte(stub), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, command := range []string{"doctor", "status"} {
+		if out, err := runControllerTest(t, command, "--inventory", inventory, "--json"); err != nil {
+			t.Fatalf("%s: %s %v", command, out, err)
+		}
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("Linux-only command was run: %v", err)
 	}
 }
