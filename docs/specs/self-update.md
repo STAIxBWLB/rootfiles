@@ -28,17 +28,21 @@ Release artifacts (`.goreleaser.yaml`)
 `rootfiles update` (`internal/cli/upgrade.go`)
 - Latest-tag HTTP plumbing is shared with cloudflared through `module.FetchLatestGitHubTag`; rootfiles retains `http.DefaultClient`, caller cancellation, raw tags and legacy error strings. The cloudflared wrapper retains its separate 15-second client.
 - Target is `--version` or the GitHub `releases/latest` tag of `STAIxBWLB/rootfiles`. Versions are compared for equality only (`normalizeVersion` strips `v` and anything after a space); an equal version is a no-op, any other `--version` is installed, downgrades included.
-- Linux only. The archive is downloaded to a temp dir and its SHA-256 must match the line for that exact archive name in the release's `checksums.txt`; a missing line or mismatch aborts before anything is replaced.
+- Linux and macOS. The archive is downloaded to a temp dir and its SHA-256 must match the line for that exact archive name in the release's `checksums.txt`; a missing line or mismatch aborts before anything is replaced.
+- On a non-Linux host (a Mac controller) the running user replaces its own binary: `userOwnsBinary` requires the same user to own the file and its directory, and the directory to be writable by that owner. The check runs before the download, so a root-owned install is refused without being touched, and the refusal's next step is the installer reinstall with `--prefix "$HOME/.local"`. Linux behaviour is unchanged.
 - `replaceBinary` stages the new binary as a sibling temp file in the target directory, chmods 0755, and `os.Rename`s it over the resolved (`EvalSymlinks`) current binary. Never write over the running executable (ETXTBSY) or stage on another filesystem (rename must be atomic). The staging file is removed on any failure.
 - After a replace, `ensureRootAlias` creates or repairs the `root` symlink only when the binary is `/usr/local/bin/rootfiles` or `/usr/bin/rootfiles`; errors there never fail the update.
 - Updating replaces only the binary. It then runs the new binary's local `check -o json`; only exit code 2 with valid JSON on stdout prints the "Apply pending" hint. Any other nonzero post-check result prints one warning with its diagnostic and a next step, but the update itself still succeeds because the binary was replaced. Nothing is applied automatically. Release notes must carry an `### Action needed` apply step for changes to generated files (AGENTS.md).
-- `update` is in `mutatingCommands` (root plus global lock); `--dry-run` is exempt and stops after download, checksum and extraction.
+- `update` stays in `mutatingCommands`: on Linux it needs root and the global lock. `preflight` exempts it only on a non-Linux host (`selfUpdateWithoutRoot`), where a controller owns the binary and there is no native host state to lock. `--dry-run` is exempt everywhere and stops after download, checksum and extraction.
+- `--check` names the command that installs the update for this platform and install location (`updateCommandHint`): `sudo rootfiles update` on Linux, `rootfiles update` for a controller that owns its binary, and the `--prefix` reinstall when it does not.
 - The download, verify and replace path uses `os.*` and `net/http` directly, not `rc.Runner`: it replaces the tool itself, not host configuration.
 
 Installer (`scripts/install.sh`)
-- Stable channel: resolves `--version` or the latest release tag, downloads the archive and `checksums.txt`, verifies with `sha256sum` or `shasum -a 256`, installs to `/usr/local/bin/rootfiles` with mode 755. Supports linux and darwin, amd64 and arm64.
+- Stable channel: resolves `--version` or the latest release tag, downloads the archive and `checksums.txt`, verifies it, and installs the binary with mode 755. Supports linux and darwin, amd64 and arm64.
+- Destination: `--prefix DIR` installs to `DIR/bin`. Without it, a non-root darwin run installs to `$HOME/.local/bin` with no sudo, and everything else — root, and every Linux run — keeps `/usr/local/bin`, which the fleet sudoers rule names exactly. The destination is printed before the download, `prepare_install_dir` explains the `--prefix` fix when it cannot create it, and `finish_install` warns when the directory is not on `PATH`.
+- Checksum: `sha256sum -c`, else `shasum -a 256 -c`. The fallback is not cosmetic: macOS ships a `/sbin/sha256sum` that has no `--check` form, so choosing by name alone aborted every macOS install. Verification stays mandatory when either tool exists and a mismatch is fatal; only the absence of both tools downgrades to a warning.
 - Dev channel builds `main` from source with Go and sets `main.version=dev-<commit>`.
-- On Linux, `finish_install` creates `/usr/local/bin/root` and verifies that `sudo rootfiles` resolves to this binary for the invoking account (sudo `secure_path` omits `/usr/local/bin` on Rocky); only then does it add a previously absent `/usr/bin/rootfiles` link. `ensure_compat_symlink` never replaces an unrelated file or symlink.
+- A root Linux install makes `finish_install` create a `root` alias beside the binary and verify that `sudo rootfiles` resolves to this binary for the invoking account (sudo `secure_path` omits `/usr/local/bin` on Rocky); only then does it add a previously absent `/usr/bin/rootfiles` link. A non-root install skips both steps. `ensure_compat_symlink` never replaces an unrelated file or symlink.
 
 CI (`.github/workflows/test.yaml`, `scripts/ci-decision.sh`)
 - Test runs on every main push and PR, with no `paths` filter, so every main commit gets a Test result that Release can check. Main pushes are never cancelled.
@@ -60,14 +64,14 @@ Release notes (`scripts/check-release-notes.sh`)
 
 - Test workflow input prefixes refer to existing source/build/test paths; stale root-level `profiles/` and `templates/` prefixes are absent. Documentation inputs added by the docs workflow remain independently tracked.
 
-- `rootfiles update [--check] [--version vX.Y.Z] [--dry-run]`: prints current and target, downloads, verifies, extracts the regular file named `rootfiles` from the archive, replaces, ensures the alias, then reports apply-pending. `--check` prints whether an update exists and exits 0 either way.
-- `install.sh [--version vX.Y.Z] [--channel stable|dev]`, piped to `sudo bash` from the raw main-branch URL.
+- `rootfiles update [--check] [--version vX.Y.Z] [--dry-run]`: prints current and target, downloads, verifies, extracts the regular file named `rootfiles` from the archive, replaces, ensures the alias, then reports apply-pending. `--check` prints whether an update exists with the command that installs it, and exits 2 when one is available, 0 when current.
+- `install.sh [--version vX.Y.Z] [--channel stable|dev] [--prefix DIR]`, piped to `sudo bash` for a managed Linux host or to `bash` (no sudo) for a macOS controller, from the raw main-branch URL.
 - `bash scripts/check-release-notes.sh [file...]` (default: every `docs/releases/v*.md`) and `--self-test`.
 
 ## Distro support
 
-- `update` replaces the binary on any Linux host, Ubuntu, DGX OS and Rocky alike; it refuses on darwin. A macOS controller is updated by installing the darwin archive (installer or by hand after checking `checksums.txt`).
-- The installer's sudo path check exists for Rocky's `secure_path`.
+- `update` replaces the binary on any Linux host, Ubuntu, DGX OS and Rocky alike, where it needs root and the global lock. On a macOS controller it replaces the user's own binary without root or the lock; a root-owned install (the `/usr/local/bin` default) is refused with the `--prefix` reinstall as the next step, and other platforms are refused.
+- The installer's sudo path check exists for Rocky's `secure_path` and runs only for a root Linux install.
 
 ## Safety
 
@@ -77,9 +81,11 @@ Release notes (`scripts/check-release-notes.sh`)
 
 ## Tests that pin it
 
-- `internal/cli/upgrade_test.go`: `TestNormalizeVersion`, `TestVerifyChecksum_Valid`, `TestReplaceBinary`, `TestReplaceBinary_CleansStagingOnCopyFailure`, `TestEnsureRootAlias_SkipsCustomLocations`, `TestEnsureRootAlias_IgnoresNonRootfilesBinary`.
+- `internal/cli/upgrade_test.go`: `TestNormalizeVersion`, `TestVerifyChecksum_Valid`, `TestReplaceBinary`, `TestReplaceBinary_CleansStagingOnCopyFailure`, `TestEnsureRootAlias_SkipsCustomLocations`, `TestEnsureRootAlias_IgnoresNonRootfilesBinary`, `TestUpdateCommandHint`, `TestUpdateCheckPrintsDarwinNextStep`, `TestUserOwnsBinary`, `TestUpdateRefusesUnownedBinary`, `TestUpdateReplacesOwnedBinary`.
+- `internal/cli/install_sh_test.go` runs the real `scripts/install.sh` with a private PATH (`curl`, `uname` and `id` stubbed) inside a temp HOME: the darwin default and `--prefix` destinations install a verified binary with no sudo, a non-root Linux `--prefix` install skips the sudo path check and the root alias, a bad checksum installs nothing, and the `/usr/local/bin` defaults are asserted at the printed destination with the download failing on purpose, so nothing is written outside the temp dir.
+- `internal/cli/runtime_test.go`: `TestNativeMutationsRefuseNonLinuxBeforeLock` (the `update` exception) and `TestUpdateStillNeedsRootOnLinux` (AC4).
 - `scripts/ci-decision.sh --self-test` (run by `lint`) and `scripts/check-release-notes.sh --self-test` (run by `release-notes`).
-- The `unit` job's `./bin/rootfiles --help` smoke check. The installer runs in the Rocky fixture (`tests/run-rocky.sh`): sudo `secure_path` resolution through the `/usr/bin/rootfiles` link and refusal to replace unrelated `/usr/local/bin/root` or `/usr/bin/rootfiles` paths. Its Ubuntu path, checksum fallback and download failures have no automated test.
+- The `unit` job's `./bin/rootfiles --help` smoke check. The installer runs in the Rocky fixture (`tests/run-rocky.sh`): sudo `secure_path` resolution through the `/usr/bin/rootfiles` link and refusal to replace unrelated `/usr/local/bin/root` or `/usr/bin/rootfiles` paths.
 
 ## Open issues
 
