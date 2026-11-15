@@ -43,6 +43,7 @@ func NewRootCmd(version, commit string) *cobra.Command {
 	root.AddCommand(newConfigCmd())
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newScheduleCmd())
+	root.AddCommand(newShutdownCmd())
 	root.AddCommand(newFleetCmd())
 	root.AddCommand(newTenantCmd())
 

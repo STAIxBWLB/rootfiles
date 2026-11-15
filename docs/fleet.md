@@ -86,6 +86,29 @@ rootfiles fleet doctor --host gpu01 --parallel 4
 - Host states: `ok`, `drift` (pending changes, or a host that applied a different config than the inventory resolves), `findings` (doctor), `needs-privilege`, `unreachable`, `missing` (status only: rootfiles is not installed), and `error`. A host that never recorded the inventory's config is `error` ("inventory configuration is unverified"), never `ok`.
 - Exit codes: 0 when every host is `ok`, 2 otherwise, 1 for controller or inventory errors.
 - `--view gpu` or `--view users` adds a fleet-wide section rendered from that same `status` report: GPU allocations, or managed and system account counts, per host. No extra remote command is sent, so the sudoers rule is unchanged, and a host that did not report the section shows `-` instead of failing the run. `--json` adds the section beside `hosts` under the view's own key; without `--view` the report is unchanged.
+- The text report gains a `SHUTDOWN` column when any selected host has a [scheduled shutdown](#shutdown). A fleet with nothing scheduled prints exactly the table it printed before, and the JSON report is unchanged either way: each host's schedule already travels inside its own `status -o json` payload.
+
+## Shutdown
+
+```bash
+rootfiles fleet shutdown schedule --group gpu --at 2026-11-21T18:00:00+09:00 \
+  --message 'Building power work, back at 22:00' --yes
+rootfiles fleet shutdown now --host gpu01 --in 2m --message 'PSU replacement' --yes
+rootfiles fleet shutdown status --all
+rootfiles fleet shutdown cancel --group gpu --yes
+```
+
+- One absolute UTC instant goes to every host, so the hosts stop together however long the SSH fan-out took. Scheduling itself stays serial and stops at the first failure, per the rollout contract above; only the timers fire together. `now` is the same schedule with `--in` (default `2m`, minimum `1m`).
+- Every host is pre-flighted before anything is written: the remote clock must be within 30 seconds of the controller's (`date -u +%s` over plain ssh, never sudo), rootfiles there must have the `shutdown` command, and the host must have no schedule unless `--replace` is given. One failure leaves every host unchanged.
+- If a host fails while being scheduled, the controller cancels every host it touched in this run, the failing one included, because that host may already have its poweroff timer enabled. Each host is then reported `cancelled`, `cancel-failed`, `error` or `skipped`; a failed cancellation prints the exact `rootfiles fleet shutdown cancel --host ... --yes` command to finish with, and a host whose follow-up cancel also failed is reported as possibly still stopping.
+- `fleet shutdown cancel` is the one mutating fleet command that continues past failures, because a cancellation has to reach every host it can. It exits 2 when any host failed.
+- `fleet shutdown status` uses the same host states and exit codes as `fleet status`: 0 when every host is `ok`, 2 when a host reports drift or another finding, and 1 for controller or inventory errors.
+- The controller's own host is refused unless `--include-self` is given: a controller that powers off mid-rollout leaves the run unfinished. The check follows what ssh would connect to, so an alias pointed back at this machine is caught too; a host reached through a loopback port forward stays selectable, because a forwarded port is a different machine.
+- Privilege is a root login or full sudo, like `apply`. The read-only sudoers rule is unchanged, and `fleet shutdown status` reads the same `status -o json` the reports already run.
+- Five minutes before shutdown, new logins are blocked in applicable tenant containers only. The host remains reachable by SSH so an operator can cancel; a marked host login block left by an older version is removed on cancel.
+- Host poweroffs are scheduled, not run by the controller: each host gets its own systemd timer ([specs/shutdown.md](specs/shutdown.md)). Powering hosts back on is out of scope.
+
+A maintenance window looks like this: `fleet shutdown schedule --all --at ... --message ... --yes` a day ahead, `fleet shutdown status --all` to confirm, `fleet check --all` before the window, then the hosts stop on their own. Every `schedule`, `now` and `cancel` run appends to the [run log](#run-log) with the instant, the action and the operator's reason.
 
 ## Connectivity preflight
 
