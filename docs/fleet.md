@@ -84,7 +84,7 @@ rootfiles fleet doctor --host gpu01 --parallel 4
 
 ## Connectivity preflight
 
-Run `rootfiles fleet ping --all` before a rollout to check SSH, the remote rootfiles version and the configured privilege mode. `--host`, `--group`, `--parallel` and `--json` work as for reports. Unknown or changed host keys require out-of-band verification before updating `known_hosts`; ping never accepts keys automatically. A missing binary can be installed with `fleet bootstrap` and a pinned version. For passwordless read-only access, configure `users.fleet_sudo_users`.
+Run `rootfiles fleet ping --all` before a rollout to check SSH, the remote rootfiles version and the configured privilege mode. `--host`, `--group`, `--parallel` and `--json` work as for reports. Unknown or changed host keys require out-of-band verification before updating `known_hosts`; ping never accepts keys automatically. A missing binary can be installed with `fleet bootstrap` and a pinned version. For passwordless read-only access, configure `users.fleet_sudo_users`. A successful sudo probe confirms the command worked in that SSH session; cached credentials may allow it even when the rule is not NOPASSWD.
 
 ## Rollouts
 

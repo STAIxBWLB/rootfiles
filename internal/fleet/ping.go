@@ -22,15 +22,22 @@ func (r SSHRunner) Ping(ctx context.Context, h NamedHost, controllerVersion stri
 	remoteVersion := version[2]
 	switch h.Sudo {
 	case "nopasswd":
-		probe := "sudo -n -l -- " + readOnlyRemoteCommand("status")
-		check := r.run(ctx, h, "ping", probe, nil)
+		probe := "sudo -n " + readOnlyRemoteCommand("status")
+		check := r.run(ctx, h, "status", probe, nil)
+		check.Command = "ping"
 		if check.State != "ok" {
-			if check.ExitCode != 255 && check.Reason != "ssh timed out" {
-				check.State = "needs-privilege"
-				check.Reason = "read-only sudo is unavailable; configure users.fleet_sudo_users"
+			if check.State == "needs-privilege" {
+				check.Reason = "read-only sudo needs privilege; configure users.fleet_sudo_users"
 				return check
 			}
-			return pingFailure(check, h)
+			if check.State == "unreachable" {
+				return pingFailure(check, h)
+			}
+			check.State = "error"
+			if check.Reason == "" {
+				check.Reason = "remote status probe failed; inspect the host's status"
+			}
+			return check
 		}
 	case "root":
 		check := r.run(ctx, h, "ping", "id -u", nil)
