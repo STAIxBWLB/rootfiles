@@ -1,0 +1,88 @@
+package cli
+
+import (
+	"context"
+	"fmt"
+	"sync"
+
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
+	"github.com/spf13/cobra"
+)
+
+func newFleetPingCmd() *cobra.Command {
+	c := &cobra.Command{Use: "ping", Short: "Check fleet connectivity and privilege", Args: cobra.NoArgs,
+		Example: "  rootfiles fleet ping --all\n  rootfiles fleet ping --host gpu01 --json",
+		RunE: func(c *cobra.Command, _ []string) error {
+			inv, hosts, err := loadFleetSelection(c, false)
+			if err != nil {
+				return err
+			}
+			parallel, _ := c.Flags().GetInt("parallel")
+			if parallel < 0 || parallel > 128 || (c.Flags().Changed("parallel") && parallel == 0) {
+				return fmt.Errorf("--parallel must be between 1 and 128")
+			}
+			if !c.Flags().Changed("parallel") {
+				parallel = inv.Defaults.Parallel
+			}
+			if parallel > len(hosts) {
+				parallel = len(hosts)
+			}
+			results := pingFleet(c.Context(), fleet.SSHRunner{Binary: "ssh"}, hosts, parallel, buildVersion)
+			format, err := outputFormat(c)
+			if err != nil {
+				return err
+			}
+			if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
+				return err
+			}
+			if format == "text" {
+				ok := 0
+				for _, r := range results {
+					if r.State == "ok" {
+						ok++
+					}
+				}
+				if _, err := fmt.Fprintf(c.OutOrStdout(), "\n%d of %d hosts ready\n", ok, len(results)); err != nil {
+					return err
+				}
+			}
+			if !allOK(results) {
+				return &ExitError{Code: exitDrift}
+			}
+			return nil
+		}}
+	fleetCommonFlags(c)
+	c.Flags().Int("parallel", 0, "Maximum concurrent SSH processes")
+	addOutputFlag(c)
+	setFleetOnboardingHelp(c, []string{
+		"  --inventory string     Inventory path (default: user config directory)",
+		"  --host strings         Select host names",
+		"  --group strings        Select groups",
+		"  --all                  Select every host",
+		"  --parallel int         Maximum concurrent SSH processes",
+		"  -o, --output string    Output format: text or json",
+		"  --json                 Output JSON",
+	})
+	return c
+}
+
+func pingFleet(ctx context.Context, runner fleet.SSHRunner, hosts []fleet.NamedHost, workers int, version string) []fleet.Result {
+	results := make([]fleet.Result, len(hosts))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for n := range jobs {
+				results[n] = runner.Ping(ctx, hosts[n], version)
+			}
+		}()
+	}
+	for i := range hosts {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+	return results
+}

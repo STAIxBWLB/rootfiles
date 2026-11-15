@@ -82,6 +82,10 @@ rootfiles fleet doctor --host gpu01 --parallel 4
 - Host states: `ok`, `drift` (pending changes, or a host that applied a different config than the inventory resolves), `findings` (doctor), `needs-privilege`, `unreachable`, `missing` (status only: rootfiles is not installed), and `error`. A host that never recorded the inventory's config is `error` ("inventory configuration is unverified"), never `ok`.
 - Exit codes: 0 when every host is `ok`, 2 otherwise, 1 for controller or inventory errors.
 
+## Connectivity preflight
+
+Run `rootfiles fleet ping --all` before a rollout to check SSH, the remote rootfiles version and the configured privilege mode. `--host`, `--group`, `--parallel` and `--json` work as for reports. Unknown or changed host keys require out-of-band verification before updating `known_hosts`; ping never accepts keys automatically. A missing binary can be installed with `fleet bootstrap` and a pinned version. For passwordless read-only access, configure `users.fleet_sudo_users`.
+
 ## Rollouts
 
 ```bash

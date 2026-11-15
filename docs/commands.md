@@ -289,6 +289,10 @@ Run `rootfiles check -o json` on the selected hosts in parallel and summarise th
 
 Run `rootfiles doctor -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
 
+### rootfiles fleet ping
+
+Check connectivity, version and privilege without writing to hosts. Select using `--inventory`, `--host`, `--group`, or `--all`; `--parallel` controls concurrency. Use `--json` or `--output json` for structured results. Exit 0 when all hosts are ready, 2 for findings and 1 for controller errors.
+
 ### rootfiles fleet schedule
 
 `rootfiles fleet schedule enable|disable` runs `rootfiles schedule enable` or `disable` on each selected host.

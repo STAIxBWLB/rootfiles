@@ -70,11 +70,15 @@ type Result struct {
 	ExitCode    int             `json:"exit_code"`
 }
 
+func readOnlyRemoteCommand(op string) string {
+	return remoteBinary + " " + op + " -o json"
+}
+
 func (r SSHRunner) ReadOnly(ctx context.Context, h NamedHost, op string) Result {
 	if op != "status" && op != "check" && op != "doctor" {
 		return Result{Host: h.Name, Command: op, State: "error", Reason: "unsupported read-only command", ExitCode: 1}
 	}
-	cmdline := remoteBinary + " " + op + " -o json"
+	cmdline := readOnlyRemoteCommand(op)
 	if h.Sudo == "nopasswd" {
 		cmdline = "sudo -n " + cmdline
 	}

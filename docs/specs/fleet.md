@@ -8,6 +8,7 @@ paths:
   - internal/fleet/**
   - internal/cli/fleet.go
   - internal/cli/fleet_init.go
+  - internal/cli/fleet_ping.go
   - internal/module/fleet_sudo.go
 ---
 
@@ -43,6 +44,7 @@ Invariants an agent must keep:
 - **Inventory is strict.** `LoadInventory` (`internal/fleet/inventory.go`) uses `KnownFields(true)`, accepts one YAML document, defaults `sudo: nopasswd` and `parallel: 2` (range 1-128), and rejects unsafe host names, groups, `ssh` destinations (leading `-`, whitespace, shell metacharacters, malformed `user@`/IPv6) and addresses.
 - **Site configs resolve on the controller.** `config` paths resolve relative to the inventory file and load through `config.LoadSite`, which ignores the controller's `ROOTFILES_*` environment, requires `users.home_base` (#24) and runs `Validate()`. A config that resolves an inline `tunnel_token` is refused; use `tunnel_token_file`. The resolved YAML (`Host.EffectiveConfig`) and `cfg.Fingerprint()` are computed once at load.
 - **Applied provenance.** Read-only results compare the remote `applied_config_sha256` with the inventory fingerprint (`compareFingerprint`). A mismatch is `drift`; a missing fingerprint is `error` with "inventory configuration is unverified", never success. The original health state is kept in `health_state`. Any change to what `config.Fingerprint` hashes shows up here (#85); see [config](config.md).
+- **Ping is read-only.** `fleet ping` checks the fixed remote binary version, verifies root login or uses `sudo -n -l` against the exact existing read-only status command, and reports connectivity, key and privilege failures without altering host-key checking or writing to hosts.
 - **Onboarding is local.** `fleet init` writes a 0600 inventory under a 0700 newly created directory; it backs up an existing file before overwrite. Its dry run prints YAML. SSH import reads concrete aliases and Include files without connecting, skips unsafe names and patterns, and validates the result. `fleet hosts` validates and lists the inventory without invoking SSH; without selectors it lists all hosts.
 - **Selection is explicit.** `Inventory.Select` returns hosts in inventory order; `--host` and `--group` form a union; `--all` cannot be combined with them; an empty selection is an error for fleet reports and rollouts; `fleet hosts` and `fleet targets` default to all.
 - **Mutations need `--yes` and a selection** (`authorizeFleetMutation`), and run through `serial` in `internal/fleet/rollout.go`. After the first host whose state is not `ok`, `apply-pending` or `skipped-unreachable`, the remaining hosts are reported `skipped`.
