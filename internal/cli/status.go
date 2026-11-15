@@ -29,11 +29,18 @@ func newStatusCmd() *cobra.Command {
 		RunE: runStatus,
 	}
 	cmd.Flags().StringSlice("module", nil, "Report specific modules only")
+	cmd.Flags().String("inventory", "", "Controller inventory file")
 	addOutputFlag(cmd)
 	return usesConfigTarget(cmd)
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
+	if nativeHostOS != "linux" {
+		return runControllerStatus(cmd)
+	}
+	if cmd.Flags().Changed("inventory") {
+		return fmt.Errorf("--inventory is only used on a controller; omit it on Linux")
+	}
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
 

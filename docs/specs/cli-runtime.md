@@ -72,3 +72,7 @@ Shared plumbing every native `rootfiles` command runs through: the cobra root an
 - `internal/cli/check_test.go`: `TestCheck_RejectsUnknownOutput`.
 - `internal/cli/docs_test.go`: `TestDocsCommandsCoverCobraTree` (every visible command has a `### <path>` heading in `docs/commands.md` that names its visible local flags).
 - `tests/scenarios/state-rollback-lock.sh` (CI job `scenario`): real refusal without root and while another command holds the lock.
+
+## Controller reports
+
+On non-Linux hosts, `doctor` and `status` report controller state without running Linux host checks. Controller JSON includes `mode: controller`; Linux report bytes remain unchanged. Controller reports accept `--inventory`, and a missing inventory points to `fleet init` for the same path.

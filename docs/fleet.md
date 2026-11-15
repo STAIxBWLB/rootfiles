@@ -41,6 +41,10 @@ hosts:
 - A site config that resolves an inline `tunnel_token` is refused; use `tunnel_token_file` ([tunnel.md](tunnel.md#token-file)).
 - `address` is needed only for [scrape targets](#scrape-targets).
 
+## Controller health
+
+On non-Linux controllers, `rootfiles doctor` checks the local SSH client, inventory, identity, run log directory and latest release. Offline release checks are skipped. `rootfiles status` shows inventory counts and each host's most recent logged rollout. Both accept `--inventory` and `--json`; controller JSON has `mode: "controller"`. Neither command connects to fleet hosts.
+
 ## Privilege
 
 The controller never asks for, stores or forwards a sudo password. `sudo` sets how it runs remote commands:
