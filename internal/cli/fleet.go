@@ -36,7 +36,7 @@ func newFleetCmd() *cobra.Command {
 	for _, op := range []string{"status", "check", "doctor"} {
 		c.AddCommand(newFleetReadCmd(op))
 	}
-	c.AddCommand(newFleetPingCmd(), newFleetInitCmd(), newFleetHostsCmd(), newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetTargetsCmd())
+	c.AddCommand(newFleetPingCmd(), newFleetInitCmd(), newFleetHostsCmd(), newFleetLogCmd(), newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetTargetsCmd())
 	return c
 }
 
@@ -60,6 +60,15 @@ func validateFleetFlags(cmd *cobra.Command) error {
 		}
 		if format != "text" && format != "json" {
 			return fmt.Errorf("--output must be text or json; choose the fleet report format before connecting")
+		}
+	}
+	// A mistyped view fails here, before the inventory loads or SSH opens.
+	if cmd.Flags().Lookup("view") != nil {
+		view, _ := cmd.Flags().GetString("view")
+		if view != "" && !knownFleetView(view) {
+			return withNext(
+				fmt.Errorf("--view %q is not a known fleet view", view),
+				"choose "+fleetViewHelp+" (rootfiles fleet status --help)")
 		}
 	}
 	return nil
@@ -122,7 +131,11 @@ func newFleetReadCmd(op string) *cobra.Command {
 		runner := fleet.SSHRunner{Binary: "ssh"}
 		results := runReadPool(c.Context(), runner, hosts, op, parallel)
 		format, _ := outputFormat(c)
-		if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
+		if view, _ := c.Flags().GetString("view"); view != "" {
+			if err := writeFleetView(c.OutOrStdout(), results, view, format); err != nil {
+				return err
+			}
+		} else if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
 			return err
 		}
 		if !allOK(results) {
@@ -133,6 +146,9 @@ func newFleetReadCmd(op string) *cobra.Command {
 	fleetCommonFlags(c)
 	c.Flags().Int("parallel", 0, "Maximum concurrent SSH processes (inventory default when omitted)")
 	addOutputFlag(c)
+	if op == "status" {
+		c.Flags().String("view", "", "Add a fleet-wide section read from the same report: "+fleetViewHelp)
+	}
 	return c
 }
 

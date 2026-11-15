@@ -251,6 +251,21 @@ Create an inventory with `--inventory`, optionally importing SSH aliases with `-
 
 Validate and list hosts without connecting. `--inventory`, `--host`, `--group` and `--all` select the inventory and hosts; without a selection all hosts are listed. `--json` or `--output json` returns an array of objects with `name`, `groups`, `ssh`, `sudo` and `config`.
 
+### rootfiles fleet log
+
+Read the controller's own run log back, newest first. Every fleet mutation appends to `~/.local/state/rootfiles/fleet.jsonl`, so this needs no SSH and no inventory.
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--host` | every host | Only runs that touched this host. |
+| `--op` | every operation | Only this operation: `apply`, `update`, `bootstrap`, `schedule` or `targets`. |
+| `--since` | every run | How far back to look: `24h`, `7d`, a date (`2026-11-01`, UTC) or an RFC 3339 timestamp. |
+| `--limit` | `0` (every run) | Print at most this many runs, newest first. |
+| `-o`, `--output` | `text` | `text`, or `json` for the stored records unchanged, one per line. |
+| `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
+
+The text report has one row per run and host: time, operation, host, state, exit code and the short reason. A missing log prints nothing and exits 0, and a corrupt line is reported on stderr with its line number and skipped.
+
 ### rootfiles fleet apply
 
 Apply each selected host's site config, one host at a time.
@@ -308,6 +323,8 @@ Check connectivity, version and privilege without writing to hosts. Select using
 ### rootfiles fleet status
 
 Run `rootfiles status -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
+
+`--view gpu` or `--view users` adds a fleet-wide section rendered from that same remote report: GPU allocations, or the managed and system account counts, per host. A host that did not report the section shows `-` instead of failing the run. With `--json` the section is added beside `hosts` under its own key (`gpu` or `users`, keyed by host name); without `--view` the report is byte-for-byte what it was.
 
 ### rootfiles fleet targets
 

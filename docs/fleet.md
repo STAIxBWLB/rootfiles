@@ -81,6 +81,7 @@ rootfiles fleet doctor --host gpu01 --parallel 4
 - Each host runs `rootfiles <status|check|doctor> -o json`. Up to `--parallel` hosts run at once (default from `defaults.parallel`).
 - Host states: `ok`, `drift` (pending changes, or a host that applied a different config than the inventory resolves), `findings` (doctor), `needs-privilege`, `unreachable`, `missing` (status only: rootfiles is not installed), and `error`. A host that never recorded the inventory's config is `error` ("inventory configuration is unverified"), never `ok`.
 - Exit codes: 0 when every host is `ok`, 2 otherwise, 1 for controller or inventory errors.
+- `--view gpu` or `--view users` adds a fleet-wide section rendered from that same `status` report: GPU allocations, or managed and system account counts, per host. No extra remote command is sent, so the sudoers rule is unchanged, and a host that did not report the section shows `-` instead of failing the run. `--json` adds the section beside `hosts` under the view's own key; without `--view` the report is unchanged.
 
 ## Connectivity preflight
 
@@ -113,6 +114,20 @@ rootfiles fleet schedule enable --all --yes --on-calendar hourly
 ## Run log
 
 Every rollout and target push appends one JSON line (time, operator, command, per-host results) to `$XDG_STATE_HOME/rootfiles/fleet.jsonl`, else `~/.local/state/rootfiles/fleet.jsonl` (file 0600, directory 0700). The controller takes no host lock; each remote command takes its own.
+
+Read it back with `rootfiles fleet log`, newest first, without logging in to a host:
+
+```bash
+rootfiles fleet log --limit 20
+rootfiles fleet log --host gpu01 --since 7d
+rootfiles fleet log --op update --json
+```
+
+- The text report has one row per run and host: time, operation, host, state, exit code and the short reason.
+- `--host` keeps runs that touched that host, `--op` takes the operation (the recorded command's first word, so `targets` also matches `targets --push`), and `--since` takes a window (`24h`, `7d`), a UTC date (`2026-11-01`) or an RFC 3339 timestamp.
+- `--limit` caps the number of runs, not the rows, so a rollout keeps all its host rows together.
+- `--json` reprints the stored records unchanged, one per line, so `jq` reads them directly.
+- It reads a local file: no inventory, no SSH, no root. A missing log prints nothing and exits 0, and a corrupt line is named with its line number on stderr and skipped.
 
 ## Scrape targets
 
