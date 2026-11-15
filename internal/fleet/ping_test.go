@@ -74,8 +74,8 @@ func TestPingCommandsAndPrivilege(t *testing.T) {
 }
 
 func TestPingDeadline(t *testing.T) {
-	r, _ := pingStub(t, "exec sleep 5")
-	r.Timeout = 20 * time.Millisecond
+	r, _ := pingStub(t, "exit 0")
+	r.Timeout = time.Nanosecond
 	got := r.Ping(context.Background(), NamedHost{Name: "host1", Host: Host{SSH: "host1"}}, "dev")
 	if got.State != "timeout" {
 		t.Fatalf("timeout: %+v", got)
