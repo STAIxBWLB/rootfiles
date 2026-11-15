@@ -20,7 +20,8 @@ The single path through which modules and commands run host commands and change 
 
 ## Contracts and invariants
 
-- **All host mutations go through `rc.Runner`** (AGENTS.md): `Run`, `RunEnv`, `RunInput`, `RunShell`, `WriteFile`, `MkdirAll`, `Symlink`, `Remove`, `Rename`. Each one is a no-op that only logs when `DryRun` is set. Never call `os.WriteFile`, `os.Remove`, `os.Rename`, `os.MkdirAll` or `os/exec` for a mutation in module code.
+- **All host mutations go through `rc.Runner`** (AGENTS.md): `Run`, `RunEnv`, `RunInput`, `RunShell`, `WriteFile`, `WriteFileExclusive`, `MkdirAll`, `Symlink`, `Remove`, `Rename`. Each one is a no-op that only logs when `DryRun` is set. Never call `os.WriteFile`, `os.Remove`, `os.Rename`, `os.MkdirAll` or `os/exec` for a mutation in module code.
+- **Exclusive creation**: `WriteFileExclusive` creates a new file without replacing an existing path and removes an incomplete write. It honours dry run and never overwrites a path.
 - **Backups before change**: when `Runner.Backup` is set, `WriteFile`, `Symlink`, `Remove` and `Rename` (its destination) call `Backup.Preserve` first, and a failed backup aborts the change. `MkdirAll` and plain `Run` commands are not backed up. See [state-rollback](state-rollback.md).
 - `Remove` never recurses: a populated directory is an error, never data loss. Do not add a recursive remove for user data.
 - **Reads are not dry-run gated**: `Query`, `QueryOutput`, `ReadFile`, `FileExists` and `CommandExists` access the host even in dry run; the opt-in test query guard below can refuse command execution. `Query` is for read-only commands only (`dpkg-query`, `ufw status`, `systemctl is-active`); Check uses `Query`, never `Run`. Because dry-run does not suppress `Query`, tests must stub binaries on `PATH` (`fakeBin`) rather than rely on dry run.

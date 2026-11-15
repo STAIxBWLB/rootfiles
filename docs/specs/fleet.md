@@ -7,6 +7,7 @@ parent: architecture
 paths:
   - internal/fleet/**
   - internal/cli/fleet.go
+  - internal/cli/fleet_init.go
   - internal/module/fleet_sudo.go
 ---
 
@@ -28,7 +29,7 @@ Decisions (still in force):
 |---|---|---|---|
 | Fleet features live in a controller subcommand on the operator machine that drives the existing per-host commands over SSH | user | No agent or daemon on hosts beyond what modules install | A fleet outgrows SSH fan-out (hundreds of hosts) |
 | The controller shells out to the system `ssh` client | AI proposes, user picks | Inherits `~/.ssh/config` (`ProxyJump`, agents, `known_hosts`); host key checking is never disabled | A platform without OpenSSH must be supported |
-| The inventory is an operator-owned YAML file kept outside this repository | user | The repo ships `docs/fleet.example.yaml` and the validator only | - |
+| The inventory is an operator-owned YAML file kept outside this repository | user | `fleet init` creates an inventory; the schema and validator remain strict | - |
 | The controller never asks for, stores or forwards sudo passwords; remote privilege is `sudo -n` or a root login, set per host | user | A host whose sudo needs a password is reported `needs-privilege` | - |
 | Mutating fleet commands run one host at a time and stop at the first failure | user | Parallelism only for read-only commands | Rollout time becomes the bottleneck |
 
@@ -42,7 +43,8 @@ Invariants an agent must keep:
 - **Inventory is strict.** `LoadInventory` (`internal/fleet/inventory.go`) uses `KnownFields(true)`, accepts one YAML document, defaults `sudo: nopasswd` and `parallel: 2` (range 1-128), and rejects unsafe host names, groups, `ssh` destinations (leading `-`, whitespace, shell metacharacters, malformed `user@`/IPv6) and addresses.
 - **Site configs resolve on the controller.** `config` paths resolve relative to the inventory file and load through `config.LoadSite`, which ignores the controller's `ROOTFILES_*` environment, requires `users.home_base` (#24) and runs `Validate()`. A config that resolves an inline `tunnel_token` is refused; use `tunnel_token_file`. The resolved YAML (`Host.EffectiveConfig`) and `cfg.Fingerprint()` are computed once at load.
 - **Applied provenance.** Read-only results compare the remote `applied_config_sha256` with the inventory fingerprint (`compareFingerprint`). A mismatch is `drift`; a missing fingerprint is `error` with "inventory configuration is unverified", never success. The original health state is kept in `health_state`. Any change to what `config.Fingerprint` hashes shows up here (#85); see [config](config.md).
-- **Selection is explicit.** `Inventory.Select` returns hosts in inventory order; `--host` and `--group` form a union; `--all` cannot be combined with them; an empty selection is an error for every fleet command, read-only included.
+- **Onboarding is local.** `fleet init` writes a 0600 inventory under a 0700 newly created directory; it backs up an existing file before overwrite. Its dry run prints YAML. SSH import reads concrete aliases and Include files without connecting, skips unsafe names and patterns, and validates the result. `fleet hosts` validates and lists the inventory without invoking SSH; without selectors it lists all hosts.
+- **Selection is explicit.** `Inventory.Select` returns hosts in inventory order; `--host` and `--group` form a union; `--all` cannot be combined with them; an empty selection is an error for fleet reports and rollouts; `fleet hosts` and `fleet targets` default to all.
 - **Mutations need `--yes` and a selection** (`authorizeFleetMutation`), and run through `serial` in `internal/fleet/rollout.go`. After the first host whose state is not `ok`, `apply-pending` or `skipped-unreachable`, the remaining hosts are reported `skipped`.
 - **Timeouts are bounded.** Read-only SSH calls use at most 45s; mutations default to 15m and `--timeout` must be positive and at most 24h (`ValidateMutationTimeout`), checked before any SSH call. SSH runs with `BatchMode=yes` and `ConnectTimeout=15`.
 - **Versions are pinned.** `update` and `bootstrap` require `--version vX.Y.Z` (`ValidateVersion`).

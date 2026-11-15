@@ -239,3 +239,26 @@ func (r *Runner) Rename(oldPath, newPath string) error {
 	r.Logger.Info("rename", "from", oldPath, "to", newPath)
 	return os.Rename(oldPath, newPath)
 }
+
+// WriteFileExclusive creates a file without replacing an existing path.
+func (r *Runner) WriteFileExclusive(path string, content []byte, perm os.FileMode) error {
+	if r.DryRun {
+		r.Logger.Info("dry-run: create file", "path", path, "size", len(content))
+		return nil
+	}
+	r.Logger.Info("create file", "path", path, "size", len(content))
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	_, writeErr := f.Write(content)
+	closeErr := f.Close()
+	if writeErr != nil {
+		_ = r.Remove(path)
+		return writeErr
+	}
+	if closeErr != nil {
+		_ = r.Remove(path)
+	}
+	return closeErr
+}
