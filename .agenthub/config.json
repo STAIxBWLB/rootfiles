@@ -1,0 +1,41 @@
+{
+  "watchdog_ms": 300000,
+  "kimi_cmd": ["kimi", "acp"],
+  "qwen_cmd": ["qwen", "--acp"],
+  "jcode_cmd": ["jcode"],
+  "codex_bin": "codex",
+  "pi": { "enabled": false, "auto_start": false, "cmd": ["pi"], "backend": "auto", "dgx_coding": "coding", "dgx_fast": "fast", "max_steps": 30 },
+  "batch_max": 3,
+  "batch_ms": 15000,
+  "queue_cap": 200,
+  "memory": { "enabled": true, "inject_tokens": 2000, "brief_items": 8 },
+  "roles": {
+    "claude": ["planner", "reviewer"],
+    "codex": ["implementer"],
+    "kimi": ["implementer", "verifier"],
+    "local": ["implementer", "verifier"],
+    "pi": ["implementer", "verifier"],
+    "qwen": ["implementer", "verifier"],
+    "jcode": ["implementer", "verifier"]
+  },
+  "budget": { "stale_min": 30, "poll_min": 10, "checkpoint_timeout_s": 90, "kimi_tokens_5h": 0, "wait_max_min": 30 },
+  "inference": { "enabled": true, "digest_min_items": 5, "digest_min_chars": 8000, "triage": true },
+  "omniroute": {
+    "urls": [],
+    "access_hosts": [],
+    "api_key_file": "",
+    "cf_client_id_file": "",
+    "cf_client_secret_file": ""
+  },
+  "local": { "deny": [], "bash_network": false, "max_steps": 30, "read_allow": [] },
+  "approvals": { "timeout_s": 120 },
+  "tasks": { "release_after_min": 30 },
+  "release": { "version": "release-notes", "docs": "none" },
+  "checks": { "timeout_s": 600 },
+  "snapshots": { "enabled": true, "keep": 20 },
+  "specs": { "enabled": true, "review": "report", "roots": [], "stamps_file": "" },
+  "review": { "adaptive": false, "min_reviews": 5 },
+  "recovery": { "auto_resume_after_crash": false },
+  "capabilities": {},
+  "limits": { "sender_per_min": 12, "pair_per_min": 6, "important_per_hour": 6, "repeat_window_s": 120 }
+}
