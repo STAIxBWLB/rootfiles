@@ -41,7 +41,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "update",
 		Aliases: []string{"upgrade"},
-		Short:   "Self-update rootfiles to the latest (or specified) version",
+		Short:   "Update rootfiles to the latest release",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 			checkOnly, _ := cmd.Flags().GetBool("check")
@@ -148,7 +148,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			return finishUpdate(cmd, currentBinary, targetVersion)
 		},
 	}
-	cmd.Flags().Bool("check", false, "Only check if an update is available (exit 2 when available)")
+	cmd.Flags().Bool("check", false, "Only check whether an update is available (exit 2 if so)")
 	_ = cmd.Flags().SetAnnotation("check", annotReadOnly, []string{"true"})
 	cmd.Flags().String("version", "", "Update to a specific version (e.g., v0.9.0)")
 	return cmd

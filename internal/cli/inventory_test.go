@@ -12,18 +12,16 @@ import (
 // command docs, because the two are read together.
 var inventoryPath = filepath.Join("..", "..", "docs", "cli-inventory.md")
 
-// TestDocsCommandInventory keeps the committed page in step with the command tree.
-// The page is generated, so a help edit that was not regenerated fails here
-// rather than reaching a reader; `make cli-inventory` rewrites it.
-func TestDocsCommandInventory(t *testing.T) {
-	// Several flag defaults embed an environment value, so the walk pins every
-	// one of them: otherwise this machine's state directory and home directory
-	// would change the paths the page records, and the page would differ
-	// between a developer's checkout and CI.
-	//
-	// HOME is pinned to a literal rather than cleared: the fleet inventory
-	// default falls back to $HOME when XDG_CONFIG_HOME is empty, so an empty
-	// value there still yields whatever home the walk runs under.
+// pinInventoryPage pins everything the recorded help depends on, so the page
+// and the style lint see the same tree on any machine.
+//
+// Several flag defaults embed an environment value, so every one is pinned:
+// otherwise this machine's state directory and home directory would change the
+// paths the page records. HOME is pinned to a literal rather than cleared,
+// because the fleet inventory default falls back to $HOME when
+// XDG_CONFIG_HOME is empty.
+func pinInventoryPage(t *testing.T) {
+	t.Helper()
 	for key, value := range map[string]string{
 		"ROOTFILES_STATE_DIR": "", "ROOTFILES_LOG_FILE": "", "ROOTFILES_LOCK_FILE": "",
 		"ROOTFILES_PROFILE": "", "ROOTFILES_USER": "", "ROOTFILES_SSH_PUBKEY": "",
@@ -33,6 +31,19 @@ func TestDocsCommandInventory(t *testing.T) {
 	} {
 		t.Setenv(key, value)
 	}
+	// Help differs by platform: a controller-only input exists only off Linux.
+	// The page records the host this binary configures.
+	savedOS := nativeHostOS
+	nativeHostOS = InventoryPlatform
+	t.Cleanup(func() { nativeHostOS = savedOS })
+}
+
+// TestDocsCommandInventory keeps the committed page in step with the command tree.
+// The page is generated, so a help edit that was not regenerated fails here
+// rather than reaching a reader; `make cli-inventory` rewrites it.
+func TestDocsCommandInventory(t *testing.T) {
+	pinInventoryPage(t)
+
 	got := RenderInventory(Inventory(NewRootCmd("dev", "test")))
 	if os.Getenv("ROOTFILES_UPDATE") == "1" {
 		if err := os.WriteFile(inventoryPath, []byte(got), 0644); err != nil {

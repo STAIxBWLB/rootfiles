@@ -25,6 +25,10 @@ const SummaryLimit = 60
 // developer's checkout and CI and record that person's path.
 const InventoryHome = "/home/operator"
 
+// InventoryPlatform is the host the page records: help that names a controller-
+// only input exists only off Linux, and a committed page cannot be both.
+const InventoryPlatform = "linux"
+
 // CommandFacts is what the audit records about one command: the text a person
 // reads, how wide it renders, and the flags it declares itself.
 type CommandFacts struct {
@@ -165,7 +169,7 @@ func firstWord(s string) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	return fields[0]
+	return strings.TrimRight(fields[0], ",;:")
 }
 
 // RenderInventory renders the committed inventory: one row per command, then
@@ -181,6 +185,9 @@ func RenderInventory(facts []CommandFacts) string {
 	b.WriteString(fmt.Sprintf("summaries are held to %d characters so they fit beside the longest command path.\n\n", SummaryLimit))
 	b.WriteString(fmt.Sprintf("`$HOME`-relative flag defaults are rendered against `%s` so this page is the same on every machine; ", InventoryHome))
 	b.WriteString("a width that includes such a default is one char longer or shorter on a host whose home is a different length.\n\n")
+	b.WriteString(fmt.Sprintf("The platform is pinned to `%s`, the host this binary configures: help that differs\n", InventoryPlatform))
+	b.WriteString("between a Linux server and a controller (which flags exist, which report is read) is\n")
+	b.WriteString("recorded here as the server sees it.\n\n")
 
 	b.WriteString(fmt.Sprintf("## Commands (%d)\n\n", len(facts)))
 	b.WriteString("| command | kind | summary | chars | example | widest | issues |\n")
@@ -225,7 +232,7 @@ func RenderInventory(facts []CommandFacts) string {
 	}
 
 	b.WriteString("\n## Notes\n\n")
-	b.WriteString("- Boolean flags render as `--ascii[=true|false]` instead of `--ascii`. Measured cause: pflag v1.1.0's `FlagUsagesWrapped` has a branch that prints `[=true|false]` for a no-opt bool, which v1.0.9 does not; `dot` pins v1.0.9 and prints the bare name. It is a dependency difference, not a `NoOptDefVal` this tree sets.\n")
+	b.WriteString("- Boolean flags print bare (`--ascii`, not `--ascii[=true|false]`). Measured cause: pflag v1.1.0's `FlagUsagesWrapped` appends the hint before it measures the column width, and v1.0.9 (what `dot` pins) does not. Help rendering drops the hint (`withoutBoolValueHint`) rather than pin the dependency back.\n")
 	b.WriteString("- Widths here are the unwrapped help lines. A page over 80 columns is a page a person has to scroll sideways, and the count is the same whatever `COLUMNS` says.\n")
 	b.WriteString("- The inventory cannot tell a verb from a noun, so it records each summary's first word above instead of guessing at the form.\n")
 

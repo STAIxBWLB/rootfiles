@@ -125,15 +125,13 @@ func rejectUnusedNativeFlags(cmd *cobra.Command) error {
 	}
 	var refused []string
 	cmd.Flags().Visit(func(flag *pflag.Flag) {
-		switch flag.Name {
-		case "profile", "config", "home-base", "user", "ssh-pubkey", "tunnel-token", "vlan-address":
-			for reader := cmd; reader != nil; reader = reader.Parent() {
-				if reader.Annotations[annotReadsRootFlag+flag.Name] == "true" {
-					return
-				}
-			}
-			refused = append(refused, "--"+flag.Name)
+		if !isRootConfigInput(flag.Name) {
+			return
 		}
+		if declaresRootFlag(cmd, flag.Name) {
+			return
+		}
+		refused = append(refused, "--"+flag.Name)
 	})
 	if len(refused) > 0 {
 		return withNext(fmt.Errorf("%s: does not use %s", cmd.CommandPath(), strings.Join(refused, ", ")),

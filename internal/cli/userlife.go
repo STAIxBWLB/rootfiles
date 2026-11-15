@@ -14,8 +14,8 @@ func newUserDelCmd() *cobra.Command {
 		Use:   "del USERNAME",
 		Short: "Delete a user (home kept by default)",
 		Long: "Removes the account, its sudoers drop-in, GPU allocation and metadata entry.\n" +
-			"The home directory is kept unless --archive (tar.gz under <home_base>/.rootfiles/archive,\n" +
-			"then removed) or --remove-home is given.",
+			"The home directory is kept unless --archive (a tar.gz under\n" +
+			"<home_base>/.rootfiles/archive, then removed) or --remove-home is given.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
@@ -42,7 +42,7 @@ func newUserDelCmd() *cobra.Command {
 			return module.DeleteUser(cmd.Context(), rc, args[0], mode)
 		},
 	}
-	cmd.Flags().Bool("archive", false, "Archive the home to <home_base>/.rootfiles/archive, then remove it")
+	cmd.Flags().Bool("archive", false, "Archive the home under <home_base>/.rootfiles, then remove it")
 	cmd.Flags().Bool("remove-home", false, "Remove the home directory without archiving")
 	return cmd
 }
@@ -205,12 +205,12 @@ func humanBytes(b int64) string {
 func newUserQuotaCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "quota",
-		Short: "Per-user disk quotas on the home_base filesystem (xfs project / ext4 user quota)",
+		Short: "Limit per-user disk usage on the home base",
 	}
 	cmd.AddCommand(
 		&cobra.Command{
 			Use:   "set USERNAME SIZE",
-			Short: "Set a hard limit, e.g. 500G (recorded and re-applied on user restore)",
+			Short: "Set a hard quota, e.g. 500G",
 			Args:  cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				rc, err := buildRunContext(cmd, "users")

@@ -22,6 +22,10 @@ import (
 func newFleetCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use: "fleet", Short: "Manage and monitor an SSH host fleet", Args: cobra.NoArgs,
+		Long: "Manage the hosts named in an operator-owned inventory. The inventory is read\n" +
+			"from $XDG_CONFIG_HOME/rootfiles/fleet.yaml, or from\n" +
+			"~/.config/rootfiles/fleet.yaml when that variable is unset; --inventory names\n" +
+			"another file. Its format is described in docs/fleet.md.",
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			if err := validateFleetFlags(cmd); err != nil {
 				return err
@@ -46,10 +50,10 @@ func newFleetCmd() *cobra.Command {
 func validateFleetFlags(cmd *cobra.Command) error {
 	var ignored []string
 	cmd.Flags().Visit(func(flag *pflag.Flag) {
-		switch flag.Name {
-		case "module", "profile", "config", "force", "tunnel-token", "home-base", "user", "ssh-pubkey", "vlan-address":
-			ignored = append(ignored, "--"+flag.Name)
+		if !isRootConfigInput(flag.Name) && flag.Name != "module" && flag.Name != "force" {
+			return
 		}
+		ignored = append(ignored, "--"+flag.Name)
 	})
 	if len(ignored) > 0 {
 		return fmt.Errorf("fleet commands do not use %s; put host settings in the fleet inventory or each host's remote site config", strings.Join(ignored, ", "))
@@ -76,10 +80,21 @@ func validateFleetFlags(cmd *cobra.Command) error {
 }
 
 func fleetCommonFlags(c *cobra.Command) {
-	c.Flags().String("inventory", defaultFleetInventory(), "Operator-owned fleet inventory YAML")
+	c.Flags().String("inventory", "", "Operator-owned fleet inventory YAML")
 	c.Flags().StringSlice("host", nil, "Select host names (comma-separated or repeated)")
 	c.Flags().StringSlice("group", nil, "Select groups (union; comma-separated or repeated)")
 	c.Flags().Bool("all", false, "Explicitly select every inventory host")
+}
+
+// fleetInventoryPath resolves --inventory. The flag carries no default: the
+// location depends on the environment it runs in, and an absolute path there
+// would print one operator's home in every help page and in the committed
+// command reference. The fleet page's own help states where it is read from.
+func fleetInventoryPath(c *cobra.Command) string {
+	if path, _ := c.Flags().GetString("inventory"); path != "" {
+		return path
+	}
+	return defaultFleetInventory()
 }
 
 func defaultFleetInventory() string {
@@ -91,8 +106,7 @@ func defaultFleetInventory() string {
 }
 
 func loadFleetSelection(c *cobra.Command, explicit bool) (*fleet.Inventory, []fleet.NamedHost, error) {
-	path, _ := c.Flags().GetString("inventory")
-	inv, err := fleet.LoadInventory(path)
+	inv, err := fleet.LoadInventory(fleetInventoryPath(c))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -105,7 +119,7 @@ func loadFleetSelection(c *cobra.Command, explicit bool) (*fleet.Inventory, []fl
 	if !explicit && !all && len(hosts) == 0 && len(groups) == 0 {
 		hint := "rootfiles fleet hosts"
 		if c.Flags().Changed("inventory") {
-			hint += " --inventory " + fleet.ShellQuote(path)
+			hint += " --inventory " + fleet.ShellQuote(fleetInventoryPath(c))
 		}
 		return nil, nil, fmt.Errorf("select hosts with --host, --group, or --all; run %s to list names", hint)
 	}
@@ -145,7 +159,7 @@ func newFleetReadCmd(op string) *cobra.Command {
 		return nil
 	}}
 	fleetCommonFlags(c)
-	c.Flags().Int("parallel", 0, "Maximum concurrent SSH processes (inventory default when omitted)")
+	c.Flags().Int("parallel", 0, "Maximum concurrent SSH processes (inventory default)")
 	addOutputFlag(c)
 	if op == "status" {
 		c.Flags().String("view", "", "Add a fleet-wide section read from the same report: "+fleetViewHelp)
@@ -280,7 +294,7 @@ func fleetMutationTimeout(c *cobra.Command) (time.Duration, error) {
 }
 
 func addFleetMutationTimeoutFlag(c *cobra.Command) {
-	c.Flags().Duration("timeout", fleet.DefaultMutationTimeout, "Maximum time to wait for each mutating SSH command (positive, up to 24h)")
+	c.Flags().Duration("timeout", fleet.DefaultMutationTimeout, "Longest wait for each mutating SSH command (max 24h)")
 }
 
 func addFleetSkipUnreachableFlag(c *cobra.Command) {
@@ -394,7 +408,7 @@ func newFleetUpdateCmd() *cobra.Command {
 	return c
 }
 func newFleetBootstrapCmd() *cobra.Command {
-	c := &cobra.Command{Use: "bootstrap", Short: "Install a pinned, checksum-verified release on selected hosts", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	c := &cobra.Command{Use: "bootstrap", Short: "Install a pinned release on selected hosts", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		timeout, err := fleetMutationTimeout(c)
 		if err != nil {
 			return err
@@ -452,7 +466,7 @@ func newFleetScheduleCmd() *cobra.Command {
 }
 
 func newFleetTargetsCmd() *cobra.Command {
-	c := &cobra.Command{Use: "targets", Short: "Render file_sd scrape targets or push them to a monitoring hub", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	c := &cobra.Command{Use: "targets", Short: "Render scrape targets or push them to a hub", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		inv, err := loadFleetOnly(c)
 		if err != nil {
 			return err
@@ -579,8 +593,7 @@ func fleetTargetsPushScript(target string) string {
 }
 
 func loadFleetOnly(c *cobra.Command) (*fleet.Inventory, error) {
-	p, _ := c.Flags().GetString("inventory")
-	return fleet.LoadInventory(p)
+	return fleet.LoadInventory(fleetInventoryPath(c))
 }
 
 // selectedFleetHosts narrows the inventory to the hosts --host/--group/--all

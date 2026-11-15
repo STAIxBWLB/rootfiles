@@ -170,8 +170,9 @@ func newUserRehomeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rehome USERNAME",
 		Short: "Move user home to custom home base directory",
-		Long: "Copy the user's home to <home-base>/<user>, verify the copy, switch the account over and\n" +
-			"leave a symlink at the old path. The original is kept as <old>.rootfiles-bak-<ts> unless --remove-old.",
+		Long: "Copy the user's home to <home-base>/<user>, verify the copy, switch the account\n" +
+			"over and leave a symlink at the old path. The original is kept as\n" +
+			"<old>.rootfiles-bak-<ts> unless --remove-old.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
@@ -331,7 +332,7 @@ func newUserPasswdCmd() *cobra.Command {
 	cmd.Flags().String("suffix", "", "Deprecated: password = username+suffix")
 	_ = cmd.Flags().MarkDeprecated("suffix", "use --password or --file instead; predictable passwords are removed in v0.21.0")
 	cmd.Flags().Bool("expire", false, "Force a password change at next login (chage -d 0)")
-	cmd.Flags().StringP("file", "f", "", "File with usernames (or username,password per line)")
+	cmd.Flags().StringP("file", "f", "", "File of usernames (or name,password lines)")
 	cmd.Flags().Bool("all", false, "Set passwords for all system users")
 	return cmd
 }

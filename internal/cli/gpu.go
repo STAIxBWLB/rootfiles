@@ -44,7 +44,7 @@ func newGPUCmd() *cobra.Command {
 		},
 	}
 	assignCmd.Flags().String("gpus", "", "Comma-separated GPU indices (e.g., 0,1,2)")
-	assignCmd.Flags().String("method", "", "Isolation method: env, cgroup, or both (default from profile)")
+	assignCmd.Flags().String("method", "", "Isolation: env, cgroup or both (default from profile)")
 	gpuCmd.AddCommand(assignCmd)
 
 	// rootfiles gpu revoke USERNAME
@@ -87,7 +87,7 @@ func newGPUCmd() *cobra.Command {
 		},
 	})
 
-	migCmd := &cobra.Command{Use: "mig", Short: "Multi-Instance GPU (read-only)"}
+	migCmd := &cobra.Command{Use: "mig", Short: "Show Multi-Instance GPU mode and instances"}
 	migCmd.AddCommand(&cobra.Command{
 		Use:   "status",
 		Short: "Show MIG mode and instances per GPU",

@@ -14,9 +14,10 @@ func newRollbackCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "rollback [BACKUP_ID]",
 		Short: "Restore files changed by an earlier run",
-		Long: "Every mutating run saves the previous version of each file it overwrites or removes under\n" +
-			state.BackupsDir() + "/<id>. rollback restores those files and removes files the run created.\n" +
-			"Packages, users and services are not reverted. Without an id, lists available backups.",
+		Long: "Every mutating run saves the previous version of each file it overwrites or\n" +
+			"removes under " + state.BackupsDir() + "/<id>. rollback restores those files and\n" +
+			"deletes the files the run created; packages, users and services are not\n" +
+			"reverted. Without an id, lists available backups.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()

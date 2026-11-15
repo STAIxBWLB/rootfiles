@@ -29,11 +29,11 @@ func newTunnelCmd() *cobra.Command {
 	tunnel.AddCommand(usesRootFlags(&cobra.Command{
 		Use:     "setup [TOKEN]",
 		Aliases: []string{"install"},
-		Short:   "Set up the tunnel, its VLAN private network and the cloudflared binary",
+		Short:   "Set up the tunnel, VLAN and cloudflared",
 		Long: `Sets up the cloudflared binary, the tunnel token and the VLAN private network.
 Configured credentials (including tunnel_token_file) and VLAN settings are used
-unless an explicit token or VLAN address overrides them. Without credentials only
-the binary and any configured VLAN are managed. "install" is an alias of setup.`,
+unless an explicit token or VLAN address overrides them. Without credentials,
+only the binary and any configured VLAN are managed. "install" is an alias.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "cloudflared")
@@ -110,10 +110,10 @@ the binary and any configured VLAN are managed. "install" is an alias of setup.`
 		Use:   "update",
 		Short: "Upgrade cloudflared binary to latest (or a pinned version)",
 		Long: `Download the cloudflared binary from the upstream cloudflare/cloudflared GitHub
-releases and replace /usr/local/bin/cloudflared. Uses the tagged release URL when
---version is provided, or the /latest/download/ alias otherwise. The cloudflared
-systemd service is restarted when present; pure-binary refreshes on hosts that
-don't run the tunnel just update the binary.
+releases and replace /usr/local/bin/cloudflared. Uses the tagged release URL
+when --version is provided, or the /latest/download/ alias otherwise. The
+cloudflared systemd service is restarted when present; pure-binary refreshes on
+hosts that don't run the tunnel just update the binary.
 
 Use --check to see the current installed version vs. the latest upstream tag
 without downloading or restarting anything.`,

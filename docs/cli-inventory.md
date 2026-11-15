@@ -6,148 +6,149 @@ Widths are measured with the same counter the help pages use, against an 80-colu
 
 `$HOME`-relative flag defaults are rendered against `/home/operator` so this page is the same on every machine; a width that includes such a default is one char longer or shorter on a host whose home is a different length.
 
+The platform is pinned to `linux`, the host this binary configures: help that differs
+between a Linux server and a controller (which flags exist, which report is read) is
+recorded here as the server sees it.
+
 ## Commands (86)
 
 | command | kind | summary | chars | example | widest | issues |
 |---|---|---|---|---|---|---|
-| `rootfiles` | runnable | Bootstrap Ubuntu, DGX OS and Rocky servers, on this host or across a fleet | 74 | no | 89 | summary is 74 chars; no example; help is 89 columns |
-| `rootfiles apply` | runnable | Apply server configuration | 26 | yes | 89 | help is 89 columns |
-| `rootfiles backup` | runnable | Full system backup for OS upgrade / restore | 43 | no | 152 | no example; help is 152 columns |
-| `rootfiles check` | runnable | Check current system state against profile | 42 | yes | 89 | help is 89 columns |
-| `rootfiles config` | runnable | Inspect, validate and scaffold configuration | 44 | no | 92 | no example; help is 92 columns |
-| `rootfiles config init` | runnable | Scaffold a site config (template, or captured from this system) | 63 | no | 95 | summary is 63 chars; no example; help is 95 columns |
-| `rootfiles config show` | runnable | Print the fully merged configuration (extends, env and flag overrides applied) | 78 | no | 89 | summary is 78 chars; no example; help is 89 columns |
-| `rootfiles config validate` | runnable | Validate a profile or config file (unknown keys, paths, ports, CIDRs, …) | 72 | no | 89 | non-ASCII summary; summary is 72 chars; no example; help is 89 columns |
-| `rootfiles doctor` | runnable | Diagnose remote access, disks, reboot, time sync, GPU and systemd health | 72 | no | 94 | summary is 72 chars; no example; help is 94 columns |
-| `rootfiles fleet` | runnable | Manage and monitor an SSH host fleet | 36 | no | 89 | no example; help is 89 columns |
-| `rootfiles fleet apply` | runnable | Apply selected hosts' site configs serially | 43 | yes | 131 | help is 131 columns |
-| `rootfiles fleet bootstrap` | runnable | Install a pinned, checksum-verified release on selected hosts | 61 | no | 131 | summary is 61 chars; no example; help is 131 columns |
-| `rootfiles fleet check` | runnable | Run a read-only fleet check report | 34 | no | 119 | no example; help is 119 columns |
-| `rootfiles fleet doctor` | runnable | Run a read-only fleet doctor report | 35 | no | 119 | no example; help is 119 columns |
-| `rootfiles fleet hosts` | runnable | List and validate inventory hosts | 33 | yes | 72 | - |
-| `rootfiles fleet init` | runnable | Create a fleet inventory | 24 | yes | 72 | - |
-| `rootfiles fleet log` | runnable | Show recorded fleet rollouts, newest first | 42 | yes | 101 | help is 101 columns |
-| `rootfiles fleet ping` | runnable | Check fleet connectivity and privilege | 38 | yes | 72 | - |
-| `rootfiles fleet schedule` | runnable | Enable or disable scheduled reports serially | 44 | no | 135 | no example; help is 135 columns |
-| `rootfiles fleet status` | runnable | Run a read-only fleet status report | 35 | no | 119 | no example; help is 119 columns |
-| `rootfiles fleet targets` | runnable | Render file_sd scrape targets or push them to a monitoring hub | 62 | no | 118 | summary is 62 chars; no example; help is 118 columns |
-| `rootfiles fleet update` | runnable | Update selected hosts serially | 30 | no | 131 | no example; help is 131 columns |
-| `rootfiles gpu` | runnable | Manage per-user GPU allocation | 30 | no | 89 | no example; help is 89 columns |
-| `rootfiles gpu assign` | runnable | Assign GPUs to a user | 21 | yes | 89 | help is 89 columns |
-| `rootfiles gpu list` | runnable | List current GPU allocations | 28 | no | 89 | no example; help is 89 columns |
-| `rootfiles gpu mig` | runnable | Multi-Instance GPU (read-only) | 30 | no | 89 | no example; help is 89 columns |
-| `rootfiles gpu mig status` | runnable | Show MIG mode and instances per GPU | 35 | no | 89 | no example; help is 89 columns |
-| `rootfiles gpu revoke` | runnable | Revoke GPU allocation from a user | 33 | no | 89 | no example; help is 89 columns |
-| `rootfiles gpu status` | runnable | Show GPU status with allocation info | 36 | no | 89 | no example; help is 89 columns |
-| `rootfiles rollback` | runnable | Restore files changed by an earlier run | 39 | no | 97 | no example; help is 97 columns |
-| `rootfiles schedule` | runnable | Periodic check/doctor reports via a systemd timer | 49 | no | 89 | no example; help is 89 columns |
-| `rootfiles schedule disable` | runnable | Stop and remove the report timer | 32 | no | 89 | no example; help is 89 columns |
-| `rootfiles schedule enable` | runnable | Install and start the report timer | 34 | no | 110 | no example; help is 110 columns |
-| `rootfiles schedule status` | runnable | Show the report timer state and the age of its reports | 54 | no | 89 | no example; help is 89 columns |
-| `rootfiles status` | runnable | Show full system status at a glance | 35 | no | 91 | no example; help is 91 columns |
-| `rootfiles tenant` | runnable | Manage long-lived tenant containers (volume quota, accounts, GPUs) | 66 | no | 99 | summary is 66 chars; no example; help is 99 columns |
-| `rootfiles tenant apply` | runnable | Converge a tenant to its spec (recreates the container on image, GPU or port changes) | 85 | no | 89 | summary is 85 chars; no example; help is 89 columns |
-| `rootfiles tenant cpuset` | runnable | Save CPU/NUMA pinning and update the existing container without restarting | 74 | no | 104 | summary is 74 chars; no example; help is 104 columns |
-| `rootfiles tenant create` | runnable | Create a tenant: volume, container and temporary passwords | 58 | yes | 119 | help is 119 columns |
-| `rootfiles tenant gpu` | runnable | Change a tenant's GPUs (recreates the container) | 48 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant image` | runnable | Change a tenant's image (recreates the container) | 49 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant import` | runnable | Move a hand-made container under rootfiles (the old one is kept stopped) | 72 | no | 111 | summary is 72 chars; no example; help is 111 columns |
-| `rootfiles tenant list` | runnable | List tenant names | 17 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant logs` | runnable | Show the container log | 22 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant ops` | runnable | Operator actions through sudo: status\|logs\|gpu-heal\|restart\|reset | 65 | no | 89 | summary is 65 chars; no example; help is 89 columns |
-| `rootfiles tenant passwd` | runnable | Issue a temporary password that must be changed at first login | 62 | no | 89 | summary is 62 chars; no example; help is 89 columns |
-| `rootfiles tenant port` | runnable | Change a tenant's SSH host port (recreates the container) | 57 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant restart` | runnable | Restart a tenant container | 26 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant status` | runnable | Show tenant containers, spec drift and volume use | 49 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant sync` | runnable | Save password hashes and refresh sshpiper keys of every tenant (2-minute timer) | 79 | no | 89 | summary is 79 chars; no example; help is 89 columns |
-| `rootfiles tenant user` | runnable | Manage tenant accounts | 22 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant user add` | runnable | Add an account and issue its temporary password | 47 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant volume` | runnable | Manage tenant volumes | 21 | no | 89 | no example; help is 89 columns |
-| `rootfiles tenant volume resize` | runnable | Grow a volume online, or shrink an ext4 volume with --offline | 61 | no | 89 | summary is 61 chars; no example; help is 89 columns |
-| `rootfiles tunnel` | runnable | Manage cloudflared tunnel and VLAN private network | 50 | no | 89 | no example; help is 89 columns |
-| `rootfiles tunnel restart` | runnable | Restart cloudflared service | 27 | no | 89 | no example; help is 89 columns |
-| `rootfiles tunnel setup` | runnable | Set up the tunnel, its VLAN private network and the cloudflared binary | 70 | no | 89 | summary is 70 chars; no example; help is 89 columns |
-| `rootfiles tunnel status` | runnable | Show tunnel service and VLAN status | 35 | no | 89 | no example; help is 89 columns |
-| `rootfiles tunnel uninstall` | runnable | Remove tunnel service, VLAN, and binary | 39 | no | 89 | no example; help is 89 columns |
-| `rootfiles tunnel update` | runnable | Upgrade cloudflared binary to latest (or a pinned version) | 58 | no | 118 | no example; help is 118 columns |
-| `rootfiles update` | runnable | Self-update rootfiles to the latest (or specified) version | 58 | no | 89 | no example; help is 89 columns |
-| `rootfiles user` | runnable | Manage system users (custom home, backup, restore) | 50 | no | 94 | no example; help is 94 columns |
-| `rootfiles user add` | runnable | Create a user with custom home directory | 40 | yes | 89 | help is 89 columns |
-| `rootfiles user audit` | runnable | Compare users.json metadata with the accounts on this system | 60 | no | 89 | no example; help is 89 columns |
-| `rootfiles user backup` | runnable | Backup user list and metadata to JSON | 37 | no | 89 | no example; help is 89 columns |
-| `rootfiles user del` | runnable | Delete a user (home kept by default) | 36 | no | 101 | no example; help is 101 columns |
-| `rootfiles user du` | runnable | Show home directory disk usage per user (largest first) | 55 | no | 89 | no example; help is 89 columns |
-| `rootfiles user expire` | runnable | Set or clear the account expiry date | 36 | no | 89 | no example; help is 89 columns |
-| `rootfiles user group-add` | runnable | Add a user to groups | 20 | no | 89 | no example; help is 89 columns |
-| `rootfiles user group-del` | runnable | Remove a user from groups | 25 | no | 89 | no example; help is 89 columns |
-| `rootfiles user groups` | runnable | List groups (all groups or for a specific user) | 47 | no | 89 | no example; help is 89 columns |
-| `rootfiles user id` | runnable | Show UID, GID, and groups for a user | 36 | no | 89 | no example; help is 89 columns |
-| `rootfiles user key` | runnable | Manage a user's SSH authorized keys | 35 | no | 89 | no example; help is 89 columns |
-| `rootfiles user key add` | runnable | Add an authorized key | 21 | no | 89 | no example; help is 89 columns |
-| `rootfiles user key list` | runnable | List authorized keys (numbered) | 31 | no | 89 | no example; help is 89 columns |
-| `rootfiles user key rm` | runnable | Remove authorized key(s) by list index, key or comment | 54 | no | 89 | no example; help is 89 columns |
-| `rootfiles user list` | runnable | List managed users (or system users with --system) | 50 | no | 89 | no example; help is 89 columns |
-| `rootfiles user lock` | runnable | Block all logins (password and SSH key) | 39 | no | 89 | no example; help is 89 columns |
-| `rootfiles user passwd` | runnable | Set passwords for users (batch) | 31 | no | 89 | no example; help is 89 columns |
-| `rootfiles user quota` | runnable | Per-user disk quotas on the home_base filesystem (xfs project / ext4 user quota) | 80 | no | 89 | summary is 80 chars; no example; help is 89 columns |
-| `rootfiles user quota rm` | runnable | Remove a user's limit | 21 | no | 89 | no example; help is 89 columns |
-| `rootfiles user quota set` | runnable | Set a hard limit, e.g. 500G (recorded and re-applied on user restore) | 69 | no | 89 | summary is 69 chars; no example; help is 89 columns |
-| `rootfiles user quota show` | runnable | Show the quota report | 21 | no | 89 | no example; help is 89 columns |
-| `rootfiles user rehome` | runnable | Move user home to custom home base directory | 44 | no | 102 | no example; help is 102 columns |
-| `rootfiles user restore` | runnable | Restore users from backup (reconnect existing home dirs) | 56 | no | 89 | no example; help is 89 columns |
-| `rootfiles user unlock` | runnable | Re-enable logins for a locked user | 34 | no | 89 | no example; help is 89 columns |
+| `rootfiles` | runnable | Bootstrap Ubuntu, DGX OS and Rocky servers | 42 | no | 79 | no example |
+| `rootfiles apply` | runnable | Apply server configuration | 26 | yes | 79 | - |
+| `rootfiles backup` | runnable | Back up the system for an OS upgrade or restore | 47 | no | 79 | no example |
+| `rootfiles check` | runnable | Check current system state against profile | 42 | yes | 79 | - |
+| `rootfiles config` | runnable | Inspect, validate or scaffold configuration | 43 | no | 79 | no example |
+| `rootfiles config init` | runnable | Scaffold a site config | 22 | no | 79 | no example |
+| `rootfiles config show` | runnable | Print the fully merged configuration | 36 | no | 79 | no example |
+| `rootfiles config validate` | runnable | Validate a profile or config file | 33 | no | 79 | no example |
+| `rootfiles doctor` | runnable | Check disks, reboot, time sync, GPU, systemd and access | 55 | no | 80 | no example |
+| `rootfiles fleet` | runnable | Manage and monitor an SSH host fleet | 36 | no | 79 | no example |
+| `rootfiles fleet apply` | runnable | Apply selected hosts' site configs serially | 43 | yes | 79 | - |
+| `rootfiles fleet bootstrap` | runnable | Install a pinned release on selected hosts | 42 | no | 79 | no example |
+| `rootfiles fleet check` | runnable | Run a read-only fleet check report | 34 | no | 79 | no example |
+| `rootfiles fleet doctor` | runnable | Run a read-only fleet doctor report | 35 | no | 79 | no example |
+| `rootfiles fleet hosts` | runnable | List and validate inventory hosts | 33 | yes | 79 | - |
+| `rootfiles fleet init` | runnable | Create a fleet inventory | 24 | yes | 79 | - |
+| `rootfiles fleet log` | runnable | Show recorded fleet rollouts, newest first | 42 | yes | 79 | - |
+| `rootfiles fleet ping` | runnable | Check fleet connectivity and privilege | 38 | yes | 79 | - |
+| `rootfiles fleet schedule` | runnable | Enable or disable scheduled reports serially | 44 | no | 79 | no example |
+| `rootfiles fleet status` | runnable | Run a read-only fleet status report | 35 | no | 79 | no example |
+| `rootfiles fleet targets` | runnable | Render scrape targets or push them to a hub | 43 | no | 79 | no example |
+| `rootfiles fleet update` | runnable | Update selected hosts serially | 30 | no | 79 | no example |
+| `rootfiles gpu` | runnable | Manage per-user GPU allocation | 30 | no | 79 | no example |
+| `rootfiles gpu assign` | runnable | Assign GPUs to a user | 21 | yes | 79 | - |
+| `rootfiles gpu list` | runnable | List current GPU allocations | 28 | no | 79 | no example |
+| `rootfiles gpu mig` | runnable | Show Multi-Instance GPU mode and instances | 42 | no | 79 | no example |
+| `rootfiles gpu mig status` | runnable | Show MIG mode and instances per GPU | 35 | no | 79 | no example |
+| `rootfiles gpu revoke` | runnable | Revoke GPU allocation from a user | 33 | no | 79 | no example |
+| `rootfiles gpu status` | runnable | Show GPU status with allocation info | 36 | no | 79 | no example |
+| `rootfiles rollback` | runnable | Restore files changed by an earlier run | 39 | no | 80 | no example |
+| `rootfiles schedule` | runnable | Install check and doctor report timers | 38 | no | 79 | no example |
+| `rootfiles schedule disable` | runnable | Stop and remove the report timer | 32 | no | 79 | no example |
+| `rootfiles schedule enable` | runnable | Install and start the report timer | 34 | no | 79 | no example |
+| `rootfiles schedule status` | runnable | Show the report timer state and the age of its reports | 54 | no | 79 | no example |
+| `rootfiles status` | runnable | Show full system status at a glance | 35 | no | 79 | no example |
+| `rootfiles tenant` | runnable | Manage long-lived tenant containers | 35 | no | 79 | no example |
+| `rootfiles tenant apply` | runnable | Converge a tenant to its spec | 29 | no | 79 | no example |
+| `rootfiles tenant cpuset` | runnable | Pin tenant CPUs and NUMA memory | 31 | no | 79 | no example |
+| `rootfiles tenant create` | runnable | Create a tenant: volume, container and temporary passwords | 58 | yes | 79 | - |
+| `rootfiles tenant gpu` | runnable | Change a tenant's GPUs (recreates the container) | 48 | no | 79 | no example |
+| `rootfiles tenant image` | runnable | Change a tenant's image (recreates the container) | 49 | no | 79 | no example |
+| `rootfiles tenant import` | runnable | Adopt an existing container as a tenant | 39 | no | 79 | no example |
+| `rootfiles tenant list` | runnable | List tenant names | 17 | no | 79 | no example |
+| `rootfiles tenant logs` | runnable | Show the container log | 22 | no | 79 | no example |
+| `rootfiles tenant ops` | runnable | Run tenant operator actions (sudo) | 34 | no | 79 | no example |
+| `rootfiles tenant passwd` | runnable | Issue a temporary password for a tenant user | 44 | no | 79 | no example |
+| `rootfiles tenant port` | runnable | Change a tenant's SSH host port (recreates the container) | 57 | no | 79 | no example |
+| `rootfiles tenant restart` | runnable | Restart a tenant container | 26 | no | 79 | no example |
+| `rootfiles tenant status` | runnable | Show tenant containers, spec drift and volume use | 49 | no | 79 | no example |
+| `rootfiles tenant sync` | runnable | Refresh tenant password hashes and sshpiper keys | 48 | no | 79 | no example |
+| `rootfiles tenant user` | runnable | Manage tenant accounts | 22 | no | 79 | no example |
+| `rootfiles tenant user add` | runnable | Add an account and issue its temporary password | 47 | no | 79 | no example |
+| `rootfiles tenant volume` | runnable | Manage tenant volumes | 21 | no | 79 | no example |
+| `rootfiles tenant volume resize` | runnable | Grow a volume, or shrink it offline | 35 | no | 79 | no example |
+| `rootfiles tunnel` | runnable | Manage cloudflared tunnel and VLAN private network | 50 | no | 79 | no example |
+| `rootfiles tunnel restart` | runnable | Restart cloudflared service | 27 | no | 79 | no example |
+| `rootfiles tunnel setup` | runnable | Set up the tunnel, VLAN and cloudflared | 39 | no | 79 | no example |
+| `rootfiles tunnel status` | runnable | Show tunnel service and VLAN status | 35 | no | 79 | no example |
+| `rootfiles tunnel uninstall` | runnable | Remove tunnel service, VLAN, and binary | 39 | no | 79 | no example |
+| `rootfiles tunnel update` | runnable | Upgrade cloudflared binary to latest (or a pinned version) | 58 | no | 79 | no example |
+| `rootfiles update` | runnable | Update rootfiles to the latest release | 38 | no | 79 | no example |
+| `rootfiles user` | runnable | Manage system users (custom home, backup, restore) | 50 | no | 79 | no example |
+| `rootfiles user add` | runnable | Create a user with custom home directory | 40 | yes | 79 | - |
+| `rootfiles user audit` | runnable | Compare users.json metadata with the accounts on this system | 60 | no | 79 | no example |
+| `rootfiles user backup` | runnable | Backup user list and metadata to JSON | 37 | no | 79 | no example |
+| `rootfiles user del` | runnable | Delete a user (home kept by default) | 36 | no | 79 | no example |
+| `rootfiles user du` | runnable | Show home directory disk usage per user (largest first) | 55 | no | 79 | no example |
+| `rootfiles user expire` | runnable | Set or clear the account expiry date | 36 | no | 79 | no example |
+| `rootfiles user group-add` | runnable | Add a user to groups | 20 | no | 79 | no example |
+| `rootfiles user group-del` | runnable | Remove a user from groups | 25 | no | 79 | no example |
+| `rootfiles user groups` | runnable | List groups (all groups or for a specific user) | 47 | no | 79 | no example |
+| `rootfiles user id` | runnable | Show UID, GID, and groups for a user | 36 | no | 79 | no example |
+| `rootfiles user key` | runnable | Manage a user's SSH authorized keys | 35 | no | 79 | no example |
+| `rootfiles user key add` | runnable | Add an authorized key | 21 | no | 79 | no example |
+| `rootfiles user key list` | runnable | List authorized keys (numbered) | 31 | no | 79 | no example |
+| `rootfiles user key rm` | runnable | Remove authorized key(s) by list index, key or comment | 54 | no | 79 | no example |
+| `rootfiles user list` | runnable | List managed users (or system users with --system) | 50 | no | 79 | no example |
+| `rootfiles user lock` | runnable | Block all logins (password and SSH key) | 39 | no | 79 | no example |
+| `rootfiles user passwd` | runnable | Set passwords for users (batch) | 31 | no | 79 | no example |
+| `rootfiles user quota` | runnable | Limit per-user disk usage on the home base | 42 | no | 79 | no example |
+| `rootfiles user quota rm` | runnable | Remove a user's limit | 21 | no | 79 | no example |
+| `rootfiles user quota set` | runnable | Set a hard quota, e.g. 500G | 27 | no | 79 | no example |
+| `rootfiles user quota show` | runnable | Show the quota report | 21 | no | 79 | no example |
+| `rootfiles user rehome` | runnable | Move user home to custom home base directory | 44 | no | 79 | no example |
+| `rootfiles user restore` | runnable | Restore users from backup (reconnect existing home dirs) | 56 | no | 79 | no example |
+| `rootfiles user unlock` | runnable | Re-enable logins for a locked user | 34 | no | 79 | no example |
 
 ## First word of each summary
 
 The audit has to settle one form for every summary, so the first word of each is listed here rather than classified: a verb and a noun read the same to a script.
 
 - `Add`: rootfiles tenant user add, rootfiles user group-add, rootfiles user key add
+- `Adopt`: rootfiles tenant import
 - `Apply`: rootfiles apply, rootfiles fleet apply
 - `Assign`: rootfiles gpu assign
+- `Back`: rootfiles backup
 - `Backup`: rootfiles user backup
 - `Block`: rootfiles user lock
 - `Bootstrap`: rootfiles
 - `Change`: rootfiles tenant gpu, rootfiles tenant image, rootfiles tenant port
-- `Check`: rootfiles check, rootfiles fleet ping
+- `Check`: rootfiles check, rootfiles doctor, rootfiles fleet ping
 - `Compare`: rootfiles user audit
 - `Converge`: rootfiles tenant apply
 - `Create`: rootfiles fleet init, rootfiles tenant create, rootfiles user add
 - `Delete`: rootfiles user del
-- `Diagnose`: rootfiles doctor
 - `Enable`: rootfiles fleet schedule
-- `Full`: rootfiles backup
 - `Grow`: rootfiles tenant volume resize
-- `Inspect,`: rootfiles config
-- `Install`: rootfiles fleet bootstrap, rootfiles schedule enable
+- `Inspect`: rootfiles config
+- `Install`: rootfiles fleet bootstrap, rootfiles schedule, rootfiles schedule enable
 - `Issue`: rootfiles tenant passwd
+- `Limit`: rootfiles user quota
 - `List`: rootfiles fleet hosts, rootfiles gpu list, rootfiles tenant list, rootfiles user groups, rootfiles user key list, rootfiles user list
 - `Manage`: rootfiles fleet, rootfiles gpu, rootfiles tenant, rootfiles tenant user, rootfiles tenant volume, rootfiles tunnel, rootfiles user, rootfiles user key
-- `Move`: rootfiles tenant import, rootfiles user rehome
-- `Multi-Instance`: rootfiles gpu mig
-- `Operator`: rootfiles tenant ops
-- `Per-user`: rootfiles user quota
-- `Periodic`: rootfiles schedule
+- `Move`: rootfiles user rehome
+- `Pin`: rootfiles tenant cpuset
 - `Print`: rootfiles config show
 - `Re-enable`: rootfiles user unlock
+- `Refresh`: rootfiles tenant sync
 - `Remove`: rootfiles tunnel uninstall, rootfiles user group-del, rootfiles user key rm, rootfiles user quota rm
 - `Render`: rootfiles fleet targets
 - `Restart`: rootfiles tenant restart, rootfiles tunnel restart
 - `Restore`: rootfiles rollback, rootfiles user restore
 - `Revoke`: rootfiles gpu revoke
-- `Run`: rootfiles fleet check, rootfiles fleet doctor, rootfiles fleet status
-- `Save`: rootfiles tenant cpuset, rootfiles tenant sync
+- `Run`: rootfiles fleet check, rootfiles fleet doctor, rootfiles fleet status, rootfiles tenant ops
 - `Scaffold`: rootfiles config init
-- `Self-update`: rootfiles update
 - `Set`: rootfiles tunnel setup, rootfiles user expire, rootfiles user passwd, rootfiles user quota set
-- `Show`: rootfiles fleet log, rootfiles gpu mig status, rootfiles gpu status, rootfiles schedule status, rootfiles status, rootfiles tenant logs, rootfiles tenant status, rootfiles tunnel status, rootfiles user du, rootfiles user id, rootfiles user quota show
+- `Show`: rootfiles fleet log, rootfiles gpu mig, rootfiles gpu mig status, rootfiles gpu status, rootfiles schedule status, rootfiles status, rootfiles tenant logs, rootfiles tenant status, rootfiles tunnel status, rootfiles user du, rootfiles user id, rootfiles user quota show
 - `Stop`: rootfiles schedule disable
-- `Update`: rootfiles fleet update
+- `Update`: rootfiles fleet update, rootfiles update
 - `Upgrade`: rootfiles tunnel update
 - `Validate`: rootfiles config validate
 
 ## Notes
 
-- Boolean flags render as `--ascii[=true|false]` instead of `--ascii`. Measured cause: pflag v1.1.0's `FlagUsagesWrapped` has a branch that prints `[=true|false]` for a no-opt bool, which v1.0.9 does not; `dot` pins v1.0.9 and prints the bare name. It is a dependency difference, not a `NoOptDefVal` this tree sets.
+- Boolean flags print bare (`--ascii`, not `--ascii[=true|false]`). Measured cause: pflag v1.1.0's `FlagUsagesWrapped` appends the hint before it measures the column width, and v1.0.9 (what `dot` pins) does not. Help rendering drops the hint (`withoutBoolValueHint`) rather than pin the dependency back.
 - Widths here are the unwrapped help lines. A page over 80 columns is a page a person has to scroll sideways, and the count is the same whatever `COLUMNS` says.
 - The inventory cannot tell a verb from a noun, so it records each summary's first word above instead of guessing at the form.
 
@@ -185,7 +186,7 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles config init` | `--from-system` | bool | false | - | no |
 | `rootfiles config init` | `--overwrite` | bool | false | - | no |
 | `rootfiles config show` | `--reveal` | bool | false | - | no |
-| `rootfiles doctor` | `--inventory` | string | - | - | no |
+| `rootfiles doctor` | `--inventory` | string | - | - | yes |
 | `rootfiles doctor` | `--json` | bool | false | - | no |
 | `rootfiles doctor` | `-o, --output` | string | text | o | no |
 | `rootfiles doctor` | `--strict` | bool | false | - | no |
@@ -194,7 +195,7 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet apply` | `--all` | bool | false | - | no |
 | `rootfiles fleet apply` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet apply` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet apply` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet apply` | `--inventory` | string | - | - | no |
 | `rootfiles fleet apply` | `--json` | bool | false | - | no |
 | `rootfiles fleet apply` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet apply` | `--skip-unreachable` | bool | false | - | no |
@@ -202,7 +203,7 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet bootstrap` | `--all` | bool | false | - | no |
 | `rootfiles fleet bootstrap` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet bootstrap` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet bootstrap` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet bootstrap` | `--inventory` | string | - | - | no |
 | `rootfiles fleet bootstrap` | `--json` | bool | false | - | no |
 | `rootfiles fleet bootstrap` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet bootstrap` | `--skip-unreachable` | bool | false | - | no |
@@ -211,26 +212,26 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet check` | `--all` | bool | false | - | no |
 | `rootfiles fleet check` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet check` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet check` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet check` | `--inventory` | string | - | - | no |
 | `rootfiles fleet check` | `--json` | bool | false | - | no |
 | `rootfiles fleet check` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet check` | `--parallel` | int | 0 | - | no |
 | `rootfiles fleet doctor` | `--all` | bool | false | - | no |
 | `rootfiles fleet doctor` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet doctor` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet doctor` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet doctor` | `--inventory` | string | - | - | no |
 | `rootfiles fleet doctor` | `--json` | bool | false | - | no |
 | `rootfiles fleet doctor` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet doctor` | `--parallel` | int | 0 | - | no |
 | `rootfiles fleet hosts` | `--all` | bool | false | - | no |
 | `rootfiles fleet hosts` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet hosts` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet hosts` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet hosts` | `--inventory` | string | - | - | no |
 | `rootfiles fleet hosts` | `--json` | bool | false | - | no |
 | `rootfiles fleet hosts` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet init` | `--from-ssh-config` | bool | false | - | no |
 | `rootfiles fleet init` | `--group` | string | - | - | no |
-| `rootfiles fleet init` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet init` | `--inventory` | string | - | - | no |
 | `rootfiles fleet init` | `--match` | string | - | - | no |
 | `rootfiles fleet init` | `--overwrite` | bool | false | - | no |
 | `rootfiles fleet log` | `--host` | string | - | - | no |
@@ -242,14 +243,14 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet ping` | `--all` | bool | false | - | no |
 | `rootfiles fleet ping` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet ping` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet ping` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet ping` | `--inventory` | string | - | - | no |
 | `rootfiles fleet ping` | `--json` | bool | false | - | no |
 | `rootfiles fleet ping` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet ping` | `--parallel` | int | 0 | - | no |
 | `rootfiles fleet schedule` | `--all` | bool | false | - | no |
 | `rootfiles fleet schedule` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet schedule` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet schedule` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet schedule` | `--inventory` | string | - | - | no |
 | `rootfiles fleet schedule` | `--json` | bool | false | - | no |
 | `rootfiles fleet schedule` | `--on-calendar` | string | - | - | no |
 | `rootfiles fleet schedule` | `-o, --output` | string | text | o | no |
@@ -258,7 +259,7 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet status` | `--all` | bool | false | - | no |
 | `rootfiles fleet status` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet status` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet status` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet status` | `--inventory` | string | - | - | no |
 | `rootfiles fleet status` | `--json` | bool | false | - | no |
 | `rootfiles fleet status` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet status` | `--parallel` | int | 0 | - | no |
@@ -266,13 +267,13 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet targets` | `--all` | bool | false | - | no |
 | `rootfiles fleet targets` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet targets` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet targets` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet targets` | `--inventory` | string | - | - | no |
 | `rootfiles fleet targets` | `--push` | string | - | - | no |
 | `rootfiles fleet targets` | `--timeout` | duration | 15m0s | - | no |
 | `rootfiles fleet update` | `--all` | bool | false | - | no |
 | `rootfiles fleet update` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet update` | `--host` | stringSlice | [] | - | no |
-| `rootfiles fleet update` | `--inventory` | string | /home/operator/.config/rootfiles/fleet.yaml | - | no |
+| `rootfiles fleet update` | `--inventory` | string | - | - | no |
 | `rootfiles fleet update` | `--json` | bool | false | - | no |
 | `rootfiles fleet update` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet update` | `--skip-unreachable` | bool | false | - | no |
@@ -281,7 +282,7 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles gpu assign` | `--gpus` | string | - | - | no |
 | `rootfiles gpu assign` | `--method` | string | - | - | no |
 | `rootfiles schedule enable` | `--on-calendar` | string | daily | - | no |
-| `rootfiles status` | `--inventory` | string | - | - | no |
+| `rootfiles status` | `--inventory` | string | - | - | yes |
 | `rootfiles status` | `--json` | bool | false | - | no |
 | `rootfiles status` | `--module` | stringSlice | [] | - | no |
 | `rootfiles status` | `-o, --output` | string | text | o | no |

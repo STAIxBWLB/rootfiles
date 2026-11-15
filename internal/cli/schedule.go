@@ -69,9 +69,9 @@ func validateOnCalendar(expr string) error {
 func newScheduleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "schedule",
-		Short: "Periodic check/doctor reports via a systemd timer",
-		Long: "enable installs rootfiles-check.timer, which writes check.json and doctor.json to\n" +
-			state.Dir() + " (read-only: no changes are applied).",
+		Short: "Install check and doctor report timers",
+		Long: "enable installs rootfiles-check.timer, which writes check.json and doctor.json\n" +
+			"to " + state.Dir() + " (read-only: no changes are applied).",
 	}
 
 	enable := &cobra.Command{
@@ -118,7 +118,7 @@ func newScheduleCmd() *cobra.Command {
 			return nil
 		},
 	}
-	enable.Flags().String("on-calendar", "daily", "systemd OnCalendar expression (e.g. hourly, daily, *-*-* 06:00)")
+	enable.Flags().String("on-calendar", "daily", "systemd OnCalendar expression (e.g. daily, *-*-* 06:00)")
 
 	disable := &cobra.Command{
 		Use:   "disable",
@@ -143,10 +143,11 @@ func newScheduleCmd() *cobra.Command {
 	status := &cobra.Command{
 		Use:   "status",
 		Short: "Show the report timer state and the age of its reports",
-		Long: `Reports what systemd has right now: whether the units are installed, the enabled
-and active state of the timer, the OnCalendar expression it fires on, and how old
-check.json and doctor.json are. A report older than 48 hours is marked stale, the
-same horizon the monitoring hub's RootfilesReportStale alert uses. Read-only.`,
+		Long: `Reports what systemd has right now: whether the units are installed, the
+enabled and active state of the timer, the OnCalendar expression it fires on,
+and how old check.json and doctor.json are. A report older than 48 hours is
+marked stale, the same horizon the monitoring hub's RootfilesReportStale alert
+uses. Read-only in either case.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			runner := exec.NewRunner(true, newLogger(cmd, true, slog.LevelInfo))

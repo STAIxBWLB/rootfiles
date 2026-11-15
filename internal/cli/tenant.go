@@ -19,7 +19,7 @@ import (
 func newTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "tenant",
-		Short: "Manage long-lived tenant containers (volume quota, accounts, GPUs)",
+		Short: "Manage long-lived tenant containers",
 		Long: `Each tenant gets one Docker container with SSH on its own host port, a
 size-capped volume (/data, /home, /tmp) and accounts whose passwords and
 host keys survive image changes. Specs live in <home_base>/.rootfiles/tenants.`,
@@ -149,10 +149,11 @@ func newTenantStatusCmd() *cobra.Command {
 
 func newTenantCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "create TENANT",
-		Short:   "Create a tenant: volume, container and temporary passwords",
-		Args:    cobra.ExactArgs(1),
-		Example: `  sudo rootfiles tenant create lab --image ubuntu:24.04 --ssh-port 2201 --size 200G --account alice:1000`,
+		Use:   "create TENANT",
+		Short: "Create a tenant: volume, container and temporary passwords",
+		Args:  cobra.ExactArgs(1),
+		Example: `  sudo rootfiles tenant create lab --image ubuntu:24.04 --size 200G
+  sudo rootfiles tenant create lab --ssh-port 2201 --account alice:1000`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t := args[0]
 			s := &tenant.Spec{Name: t}
@@ -220,7 +221,7 @@ func newTenantCreateCmd() *cobra.Command {
 	f.StringArray("account", nil, "Account NAME[:UID[:GID]] (repeatable; uid defaults to 1000, 1001, ...)")
 	f.Bool("sudo", false, "Give the accounts sudo inside the container")
 	f.StringArray("port", nil, "Extra published port HOST:CONTAINER[/udp] (repeatable)")
-	f.StringArray("operator", nil, "Host account allowed `sudo rootfiles tenant ops` on this tenant (repeatable)")
+	f.StringArray("operator", nil, "Host account allowed `sudo rootfiles tenant ops` (repeatable)")
 	f.StringArray("bind", nil, "Extra bind SRC:DST[:ro|rw] outside the quota (repeatable)")
 	return cmd
 }
@@ -250,7 +251,7 @@ func parseAccount(s string, defUID int, sudo bool) (tenant.User, error) {
 func newTenantApplyCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "apply [TENANT]",
-		Short: "Converge a tenant to its spec (recreates the container on image, GPU or port changes)",
+		Short: "Converge a tenant to its spec",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			all, _ := cmd.Flags().GetBool("all")
@@ -341,7 +342,7 @@ func newTenantPasswdCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "passwd TENANT USER",
 		Aliases: []string{"reset"},
-		Short:   "Issue a temporary password that must be changed at first login",
+		Short:   "Issue a temporary password for a tenant user",
 		Long: `Issues a temporary password that the tenant user must change at first login.
 "reset" is an alias: it was a second copy of this command.`,
 		Args: cobra.ExactArgs(2),
@@ -386,12 +387,12 @@ func newTenantGPUCmd() *cobra.Command {
 func newTenantCpusetCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cpuset TENANT",
-		Short: "Save CPU/NUMA pinning and update the existing container without restarting",
+		Short: "Pin tenant CPUs and NUMA memory",
 		Long: `Changes only CPU/NUMA pinning, leaving other pending settings for tenant apply.
-Empty or absent spec keys are unmanaged; omitted flags retain existing spec keys.
---clear removes the spec field and resets
-both container settings to the host's full lists. On cgroup v2, changing memory
-nodes migrates existing memory pages and can take time for large processes.`,
+Empty or absent spec keys are unmanaged; omitted flags retain existing keys.
+--clear removes the spec field and resets both container settings to the host's
+full lists. On cgroup v2, changing memory nodes migrates existing memory pages
+and can take time for large processes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cpus, _ := cmd.Flags().GetString("cpus")
@@ -428,7 +429,7 @@ nodes migrates existing memory pages and can take time for large processes.`,
 		},
 	}
 	cmd.Flags().String("cpus", "", "Host CPU list (N or N-M, comma-separated; empty makes it unmanaged)")
-	cmd.Flags().String("mems", "", "NUMA memory-node list (N or N-M, comma-separated; empty makes it unmanaged)")
+	cmd.Flags().String("mems", "", "NUMA memory nodes (N or N-M, comma-separated; empty = unmanaged)")
 	cmd.Flags().Bool("clear", false, "Remove cpuset from the spec and reset the container to the full host lists")
 	return cmd
 }
@@ -469,7 +470,7 @@ func newTenantVolumeCmd() *cobra.Command {
 	vol := &cobra.Command{Use: "volume", Short: "Manage tenant volumes"}
 	resize := &cobra.Command{
 		Use:   "resize TENANT SIZE",
-		Short: "Grow a volume online, or shrink an ext4 volume with --offline",
+		Short: "Grow a volume, or shrink it offline",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			offline, _ := cmd.Flags().GetBool("offline")
@@ -529,7 +530,7 @@ func newTenantLogsCmd() *cobra.Command {
 func newTenantImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "import TENANT",
-		Short: "Move a hand-made container under rootfiles (the old one is kept stopped)",
+		Short: "Adopt an existing container as a tenant",
 		Long: `Writes the spec from the running container, copies its host keys, password
 hashes, --data and --keep paths into a new volume, stops the old container and
 starts the tenant container. Ask the tenant to stop writing first. Refuses
@@ -558,7 +559,7 @@ before any change when the data does not fit the volume or the free space;
 	f.String("size", "", "New volume size")
 	f.String("fs", "ext4", "Volume filesystem: ext4 or xfs")
 	f.String("data", "", "Host directory copied into the new /data")
-	f.StringArray("keep", nil, "Path under /home or /tmp in the old container to copy (repeatable)")
+	f.StringArray("keep", nil, "Path to copy from the old container (repeatable)")
 	f.StringArray("operator", nil, "Host account allowed `sudo rootfiles tenant ops` (repeatable)")
 	return cmd
 }
@@ -566,10 +567,12 @@ before any change when the data does not fit the volume or the free space;
 func newTenantOpsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "ops TENANT ACTION [USER]",
-		Short: "Operator actions through sudo: " + strings.Join(tenant.OpsActions, "|"),
+		Short: "Run tenant operator actions (sudo)",
 		Long: `Members of the tenant operator group run this with sudo. It acts only for
 tenants that list the caller in operators, takes no flags, and reads only the
-host's applied configuration. Every attempt is audited.`,
+host's applied configuration. Every attempt is audited.
+
+Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 		Args: cobra.RangeArgs(2, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, action := args[0], args[1]
@@ -629,7 +632,7 @@ host's applied configuration. Every attempt is audited.`,
 func newTenantSyncCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "sync",
-		Short: "Save password hashes and refresh sshpiper keys of every tenant (2-minute timer)",
+		Short: "Refresh tenant password hashes and sshpiper keys",
 		Long: `Runs without the global lock, so the timer never fails because an apply is
 running: it only rewrites each tenant's derived files. It still needs root.`,
 		Args: cobra.NoArgs,

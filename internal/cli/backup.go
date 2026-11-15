@@ -41,8 +41,8 @@ var (
 func newBackupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "backup",
-		Short: "Full system backup for OS upgrade / restore",
-		Long:  "Captures system info, user metadata, config files, and a rootfiles-compatible config snapshot.",
+		Short: "Back up the system for an OS upgrade or restore",
+		Long:  "Captures system info, user metadata, config files, and a rootfiles-compatible\nconfig snapshot.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 			outputBase := stringFlagOrAlias(cmd, "dir", "output")
@@ -180,7 +180,7 @@ func newBackupCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("dir", defaultBackupDir(), "Backup directory (the archive goes in a rootfiles-backup-* subdirectory)")
+	cmd.Flags().String("dir", defaultBackupDir(), "Backup root (the archive goes in a rootfiles-backup-* subdirectory)")
 	cmd.Flags().StringP("output", "o", "", "Deprecated alias for --dir")
 	_ = cmd.Flags().MarkDeprecated("output", "use --dir instead")
 	_ = cmd.Flags().MarkShorthandDeprecated("output", "use --dir instead")
