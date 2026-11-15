@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,8 +18,10 @@ import (
 	"github.com/STAIxBWLB/rootfiles/internal/shutdown"
 )
 
-// fleetShutdownFixture writes an inventory and points the run log and PATH at
-// temp dirs. PATH holds no ssh, so a run that tries to connect fails loudly.
+// fleetShutdownFixture writes an inventory and points the run log at temp dirs.
+// PATH holds only an ssh stub that answers -G (a destination's own name on port
+// 22) and refuses to connect, so the self-check can run while any real
+// connection still fails loudly.
 func fleetShutdownFixture(t *testing.T, body string) string {
 	t.Helper()
 	inventory := filepath.Join(t.TempDir(), "fleet.yaml")
@@ -26,7 +29,17 @@ func fleetShutdownFixture(t *testing.T, body string) string {
 		t.Fatal(err)
 	}
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
-	t.Setenv("PATH", t.TempDir())
+	bin := t.TempDir()
+	stub := `#!/bin/sh
+case "$1" in
+-G) printf 'hostname %s\nport 22\n' "$2" ;;
+*) printf 'ssh stub: the test does not connect\n' >&2; exit 255 ;;
+esac
+`
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(stub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
 	return inventory
 }
 
@@ -49,7 +62,7 @@ func TestFleetShutdownRefusesBadInputBeforeConnecting(t *testing.T) {
 		want []string
 	}{
 		{"--in below a minute", []string{"now", "--in", "30s"}, []string{"--in 30s", "at least 1 minute"}},
-		{"--in beyond the window", []string{"now", "--in", "744h"}, []string{"at most 30 days"}},
+		{"--in beyond the window", []string{"now", "--in", "744h"}, []string{"at most 719h59m25s", "30 days"}},
 		{"missing --at", []string{"schedule"}, []string{"--at is required", "RFC 3339"}},
 		{"--at without an offset", []string{"schedule", "--at", "2026-11-21T18:00:00"}, []string{"explicit offset"}},
 		{"--at too soon", []string{"schedule", "--at", time.Now().Add(10 * time.Second).UTC().Format(time.RFC3339)}, []string{"at least 1 minute ahead"}},
@@ -261,27 +274,40 @@ func TestFleetShutdownCancelDryRunReachesEveryHost(t *testing.T) {
 	}
 }
 
-// AC9: self-detection follows what ssh would actually connect to, so an alias
-// or a loopback address cannot carry the rollout onto this machine.
+// AC9: self-detection follows what ssh would actually connect to and where that
+// name resolves, so an alias, a loopback address or a DNS name for this machine
+// cannot carry the rollout onto it; when the identity cannot be read at all, the
+// run is refused rather than waved through.
 func TestFleetShutdownResolvesAliasesAndLoopbackToThisController(t *testing.T) {
-	previousTarget := sshEffectiveTarget
-	previousLocal := localHostIdentities
-	t.Cleanup(func() { sshEffectiveTarget, localHostIdentities = previousTarget, previousLocal })
-	sshEffectiveTarget = func(destination string) (string, string) {
+	previousTarget, previousLocal, previousResolve := sshEffectiveTarget, localHostIdentities, resolveHost
+	t.Cleanup(func() {
+		sshEffectiveTarget, localHostIdentities, resolveHost = previousTarget, previousLocal, previousResolve
+	})
+	sshEffectiveTarget = func(destination string) (string, string, error) {
 		switch destination {
 		case "buildbox":
-			return "127.0.0.1", "22"
+			return "127.0.0.1", "22", nil
 		case "forwarded":
-			return "127.0.0.1", "2222"
+			return "127.0.0.1", "2222", nil
+		case "beam":
+			return "beam.example.org", "22", nil
 		}
-		return destination, "22"
+		return destination, "22", nil
 	}
-	localHostIdentities = func() localIdentities {
+	// Only the DNS alias resolves, and it resolves to this machine's address.
+	resolveHost = func(host string) ([]string, error) {
+		if host == "beam.example.org" {
+			return []string{"192.0.2.10"}, nil
+		}
+		return nil, errors.New("no such host")
+	}
+	localHostIdentities = func() (localIdentities, error) {
 		return localIdentities{
-			definite: identitySet([]string{"controller.example.org", "192.0.2.10"}),
+			names:    identitySet([]string{"controller.example.org"}),
+			addrs:    map[string]bool{"192.0.2.10": true},
 			loopback: identitySet([]string{"localhost", "127.0.0.1", "::1"}),
 			sshPort:  "22",
-		}
+		}, nil
 	}
 
 	for _, tc := range []struct {
@@ -294,11 +320,13 @@ func TestFleetShutdownResolvesAliasesAndLoopbackToThisController(t *testing.T) {
 		{"localhost name", "localhost", ""},
 		{"controller interface address", "gpu-1", "192.0.2.10"},
 		{"controller hostname", "controller.example.org", ""},
+		{"dns alias to a local address", "beam", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			hosts := []fleet.NamedHost{{Name: "gpu-1", Host: fleet.Host{SSH: tc.ssh, Address: tc.address}}}
-			if got := controllerHostsIn(hosts); len(got) != 1 || got[0] != "gpu-1" {
-				t.Fatalf("%s was not recognised as this controller: %v", tc.name, got)
+			got, err := controllerHostsIn(hosts)
+			if err != nil || len(got) != 1 || got[0] != "gpu-1" {
+				t.Fatalf("%s was not recognised as this controller: %v err=%v", tc.name, got, err)
 			}
 		})
 	}
@@ -310,21 +338,79 @@ func TestFleetShutdownResolvesAliasesAndLoopbackToThisController(t *testing.T) {
 		{Name: "ssh-good", Host: fleet.Host{SSH: "forwarded"}},
 		{Name: "ssh-bad", Host: fleet.Host{SSH: "forwarded", Address: "127.0.0.1"}},
 	}
-	if got := controllerHostsIn(forwarded); len(got) != 0 {
-		t.Fatalf("a host reached through a loopback forward was refused as the controller: %v", got)
+	if got, err := controllerHostsIn(forwarded); err != nil || len(got) != 0 {
+		t.Fatalf("a host reached through a loopback forward was refused as the controller: %v err=%v", got, err)
 	}
 	// A genuinely remote host stays selectable.
 	remote := []fleet.NamedHost{{Name: "web1", Host: fleet.Host{SSH: "web1.example.org", Address: "192.0.2.55"}}}
-	if got := controllerHostsIn(remote); len(got) != 0 {
-		t.Fatalf("a remote host was refused as the controller: %v", got)
+	if got, err := controllerHostsIn(remote); err != nil || len(got) != 0 {
+		t.Fatalf("a remote host was refused as the controller: %v err=%v", got, err)
 	}
 	// Two hosts in the same subnet do not collapse to one identity.
 	neighbours := []fleet.NamedHost{
 		{Name: "a", Host: fleet.Host{SSH: "10.0.0.5"}},
 		{Name: "b", Host: fleet.Host{SSH: "10.0.0.6"}},
 	}
-	if got := controllerHostsIn(neighbours); len(got) != 0 {
-		t.Fatalf("addresses in one subnet were treated as the controller: %v", got)
+	if got, err := controllerHostsIn(neighbours); err != nil || len(got) != 0 {
+		t.Fatalf("addresses in one subnet were treated as the controller: %v err=%v", got, err)
+	}
+
+	// Fail closed: when the identity cannot be read, the selection is refused
+	// rather than assumed safe.
+	sshEffectiveTarget = func(destination string) (string, string, error) {
+		return "", "", errors.New("ssh: executable file not found in $PATH")
+	}
+	if got, err := controllerHostsIn(remote); err == nil {
+		t.Fatalf("an unreadable ssh configuration was accepted: %v", got)
+	}
+	localHostIdentities = func() (localIdentities, error) {
+		return localIdentities{}, errors.New("cannot read interface addresses")
+	}
+	if got, err := controllerHostsIn(remote); err == nil {
+		t.Fatalf("an unreadable interface list was accepted: %v", got)
+	}
+}
+
+// A loopback address is an interface address of this machine, but on any port
+// other than its own sshd it is a forward to a different host. Reading the
+// classification from a fabricated interface list keeps the host out of it and
+// covers what `net.InterfaceAddrs` on the controller actually returns.
+func TestLocalIdentitiesKeepLoopbackOutOfTheDefiniteSet(t *testing.T) {
+	local := identitiesFrom("controller.example.org", []net.Addr{
+		&net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)},
+		&net.IPNet{IP: net.ParseIP("::1"), Mask: net.CIDRMask(128, 128)},
+		&net.IPNet{IP: net.ParseIP("192.0.2.10"), Mask: net.CIDRMask(24, 32)},
+	})
+	for _, tc := range []struct {
+		name     string
+		definite bool
+		loopback bool
+	}{
+		{"controller.example.org", true, false},
+		{"192.0.2.10", true, false},
+		{"127.0.0.1", false, true},
+		{"::1", false, true},
+		{"localhost", false, true},
+	} {
+		if got := local.isDefinite(tc.name); got != tc.definite {
+			t.Fatalf("%s definite = %v, want %v", tc.name, got, tc.definite)
+		}
+		if got := local.isLoopback(tc.name); got != tc.loopback {
+			t.Fatalf("%s loopback = %v, want %v", tc.name, got, tc.loopback)
+		}
+	}
+	// The scenario's own shape: both containers answer on 127.0.0.1, each on a
+	// port of its own, so neither may be taken for the controller.
+	previousTarget, previousLocal := sshEffectiveTarget, localHostIdentities
+	t.Cleanup(func() { sshEffectiveTarget, localHostIdentities = previousTarget, previousLocal })
+	sshEffectiveTarget = func(string) (string, string, error) { return "127.0.0.1", "32768", nil }
+	localHostIdentities = func() (localIdentities, error) { return local, nil }
+	hosts := []fleet.NamedHost{
+		{Name: "ssh-good", Host: fleet.Host{SSH: "fleet-good"}},
+		{Name: "ssh-bad", Host: fleet.Host{SSH: "fleet-bad", Address: "127.0.0.1"}},
+	}
+	if got, err := controllerHostsIn(hosts); err != nil || len(got) != 0 {
+		t.Fatalf("a forwarded loopback host was refused as the controller: %v err=%v", got, err)
 	}
 }
 
