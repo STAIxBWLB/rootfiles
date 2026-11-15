@@ -29,6 +29,8 @@ func NewRootCmd(version, commit string) *cobra.Command {
 			"hosts' for the hosts an inventory names. To change a host, 'rootfiles check'\n" +
 			"shows what would differ and 'rootfiles apply' converges it.\n\n" +
 			"Profiles: " + strings.Join(config.AvailableProfiles(), ", ") + ".",
+		Example: `  rootfiles status
+  sudo rootfiles apply --config /etc/rootfiles/site.yaml`,
 		PersistentPreRunE: preflight,
 		SilenceUsage:      true,
 		SilenceErrors:     true, // main prints the error once

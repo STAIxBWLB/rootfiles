@@ -411,7 +411,7 @@ Per-user GPU allocation ([gpu.md](gpu.md)). Reads `--profile`, `--config` and `-
 
 ### rootfiles gpu assign
 
-`sudo rootfiles gpu assign USER --gpus 0,1`. Mutating. Assigning a user again replaces the allocation.
+`sudo rootfiles gpu assign <USERNAME> --gpus 0,1`. Mutating. Assigning a user again replaces the allocation.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -432,7 +432,7 @@ Show the current and pending MIG mode and the instances of each GPU.
 
 ### rootfiles gpu revoke
 
-`sudo rootfiles gpu revoke USER`. Mutating. Refuses a tenant's entry; use `tenant gpu`.
+`sudo rootfiles gpu revoke <USERNAME>`. Mutating. Refuses a tenant's entry; use `tenant gpu`.
 
 ### rootfiles gpu status
 
@@ -519,7 +519,7 @@ Long-lived tenant containers ([tenant.md](tenant.md)). Every subcommand except `
 
 ### rootfiles tenant create
 
-`rootfiles tenant create TENANT`. Write the spec, create the volume, start the container and print a temporary password per account. Mutating.
+`rootfiles tenant create <TENANT>`. Write the spec, create the volume, start the container and print a temporary password per account. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -538,7 +538,7 @@ Long-lived tenant containers ([tenant.md](tenant.md)). Every subcommand except `
 
 ### rootfiles tenant cpuset
 
-`rootfiles tenant cpuset TENANT --cpus 0-3 --mems 0`. Save CPU/NUMA pinning and update the existing running or stopped container in place, without restarting. Mutating.
+`rootfiles tenant cpuset <TENANT> --cpus 0-3 --mems 0`. Save CPU/NUMA pinning and update the existing running or stopped container in place, without restarting. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -550,7 +550,7 @@ Absent or empty spec keys are unmanaged, so hand-set pins stay untouched. Other 
 
 ### rootfiles tenant gpu
 
-`rootfiles tenant gpu TENANT --gpus 0,1`. Change a tenant's GPUs and recreate the container. Mutating.
+`rootfiles tenant gpu <TENANT> --gpus 0,1`. Change a tenant's GPUs and recreate the container. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -558,11 +558,11 @@ Absent or empty spec keys are unmanaged, so hand-set pins stay untouched. Other 
 
 ### rootfiles tenant image
 
-`rootfiles tenant image TENANT IMAGE`. Change the image and recreate the container. Mutating.
+`rootfiles tenant image <TENANT> <IMAGE>`. Change the image and recreate the container. Mutating.
 
 ### rootfiles tenant import
 
-`rootfiles tenant import TENANT --from CONTAINER --size SIZE`. Move a hand-made container under rootfiles; the old container is kept stopped. Mutating.
+`rootfiles tenant import <TENANT> --from <CONTAINER> --size <SIZE>`. Move a hand-made container under rootfiles; the old container is kept stopped. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -579,7 +579,7 @@ Print the tenant names.
 
 ### rootfiles tenant logs
 
-`rootfiles tenant logs TENANT`. Show the container log.
+`rootfiles tenant logs <TENANT>`. Show the container log.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -587,19 +587,19 @@ Print the tenant names.
 
 ### rootfiles tenant ops
 
-`sudo rootfiles tenant ops TENANT ACTION [USER]` with `ACTION` one of `status`, `logs`, `gpu-heal`, `restart` or `reset USER`. For members of the tenant operator group listed in the spec's `operators`. It takes no flags, ignores `ROOTFILES_*` variables, reads only the applied host config, and audits every attempt, refused ones included.
+`sudo rootfiles tenant ops <TENANT> <ACTION> [USER]` with `ACTION` one of `status`, `logs`, `gpu-heal`, `restart` or `reset USER`. For members of the tenant operator group listed in the spec's `operators`. It takes no flags, ignores `ROOTFILES_*` variables, reads only the applied host config, and audits every attempt, refused ones included.
 
 ### rootfiles tenant passwd
 
-`rootfiles tenant passwd TENANT USER`. Issue a temporary password that must be changed at first login. Alias: `tenant reset`. Mutating.
+`rootfiles tenant passwd <TENANT> <USER>`. Issue a temporary password that must be changed at first login. Alias: `tenant reset`. Mutating.
 
 ### rootfiles tenant port
 
-`rootfiles tenant port TENANT SSH_PORT`. Change the SSH host port and recreate the container. Mutating.
+`rootfiles tenant port <TENANT> <SSH_PORT>`. Change the SSH host port and recreate the container. Mutating.
 
 ### rootfiles tenant restart
 
-`rootfiles tenant restart TENANT`. Restart the container; it is kept. Mutating.
+`rootfiles tenant restart <TENANT>`. Restart the container; it is kept. Mutating.
 
 ### rootfiles tenant status
 
@@ -615,7 +615,7 @@ Tenant accounts.
 
 ### rootfiles tenant user add
 
-`rootfiles tenant user add TENANT NAME`. Add an account to a running tenant and print its temporary password. Mutating.
+`rootfiles tenant user add <TENANT> <NAME>`. Add an account to a running tenant and print its temporary password. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -629,7 +629,7 @@ Tenant volumes.
 
 ### rootfiles tenant volume resize
 
-`rootfiles tenant volume resize TENANT SIZE`. Grow a volume online, or shrink an ext4 volume. Mutating.
+`rootfiles tenant volume resize <TENANT> <SIZE>`. Grow a volume online, or shrink an ext4 volume. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -687,7 +687,7 @@ Accounts and the home base ([users.md](users.md)). Every subcommand reads `--pro
 
 ### rootfiles user add
 
-`sudo rootfiles user add [USERNAME]`. Create an account under the home base. Mutating.
+`sudo rootfiles user add <USERNAME>`. Create an account under the home base. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -713,7 +713,7 @@ Write the users database, merged with the accounts found on the host, to a JSON 
 
 ### rootfiles user del
 
-`sudo rootfiles user del USERNAME`. Remove the account, its sudoers drop-in, GPU allocation and database entry. The home is kept by default. Mutating.
+`sudo rootfiles user del <USERNAME>`. Remove the account, its sudoers drop-in, GPU allocation and database entry. The home is kept by default. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -726,11 +726,11 @@ Show home directory usage per user, largest first.
 
 ### rootfiles user expire
 
-`sudo rootfiles user expire USERNAME YYYY-MM-DD|never`. Set or clear the account expiry date. Mutating.
+`sudo rootfiles user expire <USERNAME> <YYYY-MM-DD|never>`. Set or clear the account expiry date. Mutating.
 
 ### rootfiles user group-add
 
-`sudo rootfiles user group-add USERNAME`. Add the account to groups. Mutating.
+`sudo rootfiles user group-add <USERNAME>`. Add the account to groups. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -740,7 +740,7 @@ Show home directory usage per user, largest first.
 
 ### rootfiles user group-del
 
-`sudo rootfiles user group-del USERNAME`. Remove the account from groups. Mutating.
+`sudo rootfiles user group-del <USERNAME>`. Remove the account from groups. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -754,7 +754,7 @@ Show home directory usage per user, largest first.
 
 ### rootfiles user id
 
-`rootfiles user id USERNAME`. Show UID, GID and groups.
+`rootfiles user id <USERNAME>`. Show UID, GID and groups.
 
 ### rootfiles user key
 
@@ -762,15 +762,15 @@ A user's SSH authorized keys.
 
 ### rootfiles user key add
 
-`sudo rootfiles user key add USERNAME 'ssh-ed25519 AAAA... comment'`. Mutating.
+`sudo rootfiles user key add <USERNAME> <KEY>`. Mutating.
 
 ### rootfiles user key list
 
-`rootfiles user key list USERNAME`. List the authorized keys, numbered.
+`rootfiles user key list <USERNAME>`. List the authorized keys, numbered.
 
 ### rootfiles user key rm
 
-`sudo rootfiles user key rm USERNAME INDEX|KEY|COMMENT`. Remove keys by list index, key or comment. Mutating.
+`sudo rootfiles user key rm <USERNAME> <INDEX|KEY|COMMENT>`. Remove keys by list index, key or comment. Mutating.
 
 ### rootfiles user list
 
@@ -783,7 +783,7 @@ List managed users.
 
 ### rootfiles user lock
 
-`sudo rootfiles user lock USERNAME`. Block password and SSH key logins. Mutating.
+`sudo rootfiles user lock <USERNAME>`. Block password and SSH key logins. Mutating.
 
 ### rootfiles user passwd
 
@@ -804,11 +804,11 @@ Per-user hard limits on the home base filesystem: XFS project quota or ext4 user
 
 ### rootfiles user quota rm
 
-`sudo rootfiles user quota rm USERNAME`. Remove a user's limit. Mutating.
+`sudo rootfiles user quota rm <USERNAME>`. Remove a user's limit. Mutating.
 
 ### rootfiles user quota set
 
-`sudo rootfiles user quota set USERNAME SIZE`, such as `500G`. The limit is recorded and applied again by `user restore`. Mutating.
+`sudo rootfiles user quota set <USERNAME> <SIZE>`, such as `500G`. The limit is recorded and applied again by `user restore`. Mutating.
 
 ### rootfiles user quota show
 
@@ -816,7 +816,7 @@ Show the quota report.
 
 ### rootfiles user rehome
 
-`sudo rootfiles user rehome USERNAME`. Copy the home to `<home_base>/<user>`, verify the copy, switch the account and leave a symlink at the old path. Mutating.
+`sudo rootfiles user rehome <USERNAME>`. Copy the home to `<home_base>/<user>`, verify the copy, switch the account and leave a symlink at the old path. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -828,4 +828,4 @@ Show the quota report.
 
 ### rootfiles user unlock
 
-`sudo rootfiles user unlock USERNAME`. Re-enable logins. Mutating.
+`sudo rootfiles user unlock <USERNAME>`. Re-enable logins. Mutating.

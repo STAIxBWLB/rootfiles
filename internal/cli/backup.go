@@ -43,6 +43,8 @@ func newBackupCmd() *cobra.Command {
 		Use:   "backup",
 		Short: "Back up the system for an OS upgrade or restore",
 		Long:  "Captures system info, user metadata, config files, and a rootfiles-compatible\nconfig snapshot.",
+		Example: `  sudo rootfiles backup
+  sudo rootfiles backup --dir /data/backup --skip-docker`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 			outputBase := stringFlagOrAlias(cmd, "dir", "output")

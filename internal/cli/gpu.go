@@ -12,13 +12,14 @@ import (
 
 func newGPUCmd() *cobra.Command {
 	gpuCmd := &cobra.Command{
-		Use:   "gpu",
-		Short: "Manage per-user GPU allocation",
+		Use:     "gpu",
+		Short:   "Manage per-user GPU allocation",
+		Example: "  rootfiles gpu list\n  sudo rootfiles gpu assign alice --gpus 0,1",
 	}
 
-	// rootfiles gpu assign USERNAME --gpus 0,1 [--method env|cgroup|both]
+	// rootfiles gpu assign <USERNAME> --gpus 0,1 [--method env|cgroup|both]
 	assignCmd := &cobra.Command{
-		Use:   "assign USERNAME",
+		Use:   "assign <USERNAME>",
 		Short: "Assign GPUs to a user",
 		Args:  cobra.ExactArgs(1),
 		Example: `  sudo rootfiles gpu assign alice --gpus 0,1
@@ -49,9 +50,10 @@ func newGPUCmd() *cobra.Command {
 
 	// rootfiles gpu revoke USERNAME
 	gpuCmd.AddCommand(&cobra.Command{
-		Use:   "revoke USERNAME",
-		Short: "Revoke GPU allocation from a user",
-		Args:  cobra.ExactArgs(1),
+		Use:     "revoke <USERNAME>",
+		Short:   "Revoke GPU allocation from a user",
+		Example: "  sudo rootfiles gpu revoke alice",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
@@ -63,8 +65,9 @@ func newGPUCmd() *cobra.Command {
 
 	// rootfiles gpu list
 	gpuCmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "List current GPU allocations",
+		Use:     "list",
+		Short:   "List current GPU allocations",
+		Example: "  rootfiles gpu list",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
@@ -76,8 +79,9 @@ func newGPUCmd() *cobra.Command {
 
 	// rootfiles gpu status
 	gpuCmd.AddCommand(&cobra.Command{
-		Use:   "status",
-		Short: "Show GPU status with allocation info",
+		Use:     "status",
+		Short:   "Show GPU status with allocation info",
+		Example: "  rootfiles gpu status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
@@ -87,10 +91,12 @@ func newGPUCmd() *cobra.Command {
 		},
 	})
 
-	migCmd := &cobra.Command{Use: "mig", Short: "Show Multi-Instance GPU mode and instances"}
+	migCmd := &cobra.Command{Use: "mig", Short: "Show Multi-Instance GPU mode and instances",
+		Example: "  rootfiles gpu mig status"}
 	migCmd.AddCommand(&cobra.Command{
-		Use:   "status",
-		Short: "Show MIG mode and instances per GPU",
+		Use:     "status",
+		Short:   "Show MIG mode and instances per GPU",
+		Example: "  rootfiles gpu mig status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {

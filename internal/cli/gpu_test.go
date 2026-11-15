@@ -52,13 +52,14 @@ func TestNewGPUCmd_Structure(t *testing.T) {
 		t.Errorf("Use = %q, want gpu", cmd.Use)
 	}
 
-	// Verify subcommands exist
+	// Verify subcommands exist. The argument notation of a Use line is not part
+	// of this check: TestHelpStyleAcrossTree holds that.
 	subCmds := make(map[string]bool)
 	for _, sub := range cmd.Commands() {
-		subCmds[sub.Use] = true
+		subCmds[sub.Name()] = true
 	}
 
-	expected := []string{"assign USERNAME", "revoke USERNAME", "list", "status"}
+	expected := []string{"assign", "revoke", "list", "status"}
 	for _, name := range expected {
 		if !subCmds[name] {
 			t.Errorf("missing subcommand %q", name)

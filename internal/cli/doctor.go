@@ -19,8 +19,9 @@ var doctorChecks = module.Doctor
 
 func newDoctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "doctor",
-		Short: "Check disks, reboot, time sync, GPU, systemd and access",
+		Use:     "doctor",
+		Short:   "Check disks, reboot, time sync, GPU, systemd and access",
+		Example: "  sudo rootfiles doctor\n  sudo rootfiles doctor --json --strict",
 		Long: "Read-only health checks of the live system, as opposed to `check`,\n" +
 			"which compares against the profile.\n" +
 			"Exit code: 0 = no failures, 2 = at least one failure (or warning with --strict).",

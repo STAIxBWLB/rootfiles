@@ -18,8 +18,9 @@ var setCLIUserPasswords = module.SetPasswords
 
 func newUserCmd() *cobra.Command {
 	userCmd := &cobra.Command{
-		Use:   "user",
-		Short: "Manage system users (custom home, backup, restore)",
+		Use:     "user",
+		Short:   "Manage system users (custom home, backup, restore)",
+		Example: "  rootfiles user list\n  sudo rootfiles user add alice --ssh-pubkey \"$(cat ~/.ssh/id_ed25519.pub)\"",
 	}
 
 	userCmd.AddCommand(
@@ -48,7 +49,7 @@ func newUserCmd() *cobra.Command {
 
 func newUserAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add [USERNAME]",
+		Use:   "add <USERNAME>",
 		Short: "Create a user with custom home directory",
 		Args:  cobra.MaximumNArgs(1),
 		Example: `  sudo rootfiles user add alice --ssh-pubkey "$(cat ~/.ssh/id_ed25519.pub)"
@@ -101,8 +102,9 @@ func newUserAddCmd() *cobra.Command {
 
 func newUserListCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List managed users (or system users with --system)",
+		Use:     "list",
+		Short:   "List managed users (or system users with --system)",
+		Example: "  rootfiles user list\n  rootfiles user list --names --system",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -129,8 +131,9 @@ func newUserListCmd() *cobra.Command {
 
 func newUserBackupCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "backup",
-		Short: "Backup user list and metadata to JSON",
+		Use:     "backup",
+		Short:   "Backup user list and metadata to JSON",
+		Example: "  sudo rootfiles user backup\n  sudo rootfiles user backup --file /root/users.json",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -149,9 +152,10 @@ func newUserBackupCmd() *cobra.Command {
 
 func newUserRestoreCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "restore [BACKUP_FILE]",
-		Short: "Restore users from backup (reconnect existing home dirs)",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "restore [BACKUP_FILE]",
+		Short:   "Restore users from backup (reconnect existing home dirs)",
+		Example: "  sudo rootfiles user restore\n  sudo rootfiles user restore /root/users.json",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -168,8 +172,9 @@ func newUserRestoreCmd() *cobra.Command {
 
 func newUserRehomeCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "rehome USERNAME",
-		Short: "Move user home to custom home base directory",
+		Use:     "rehome <USERNAME>",
+		Short:   "Move user home to custom home base directory",
+		Example: "  sudo rootfiles user rehome alice\n  sudo rootfiles user rehome alice --remove-old",
 		Long: "Copy the user's home to <home-base>/<user>, verify the copy, switch the account\n" +
 			"over and leave a symlink at the old path. The original is kept as\n" +
 			"<old>.rootfiles-bak-<ts> unless --remove-old.",
@@ -189,9 +194,10 @@ func newUserRehomeCmd() *cobra.Command {
 
 func newUserIDCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "id USERNAME",
-		Short: "Show UID, GID, and groups for a user",
-		Args:  cobra.ExactArgs(1),
+		Use:     "id <USERNAME>",
+		Short:   "Show UID, GID, and groups for a user",
+		Example: "  rootfiles user id alice",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -204,9 +210,10 @@ func newUserIDCmd() *cobra.Command {
 
 func newUserGroupsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "groups [USERNAME]",
-		Short: "List groups (all groups or for a specific user)",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "groups [USERNAME]",
+		Short:   "List groups (all groups or for a specific user)",
+		Example: "  rootfiles user groups\n  rootfiles user groups alice",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -222,9 +229,10 @@ func newUserGroupsCmd() *cobra.Command {
 
 func newUserGroupAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "group-add USERNAME",
-		Short: "Add a user to groups",
-		Args:  cobra.ExactArgs(1),
+		Use:     "group-add <USERNAME>",
+		Short:   "Add a user to groups",
+		Example: "  sudo rootfiles user group-add alice --groups docker --sudo",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -243,9 +251,10 @@ func newUserGroupAddCmd() *cobra.Command {
 
 func newUserGroupDelCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "group-del USERNAME",
-		Short: "Remove a user from groups",
-		Args:  cobra.ExactArgs(1),
+		Use:     "group-del <USERNAME>",
+		Short:   "Remove a user from groups",
+		Example: "  sudo rootfiles user group-del alice --groups docker",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -284,8 +293,9 @@ func collectGroupFlags(cmd *cobra.Command) []string {
 
 func newUserPasswdCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "passwd [USERNAME...]",
-		Short: "Set passwords for users (batch)",
+		Use:     "passwd [USERNAME...]",
+		Short:   "Set passwords for users (batch)",
+		Example: "  sudo rootfiles user passwd alice --expire\n  sudo rootfiles user passwd --file /root/new-users.csv",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {

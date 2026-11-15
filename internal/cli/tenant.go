@@ -18,8 +18,9 @@ import (
 
 func newTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "tenant",
-		Short: "Manage long-lived tenant containers",
+		Use:     "tenant",
+		Short:   "Manage long-lived tenant containers",
+		Example: "  rootfiles tenant list\n  sudo rootfiles tenant create lab --image ubuntu:24.04 --size 200G",
 		Long: `Each tenant gets one Docker container with SSH on its own host port, a
 size-capped volume (/data, /home, /tmp) and accounts whose passwords and
 host keys survive image changes. Specs live in <home_base>/.rootfiles/tenants.`,
@@ -109,9 +110,10 @@ func issuePassword(ctx context.Context, cmd *cobra.Command, m *tenant.Manager, s
 
 func newTenantListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List tenant names",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List tenant names",
+		Example: "  rootfiles tenant list",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, m, err := tenantEnv(cmd)
 			if err != nil {
@@ -128,9 +130,10 @@ func newTenantListCmd() *cobra.Command {
 
 func newTenantStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status [TENANT]",
-		Short: "Show tenant containers, spec drift and volume use",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "status [TENANT]",
+		Short:   "Show tenant containers, spec drift and volume use",
+		Example: "  rootfiles tenant status\n  rootfiles tenant status lab",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, m, err := tenantEnv(cmd)
 			if err != nil {
@@ -149,7 +152,7 @@ func newTenantStatusCmd() *cobra.Command {
 
 func newTenantCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "create TENANT",
+		Use:   "create <TENANT>",
 		Short: "Create a tenant: volume, container and temporary passwords",
 		Args:  cobra.ExactArgs(1),
 		Example: `  sudo rootfiles tenant create lab --image ubuntu:24.04 --size 200G
@@ -250,9 +253,10 @@ func parseAccount(s string, defUID int, sudo bool) (tenant.User, error) {
 
 func newTenantApplyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "apply [TENANT]",
-		Short: "Converge a tenant to its spec",
-		Args:  cobra.MaximumNArgs(1),
+		Use:     "apply [TENANT]",
+		Short:   "Converge a tenant to its spec",
+		Example: "  sudo rootfiles tenant apply lab\n  sudo rootfiles tenant apply --all",
+		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			all, _ := cmd.Flags().GetBool("all")
 			if all == (len(args) == 1) {
@@ -293,11 +297,13 @@ func newTenantApplyCmd() *cobra.Command {
 }
 
 func newTenantUserCmd() *cobra.Command {
-	userCmd := &cobra.Command{Use: "user", Short: "Manage tenant accounts"}
+	userCmd := &cobra.Command{Use: "user", Short: "Manage tenant accounts",
+		Example: "  sudo rootfiles tenant user add lab alice"}
 	add := &cobra.Command{
-		Use:   "add TENANT NAME",
-		Short: "Add an account and issue its temporary password",
-		Args:  cobra.ExactArgs(2),
+		Use:     "add <TENANT> <NAME>",
+		Short:   "Add an account and issue its temporary password",
+		Example: "  sudo rootfiles tenant user add lab alice --uid 1001 --sudo",
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t, name := args[0], args[1]
 			uid, _ := cmd.Flags().GetInt("uid")
@@ -340,9 +346,10 @@ func newTenantUserCmd() *cobra.Command {
 
 func newTenantPasswdCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:     "passwd TENANT USER",
+		Use:     "passwd <TENANT> <USER>",
 		Aliases: []string{"reset"},
 		Short:   "Issue a temporary password for a tenant user",
+		Example: "  sudo rootfiles tenant passwd lab alice",
 		Long: `Issues a temporary password that the tenant user must change at first login.
 "reset" is an alias: it was a second copy of this command.`,
 		Args: cobra.ExactArgs(2),
@@ -361,9 +368,10 @@ func newTenantPasswdCmd() *cobra.Command {
 
 func newTenantGPUCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "gpu TENANT",
-		Short: "Change a tenant's GPUs (recreates the container)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "gpu <TENANT>",
+		Short:   "Change a tenant's GPUs (recreates the container)",
+		Example: "  sudo rootfiles tenant gpu lab --gpus 0,1\n  sudo rootfiles tenant gpu lab --gpus none",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			g, _ := cmd.Flags().GetString("gpus")
 			var gpus []int
@@ -386,8 +394,9 @@ func newTenantGPUCmd() *cobra.Command {
 
 func newTenantCpusetCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "cpuset TENANT",
-		Short: "Pin tenant CPUs and NUMA memory",
+		Use:     "cpuset <TENANT>",
+		Short:   "Pin tenant CPUs and NUMA memory",
+		Example: "  sudo rootfiles tenant cpuset lab --cpus 0-3 --mems 0\n  sudo rootfiles tenant cpuset lab --clear",
 		Long: `Changes only CPU/NUMA pinning, leaving other pending settings for tenant apply.
 Empty or absent spec keys are unmanaged; omitted flags retain existing keys.
 --clear removes the spec field and resets both container settings to the host's
@@ -436,9 +445,10 @@ and can take time for large processes.`,
 
 func newTenantImageCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "image TENANT IMAGE",
-		Short: "Change a tenant's image (recreates the container)",
-		Args:  cobra.ExactArgs(2),
+		Use:     "image <TENANT> <IMAGE>",
+		Short:   "Change a tenant's image (recreates the container)",
+		Example: "  sudo rootfiles tenant image lab ubuntu:24.04",
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return editTenant(cmd, args[0], "image "+args[1], func(s *tenant.Spec) error {
 				s.Image = args[1]
@@ -450,9 +460,10 @@ func newTenantImageCmd() *cobra.Command {
 
 func newTenantPortCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "port TENANT SSH_PORT",
-		Short: "Change a tenant's SSH host port (recreates the container)",
-		Args:  cobra.ExactArgs(2),
+		Use:     "port <TENANT> <SSH_PORT>",
+		Short:   "Change a tenant's SSH host port (recreates the container)",
+		Example: "  sudo rootfiles tenant port lab 2201",
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			port, err := strconv.Atoi(args[1])
 			if err != nil {
@@ -467,11 +478,13 @@ func newTenantPortCmd() *cobra.Command {
 }
 
 func newTenantVolumeCmd() *cobra.Command {
-	vol := &cobra.Command{Use: "volume", Short: "Manage tenant volumes"}
+	vol := &cobra.Command{Use: "volume", Short: "Manage tenant volumes",
+		Example: "  sudo rootfiles tenant volume resize lab 500G"}
 	resize := &cobra.Command{
-		Use:   "resize TENANT SIZE",
-		Short: "Grow a volume, or shrink it offline",
-		Args:  cobra.ExactArgs(2),
+		Use:     "resize <TENANT> <SIZE>",
+		Short:   "Grow a volume, or shrink it offline",
+		Example: "  sudo rootfiles tenant volume resize lab 1T\n  sudo rootfiles tenant volume resize lab 500G --offline",
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			offline, _ := cmd.Flags().GetBool("offline")
 			return tenantDo(cmd, args[0], "volume resize "+args[1], func(ctx context.Context, _ *module.RunContext, m *tenant.Manager) error {
@@ -490,9 +503,10 @@ func newTenantVolumeCmd() *cobra.Command {
 
 func newTenantRestartCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "restart TENANT",
-		Short: "Restart a tenant container",
-		Args:  cobra.ExactArgs(1),
+		Use:     "restart <TENANT>",
+		Short:   "Restart a tenant container",
+		Example: "  sudo rootfiles tenant restart lab",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return tenantDo(cmd, args[0], "restart", func(ctx context.Context, _ *module.RunContext, m *tenant.Manager) error {
 				s, err := m.Load(args[0])
@@ -507,9 +521,10 @@ func newTenantRestartCmd() *cobra.Command {
 
 func newTenantLogsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "logs TENANT",
-		Short: "Show the container log",
-		Args:  cobra.ExactArgs(1),
+		Use:     "logs <TENANT>",
+		Short:   "Show the container log",
+		Example: "  rootfiles tenant logs lab --tail 50",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, m, err := tenantEnv(cmd)
 			if err != nil {
@@ -529,8 +544,9 @@ func newTenantLogsCmd() *cobra.Command {
 
 func newTenantImportCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "import TENANT",
-		Short: "Adopt an existing container as a tenant",
+		Use:     "import <TENANT>",
+		Short:   "Adopt an existing container as a tenant",
+		Example: "  sudo rootfiles tenant import lab --from old-lab --size 200G",
 		Long: `Writes the spec from the running container, copies its host keys, password
 hashes, --data and --keep paths into a new volume, stops the old container and
 starts the tenant container. Ask the tenant to stop writing first. Refuses
@@ -566,8 +582,9 @@ before any change when the data does not fit the volume or the free space;
 
 func newTenantOpsCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "ops TENANT ACTION [USER]",
-		Short: "Run tenant operator actions (sudo)",
+		Use:     "ops <TENANT> <ACTION> [USER]",
+		Short:   "Run tenant operator actions (sudo)",
+		Example: "  sudo rootfiles tenant ops lab status\n  sudo rootfiles tenant ops lab reset alice",
 		Long: `Members of the tenant operator group run this with sudo. It acts only for
 tenants that list the caller in operators, takes no flags, and reads only the
 host's applied configuration. Every attempt is audited.
@@ -631,8 +648,9 @@ Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 
 func newTenantSyncCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "sync",
-		Short: "Refresh tenant password hashes and sshpiper keys",
+		Use:     "sync",
+		Short:   "Refresh tenant password hashes and sshpiper keys",
+		Example: "  sudo rootfiles tenant sync",
 		Long: `Runs without the global lock, so the timer never fails because an apply is
 running: it only rewrites each tenant's derived files. It still needs root.`,
 		Args: cobra.NoArgs,

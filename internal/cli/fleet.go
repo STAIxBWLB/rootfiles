@@ -22,6 +22,8 @@ import (
 func newFleetCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use: "fleet", Short: "Manage and monitor an SSH host fleet", Args: cobra.NoArgs,
+		Example: `  rootfiles fleet hosts --group gpu
+  rootfiles fleet status --all --view gpu`,
 		Long: "Manage the hosts named in an operator-owned inventory. The inventory is read\n" +
 			"from $XDG_CONFIG_HOME/rootfiles/fleet.yaml, or from\n" +
 			"~/.config/rootfiles/fleet.yaml when that variable is unset; --inventory names\n" +
@@ -128,7 +130,11 @@ func loadFleetSelection(c *cobra.Command, explicit bool) (*fleet.Inventory, []fl
 }
 
 func newFleetReadCmd(op string) *cobra.Command {
-	c := &cobra.Command{Use: op, Short: "Run a read-only fleet " + op + " report", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+	example := "  rootfiles fleet " + op + " --all\n  rootfiles fleet " + op + " --host gpu01 --json"
+	if op == "status" {
+		example = "  rootfiles fleet status --all\n  rootfiles fleet status --all --view gpu"
+	}
+	c := &cobra.Command{Use: op, Short: "Run a read-only fleet " + op + " report", Args: cobra.NoArgs, Example: example, RunE: func(c *cobra.Command, _ []string) error {
 		inv, hosts, err := loadFleetSelection(c, false)
 		if err != nil {
 			return err
@@ -384,22 +390,25 @@ func newFleetApplyCmd() *cobra.Command {
 	return c
 }
 func newFleetUpdateCmd() *cobra.Command {
-	c := &cobra.Command{Use: "update", Short: "Update selected hosts serially", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-		timeout, err := fleetMutationTimeout(c)
-		if err != nil {
-			return err
-		}
-		_, hs, dry, err := authorizeFleetMutation(c)
-		if err != nil {
-			return err
-		}
-		v, _ := c.Flags().GetString("version")
-		rs, err := fleet.Update(c.Context(), fleetMutationRunner(c, timeout), hs, v, dry)
-		if err != nil {
-			return err
-		}
-		return finishFleetMutation(c, "update", nil, rs, dry)
-	}}
+	c := &cobra.Command{Use: "update", Short: "Update selected hosts serially", Args: cobra.NoArgs,
+		Example: `  sudo rootfiles fleet update --all --version v0.21.0 --yes
+  rootfiles fleet update --host gpu01 --dry-run`,
+		RunE: func(c *cobra.Command, _ []string) error {
+			timeout, err := fleetMutationTimeout(c)
+			if err != nil {
+				return err
+			}
+			_, hs, dry, err := authorizeFleetMutation(c)
+			if err != nil {
+				return err
+			}
+			v, _ := c.Flags().GetString("version")
+			rs, err := fleet.Update(c.Context(), fleetMutationRunner(c, timeout), hs, v, dry)
+			if err != nil {
+				return err
+			}
+			return finishFleetMutation(c, "update", nil, rs, dry)
+		}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
@@ -408,22 +417,24 @@ func newFleetUpdateCmd() *cobra.Command {
 	return c
 }
 func newFleetBootstrapCmd() *cobra.Command {
-	c := &cobra.Command{Use: "bootstrap", Short: "Install a pinned release on selected hosts", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-		timeout, err := fleetMutationTimeout(c)
-		if err != nil {
-			return err
-		}
-		_, hs, dry, err := authorizeFleetMutation(c)
-		if err != nil {
-			return err
-		}
-		v, _ := c.Flags().GetString("version")
-		rs, err := fleet.Bootstrap(c.Context(), fleetMutationRunner(c, timeout), hs, v, dry)
-		if err != nil {
-			return err
-		}
-		return finishFleetMutation(c, "bootstrap", nil, rs, dry)
-	}}
+	c := &cobra.Command{Use: "bootstrap", Short: "Install a pinned release on selected hosts", Args: cobra.NoArgs,
+		Example: `  sudo rootfiles fleet bootstrap --all --version v0.21.0 --yes`,
+		RunE: func(c *cobra.Command, _ []string) error {
+			timeout, err := fleetMutationTimeout(c)
+			if err != nil {
+				return err
+			}
+			_, hs, dry, err := authorizeFleetMutation(c)
+			if err != nil {
+				return err
+			}
+			v, _ := c.Flags().GetString("version")
+			rs, err := fleet.Bootstrap(c.Context(), fleetMutationRunner(c, timeout), hs, v, dry)
+			if err != nil {
+				return err
+			}
+			return finishFleetMutation(c, "bootstrap", nil, rs, dry)
+		}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
@@ -432,31 +443,34 @@ func newFleetBootstrapCmd() *cobra.Command {
 	return c
 }
 func newFleetScheduleCmd() *cobra.Command {
-	c := &cobra.Command{Use: "schedule <enable|disable>", Short: "Enable or disable scheduled reports serially", Args: cobra.ExactArgs(1), RunE: func(c *cobra.Command, args []string) error {
-		action := args[0]
-		calendar, _ := c.Flags().GetString("on-calendar")
-		if c.Flags().Changed("on-calendar") {
-			if action != "enable" {
-				return fmt.Errorf("--on-calendar applies to fleet schedule enable; remove it from fleet schedule disable")
+	c := &cobra.Command{Use: "schedule <enable|disable>", Short: "Enable or disable scheduled reports serially", Args: cobra.ExactArgs(1),
+		Example: `  sudo rootfiles fleet schedule enable --all --yes
+  sudo rootfiles fleet schedule disable --group gpu --yes`,
+		RunE: func(c *cobra.Command, args []string) error {
+			action := args[0]
+			calendar, _ := c.Flags().GetString("on-calendar")
+			if c.Flags().Changed("on-calendar") {
+				if action != "enable" {
+					return fmt.Errorf("--on-calendar applies to fleet schedule enable; remove it from fleet schedule disable")
+				}
+				if err := validateOnCalendar(calendar); err != nil {
+					return err
+				}
 			}
-			if err := validateOnCalendar(calendar); err != nil {
+			timeout, err := fleetMutationTimeout(c)
+			if err != nil {
 				return err
 			}
-		}
-		timeout, err := fleetMutationTimeout(c)
-		if err != nil {
-			return err
-		}
-		_, hs, dry, err := authorizeFleetMutation(c)
-		if err != nil {
-			return err
-		}
-		rs, err := fleet.Schedule(c.Context(), fleetMutationRunner(c, timeout), hs, action, calendar, dry)
-		if err != nil {
-			return err
-		}
-		return finishFleetMutation(c, "schedule "+action, args, rs, dry)
-	}}
+			_, hs, dry, err := authorizeFleetMutation(c)
+			if err != nil {
+				return err
+			}
+			rs, err := fleet.Schedule(c.Context(), fleetMutationRunner(c, timeout), hs, action, calendar, dry)
+			if err != nil {
+				return err
+			}
+			return finishFleetMutation(c, "schedule "+action, args, rs, dry)
+		}}
 	fleetCommonFlags(c)
 	addFleetMutationTimeoutFlag(c)
 	addFleetSkipUnreachableFlag(c)
@@ -466,83 +480,86 @@ func newFleetScheduleCmd() *cobra.Command {
 }
 
 func newFleetTargetsCmd() *cobra.Command {
-	c := &cobra.Command{Use: "targets", Short: "Render scrape targets or push them to a hub", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
-		inv, err := loadFleetOnly(c)
-		if err != nil {
-			return err
-		}
-		rendered, err := selectedFleetHosts(c, inv)
-		if err != nil {
-			return err
-		}
-		data, err := fleet.RenderTargets(rendered)
-		if err != nil {
-			return err
-		}
-		hub, _ := c.Flags().GetString("push")
-		if hub == "" {
-			_, err = c.OutOrStdout().Write(append(data, '\n'))
-			return err
-		}
-		timeout, err := fleetMutationTimeout(c)
-		if err != nil {
-			return err
-		}
-		dry, _ := c.Flags().GetBool("dry-run")
-		yes, _ := c.Flags().GetBool("yes")
-		if !yes && !dry {
-			return fmt.Errorf("pushing fleet targets requires --yes (a --dry-run preview does not)")
-		}
-		h, ok := inv.Hosts[hub]
-		if !ok {
-			return fmt.Errorf("unknown hub host %q", hub)
-		}
-		if h.EffectiveConfig == nil {
-			return fmt.Errorf("hub %q has no site config", hub)
-		}
-		var cfg config.Config
-		if err := yaml.Unmarshal(h.EffectiveConfig, &cfg); err != nil {
-			return fmt.Errorf("hub %q has no valid site config: %w", hub, err)
-		}
-		if !cfg.Modules.Monitoring.Hub.Enabled {
-			return fmt.Errorf("hub %q does not enable modules.monitoring.hub", hub)
-		}
-		path, err := validateFleetDiscoveryTarget(cfg)
-		if err != nil {
-			return fmt.Errorf("hub %q targets_file: %w", hub, err)
-		}
-		picked, err := inv.Select([]string{hub}, nil, false)
-		if err != nil {
-			return err
-		}
-		nh := picked[0]
-		if dry {
-			res := fleet.Result{Host: hub, Command: "targets", State: "ok", Reason: "dry-run: would atomically update " + path}
+	c := &cobra.Command{Use: "targets", Short: "Render scrape targets or push them to a hub", Args: cobra.NoArgs,
+		Example: `  rootfiles fleet targets
+  rootfiles fleet targets --push monitor01 --yes`,
+		RunE: func(c *cobra.Command, _ []string) error {
+			inv, err := loadFleetOnly(c)
+			if err != nil {
+				return err
+			}
+			rendered, err := selectedFleetHosts(c, inv)
+			if err != nil {
+				return err
+			}
+			data, err := fleet.RenderTargets(rendered)
+			if err != nil {
+				return err
+			}
+			hub, _ := c.Flags().GetString("push")
+			if hub == "" {
+				_, err = c.OutOrStdout().Write(append(data, '\n'))
+				return err
+			}
+			timeout, err := fleetMutationTimeout(c)
+			if err != nil {
+				return err
+			}
+			dry, _ := c.Flags().GetBool("dry-run")
+			yes, _ := c.Flags().GetBool("yes")
+			if !yes && !dry {
+				return fmt.Errorf("pushing fleet targets requires --yes (a --dry-run preview does not)")
+			}
+			h, ok := inv.Hosts[hub]
+			if !ok {
+				return fmt.Errorf("unknown hub host %q", hub)
+			}
+			if h.EffectiveConfig == nil {
+				return fmt.Errorf("hub %q has no site config", hub)
+			}
+			var cfg config.Config
+			if err := yaml.Unmarshal(h.EffectiveConfig, &cfg); err != nil {
+				return fmt.Errorf("hub %q has no valid site config: %w", hub, err)
+			}
+			if !cfg.Modules.Monitoring.Hub.Enabled {
+				return fmt.Errorf("hub %q does not enable modules.monitoring.hub", hub)
+			}
+			path, err := validateFleetDiscoveryTarget(cfg)
+			if err != nil {
+				return fmt.Errorf("hub %q targets_file: %w", hub, err)
+			}
+			picked, err := inv.Select([]string{hub}, nil, false)
+			if err != nil {
+				return err
+			}
+			nh := picked[0]
+			if dry {
+				res := fleet.Result{Host: hub, Command: "targets", State: "ok", Reason: "dry-run: would atomically update " + path}
+				if err := writeFleetResults(c.OutOrStdout(), []fleet.Result{res}, "text"); err != nil {
+					return err
+				}
+				if err := fleet.AppendRunLog("", "targets --push "+hub, []fleet.Result{res}); err != nil {
+					return fmt.Errorf("writing fleet run log: %w", err)
+				}
+				return nil
+			}
+			script := fleetTargetsPushScript(path)
+			remote := "/bin/sh -c " + fleet.ShellQuote(script)
+			if nh.Sudo == "nopasswd" {
+				remote = "sudo -n " + remote
+			}
+			res := fleet.SSHRunner{MutationTimeout: timeout}.RunMutationRemote(c.Context(), nh, "targets", remote, data)
 			if err := writeFleetResults(c.OutOrStdout(), []fleet.Result{res}, "text"); err != nil {
 				return err
 			}
 			if err := fleet.AppendRunLog("", "targets --push "+hub, []fleet.Result{res}); err != nil {
 				return fmt.Errorf("writing fleet run log: %w", err)
 			}
+			if res.State != "ok" {
+				return &ExitError{Code: exitDrift}
+			}
 			return nil
-		}
-		script := fleetTargetsPushScript(path)
-		remote := "/bin/sh -c " + fleet.ShellQuote(script)
-		if nh.Sudo == "nopasswd" {
-			remote = "sudo -n " + remote
-		}
-		res := fleet.SSHRunner{MutationTimeout: timeout}.RunMutationRemote(c.Context(), nh, "targets", remote, data)
-		if err := writeFleetResults(c.OutOrStdout(), []fleet.Result{res}, "text"); err != nil {
-			return err
-		}
-		if err := fleet.AppendRunLog("", "targets --push "+hub, []fleet.Result{res}); err != nil {
-			return fmt.Errorf("writing fleet run log: %w", err)
-		}
-		if res.State != "ok" {
-			return &ExitError{Code: exitDrift}
-		}
-		return nil
-	}}
+		}}
 	fleetCommonFlags(c)
 	c.Flags().String("push", "", "Push targets to this inventory hub host")
 	addFleetMutationTimeoutFlag(c)

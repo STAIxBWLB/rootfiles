@@ -22,14 +22,16 @@ var applyCloudflaredSetup = func(ctx context.Context, rc *module.RunContext) (*m
 
 func newTunnelCmd() *cobra.Command {
 	tunnel := &cobra.Command{
-		Use:   "tunnel",
-		Short: "Manage cloudflared tunnel and VLAN private network",
+		Use:     "tunnel",
+		Short:   "Manage cloudflared tunnel and VLAN private network",
+		Example: "  rootfiles tunnel status\n  sudo rootfiles tunnel setup --vlan-address 203.0.113.10/32",
 	}
 
 	tunnel.AddCommand(usesRootFlags(&cobra.Command{
 		Use:     "setup [TOKEN]",
 		Aliases: []string{"install"},
 		Short:   "Set up the tunnel, VLAN and cloudflared",
+		Example: "  sudo rootfiles tunnel setup\n  sudo rootfiles tunnel setup <TOKEN> --vlan-address 203.0.113.10/32",
 		Long: `Sets up the cloudflared binary, the tunnel token and the VLAN private network.
 Configured credentials (including tunnel_token_file) and VLAN settings are used
 unless an explicit token or VLAN address overrides them. Without credentials,
@@ -78,8 +80,9 @@ only the binary and any configured VLAN are managed. "install" is an alias.`,
 	}, "tunnel-token", "vlan-address"))
 
 	tunnel.AddCommand(&cobra.Command{
-		Use:   "status",
-		Short: "Show tunnel service and VLAN status",
+		Use:     "status",
+		Short:   "Show tunnel service and VLAN status",
+		Example: "  rootfiles tunnel status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildConfigFreeRunContext(cmd)
 			if err != nil {
@@ -90,8 +93,9 @@ only the binary and any configured VLAN are managed. "install" is an alias.`,
 	})
 
 	tunnel.AddCommand(&cobra.Command{
-		Use:   "restart",
-		Short: "Restart cloudflared service",
+		Use:     "restart",
+		Short:   "Restart cloudflared service",
+		Example: "  sudo rootfiles tunnel restart",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildConfigFreeRunContext(cmd, "cloudflared")
 			if err != nil {
@@ -107,8 +111,9 @@ only the binary and any configured VLAN are managed. "install" is an alias.`,
 	})
 
 	updateCmd := &cobra.Command{
-		Use:   "update",
-		Short: "Upgrade cloudflared binary to latest (or a pinned version)",
+		Use:     "update",
+		Short:   "Upgrade cloudflared binary to latest (or a pinned version)",
+		Example: "  sudo rootfiles tunnel update\n  rootfiles tunnel update --check",
 		Long: `Download the cloudflared binary from the upstream cloudflare/cloudflared GitHub
 releases and replace /usr/local/bin/cloudflared. Uses the tagged release URL
 when --version is provided, or the /latest/download/ alias otherwise. The
@@ -143,8 +148,9 @@ without downloading or restarting anything.`,
 	tunnel.AddCommand(updateCmd)
 
 	tunnel.AddCommand(&cobra.Command{
-		Use:   "uninstall",
-		Short: "Remove tunnel service, VLAN, and binary",
+		Use:     "uninstall",
+		Short:   "Remove tunnel service, VLAN, and binary",
+		Example: "  sudo rootfiles tunnel uninstall",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "cloudflared")
 			if err != nil {

@@ -48,7 +48,7 @@ Shared plumbing every native `rootfiles` command runs through: the cobra root an
 - `tenant cpuset` is a native mutation: it uses the same root, Linux and global-lock preflight as the other tenant mutations.
 
 - Aliases resolve to one command object: `tenant reset` -> `passwd`, `tunnel install` -> `setup`. Reader and mutation annotations stay on that canonical command. Deprecated backup/user flags retain old invocations; `user passwd --suffix` remains accepted until v0.21.0.
-- Root help includes Rocky/fleet and derives profile names from `config.AvailableProfiles()`. The audited commands carry examples; Use strings contain positional syntax only, checked against Args arity by `cli_surface_test.go`. VLAN help/prompt examples use `203.0.113.10/32`.
+- Root help includes Rocky/fleet and derives profile names from `config.AvailableProfiles()`. Every runnable command carries an example. Use strings contain positional syntax only, checked against Args arity by `cli_surface_test.go`, and hold every argument to `<required>` or `[optional]` with `a|b` and `...` inside those brackets, checked by `TestHelpStyleAcrossTree`. VLAN help/prompt examples use `203.0.113.10/32`.
 
 - Root `-v` remains the version shorthand; it is not a verbose alias. Persistent root flags: `--color`, `--ascii`, `--verbose`, `--yes`, `--dry-run`, `--profile`, `--config`, `--home-base`, `--user`, `--ssh-pubkey`, `--tunnel-token`, `--vlan-address`. `--force` and `--module` are command-scoped. A root input is accepted only when the command or a reader parent declares it. `schedule status` is not a config reader; enable/disable remain config-target readers.
 - Context is cancelled on SIGINT/SIGTERM (`cmd/rootfiles/main.go`), so in-flight commands stop instead of leaving orphans.

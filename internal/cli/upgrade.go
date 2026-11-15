@@ -42,6 +42,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 		Use:     "update",
 		Aliases: []string{"upgrade"},
 		Short:   "Update rootfiles to the latest release",
+		Example: "  sudo rootfiles update\n  rootfiles update --check",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 			checkOnly, _ := cmd.Flags().GetBool("check")

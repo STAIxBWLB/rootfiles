@@ -11,8 +11,9 @@ import (
 
 func newUserDelCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "del USERNAME",
-		Short: "Delete a user (home kept by default)",
+		Use:     "del <USERNAME>",
+		Short:   "Delete a user (home kept by default)",
+		Example: "  sudo rootfiles user del alice --archive",
 		Long: "Removes the account, its sudoers drop-in, GPU allocation and metadata entry.\n" +
 			"The home directory is kept unless --archive (a tar.gz under\n" +
 			"<home_base>/.rootfiles/archive, then removed) or --remove-home is given.",
@@ -49,9 +50,10 @@ func newUserDelCmd() *cobra.Command {
 
 func newUserLockCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "lock USERNAME",
-		Short: "Block all logins (password and SSH key)",
-		Args:  cobra.ExactArgs(1),
+		Use:     "lock <USERNAME>",
+		Short:   "Block all logins (password and SSH key)",
+		Example: "  sudo rootfiles user lock alice",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -64,9 +66,10 @@ func newUserLockCmd() *cobra.Command {
 
 func newUserUnlockCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "unlock USERNAME",
-		Short: "Re-enable logins for a locked user",
-		Args:  cobra.ExactArgs(1),
+		Use:     "unlock <USERNAME>",
+		Short:   "Re-enable logins for a locked user",
+		Example: "  sudo rootfiles user unlock alice",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -79,9 +82,10 @@ func newUserUnlockCmd() *cobra.Command {
 
 func newUserExpireCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "expire USERNAME YYYY-MM-DD|never",
-		Short: "Set or clear the account expiry date",
-		Args:  cobra.ExactArgs(2),
+		Use:     "expire <USERNAME> <YYYY-MM-DD|never>",
+		Short:   "Set or clear the account expiry date",
+		Example: "  sudo rootfiles user expire alice 2027-03-31\n  sudo rootfiles user expire alice never",
+		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -94,14 +98,16 @@ func newUserExpireCmd() *cobra.Command {
 
 func newUserKeyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "key",
-		Short: "Manage a user's SSH authorized keys",
+		Use:     "key",
+		Short:   "Manage a user's SSH authorized keys",
+		Example: "  rootfiles user key list alice\n  sudo rootfiles user key add alice \"$(cat ~/.ssh/id_ed25519.pub)\"",
 	}
 	cmd.AddCommand(
 		&cobra.Command{
-			Use:   "list USERNAME",
-			Short: "List authorized keys (numbered)",
-			Args:  cobra.ExactArgs(1),
+			Use:     "list <USERNAME>",
+			Short:   "List authorized keys (numbered)",
+			Example: "  rootfiles user key list alice",
+			Args:    cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
@@ -111,9 +117,10 @@ func newUserKeyCmd() *cobra.Command {
 			},
 		},
 		&cobra.Command{
-			Use:   "add USERNAME 'ssh-ed25519 AAAA… comment'",
-			Short: "Add an authorized key",
-			Args:  cobra.ExactArgs(2),
+			Use:     "add <USERNAME> <KEY>",
+			Short:   "Add an authorized key",
+			Example: "  sudo rootfiles user key add alice \"$(cat ~/.ssh/id_ed25519.pub)\"",
+			Args:    cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
@@ -123,9 +130,10 @@ func newUserKeyCmd() *cobra.Command {
 			},
 		},
 		&cobra.Command{
-			Use:   "rm USERNAME INDEX|KEY|COMMENT",
-			Short: "Remove authorized key(s) by list index, key or comment",
-			Args:  cobra.ExactArgs(2),
+			Use:     "rm <USERNAME> <INDEX|KEY|COMMENT>",
+			Short:   "Remove authorized key(s) by list index, key or comment",
+			Example: "  sudo rootfiles user key rm alice 2\n  sudo rootfiles user key rm alice alice@laptop",
+			Args:    cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
@@ -140,8 +148,9 @@ func newUserKeyCmd() *cobra.Command {
 
 func newUserDuCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "du",
-		Short: "Show home directory disk usage per user (largest first)",
+		Use:     "du",
+		Short:   "Show home directory disk usage per user (largest first)",
+		Example: "  rootfiles user du",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -165,8 +174,9 @@ func newUserDuCmd() *cobra.Command {
 
 func newUserAuditCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "audit",
-		Short: "Compare users.json metadata with the accounts on this system",
+		Use:     "audit",
+		Short:   "Compare users.json metadata with the accounts on this system",
+		Example: "  sudo rootfiles user audit",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			rc, err := buildRunContext(cmd, "users")
 			if err != nil {
@@ -204,14 +214,16 @@ func humanBytes(b int64) string {
 
 func newUserQuotaCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "quota",
-		Short: "Limit per-user disk usage on the home base",
+		Use:     "quota",
+		Short:   "Limit per-user disk usage on the home base",
+		Example: "  rootfiles user quota show\n  sudo rootfiles user quota set alice 500G",
 	}
 	cmd.AddCommand(
 		&cobra.Command{
-			Use:   "set USERNAME SIZE",
-			Short: "Set a hard quota, e.g. 500G",
-			Args:  cobra.ExactArgs(2),
+			Use:     "set <USERNAME> <SIZE>",
+			Short:   "Set a hard quota, e.g. 500G",
+			Example: "  sudo rootfiles user quota set alice 500G",
+			Args:    cobra.ExactArgs(2),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
@@ -221,9 +233,10 @@ func newUserQuotaCmd() *cobra.Command {
 			},
 		},
 		&cobra.Command{
-			Use:   "rm USERNAME",
-			Short: "Remove a user's limit",
-			Args:  cobra.ExactArgs(1),
+			Use:     "rm <USERNAME>",
+			Short:   "Remove a user's limit",
+			Example: "  sudo rootfiles user quota rm alice",
+			Args:    cobra.ExactArgs(1),
 			RunE: func(cmd *cobra.Command, args []string) error {
 				rc, err := buildRunContext(cmd, "users")
 				if err != nil {
@@ -233,8 +246,9 @@ func newUserQuotaCmd() *cobra.Command {
 			},
 		},
 		&cobra.Command{
-			Use:   "show",
-			Short: "Show the quota report",
+			Use:     "show",
+			Short:   "Show the quota report",
+			Example: "  rootfiles user quota show",
 			RunE: func(cmd *cobra.Command, _ []string) error {
 				rc, err := buildRunContext(cmd, "users")
 				if err != nil {

@@ -44,6 +44,10 @@ type CommandFacts struct {
 	FirstWord      string
 	HasExample     bool
 	Usage          string
+	// UsageTerms is the argument notation after the command name: `<required>`
+	// and `[optional]`, with `a|b` inside either.
+	UsageTerms     []string
+	UsageASCII     bool
 	WidestLine     int
 	Flags          []FlagFacts
 }
@@ -82,10 +86,37 @@ func (c CommandFacts) Issues() []string {
 	if c.WidestLine > InventoryWidth {
 		out = append(out, fmt.Sprintf("help is %d columns", c.WidestLine))
 	}
+	for _, term := range c.UsageTerms {
+		if !isUsageTerm(term) {
+			out = append(out, fmt.Sprintf("usage term %s is not <required> or [optional]", term))
+		}
+	}
+	if !c.UsageASCII {
+		out = append(out, "non-ASCII usage")
+	}
 	if strings.Contains(c.Usage, "[") && strings.Contains(c.Usage, "]=") {
 		out = append(out, "usage mixes conventions")
 	}
 	return out
+}
+
+// isUsageTerm holds an argument to the notation the audit settled: a required
+// one in angle brackets, an optional one in square brackets. Alternatives
+// (`a|b`) and a repeat (`...`) live inside one of the two.
+func isUsageTerm(term string) bool {
+	if strings.HasPrefix(term, "<") && strings.HasSuffix(term, ">") {
+		return true
+	}
+	return strings.HasPrefix(term, "[") && strings.HasSuffix(term, "]")
+}
+
+// usageTerms is the argument notation of a Use line, without the command name.
+func usageTerms(use string) []string {
+	fields := strings.Fields(use)
+	if len(fields) < 2 {
+		return nil
+	}
+	return fields[1:]
 }
 
 // Inventory walks the command tree the way a person reads it: parents before
@@ -118,6 +149,8 @@ func factsFor(c *cobra.Command) CommandFacts {
 		FirstWord:      firstWord(summary),
 		HasExample:     strings.TrimSpace(c.Example) != "",
 		Usage:          c.UseLine(),
+		UsageTerms:     usageTerms(c.Use),
+		UsageASCII:     isASCII(c.Use),
 		WidestLine:     widestLine(help),
 	}
 	c.NonInheritedFlags().VisitAll(func(f *pflag.Flag) {
@@ -190,8 +223,8 @@ func RenderInventory(facts []CommandFacts) string {
 	b.WriteString("recorded here as the server sees it.\n\n")
 
 	b.WriteString(fmt.Sprintf("## Commands (%d)\n\n", len(facts)))
-	b.WriteString("| command | kind | summary | chars | example | widest | issues |\n")
-	b.WriteString("|---|---|---|---|---|---|---|\n")
+	b.WriteString("| command | kind | usage | summary | chars | example | widest | issues |\n")
+	b.WriteString("|---|---|---|---|---|---|---|---|\n")
 	for _, f := range facts {
 		kind := "group"
 		if f.Runnable {
@@ -208,8 +241,8 @@ func RenderInventory(facts []CommandFacts) string {
 		if list := f.Issues(); len(list) > 0 {
 			issues = strings.Join(list, "; ")
 		}
-		b.WriteString(fmt.Sprintf("| `%s` | %s | %s | %d | %s | %d | %s |\n",
-			f.Path, kind, cell(f.Summary), f.SummaryLen, example, f.WidestLine, issues))
+		b.WriteString(fmt.Sprintf("| `%s` | %s | %s | %s | %d | %s | %d | %s |\n",
+			f.Path, kind, cell(strings.Join(f.UsageTerms, " ")), cell(f.Summary), f.SummaryLen, example, f.WidestLine, issues))
 	}
 
 	b.WriteString("\n## First word of each summary\n\n")

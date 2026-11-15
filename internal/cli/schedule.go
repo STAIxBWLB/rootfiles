@@ -68,15 +68,17 @@ func validateOnCalendar(expr string) error {
 
 func newScheduleCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "schedule",
-		Short: "Install check and doctor report timers",
+		Use:     "schedule",
+		Short:   "Install check and doctor report timers",
+		Example: "  sudo rootfiles schedule enable\n  rootfiles schedule status",
 		Long: "enable installs rootfiles-check.timer, which writes check.json and doctor.json\n" +
 			"to " + state.Dir() + " (read-only: no changes are applied).",
 	}
 
 	enable := &cobra.Command{
-		Use:   "enable",
-		Short: "Install and start the report timer",
+		Use:     "enable",
+		Short:   "Install and start the report timer",
+		Example: "  sudo rootfiles schedule enable\n  sudo rootfiles schedule enable --on-calendar '*-*-* 06:00'",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			onCal, _ := cmd.Flags().GetString("on-calendar")
 			if err := validateOnCalendar(onCal); err != nil {
@@ -121,8 +123,9 @@ func newScheduleCmd() *cobra.Command {
 	enable.Flags().String("on-calendar", "daily", "systemd OnCalendar expression (e.g. daily, *-*-* 06:00)")
 
 	disable := &cobra.Command{
-		Use:   "disable",
-		Short: "Stop and remove the report timer",
+		Use:     "disable",
+		Short:   "Stop and remove the report timer",
+		Example: "  sudo rootfiles schedule disable",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			rc, err := buildConfigFreeRunContext(cmd)
 			if err != nil {
@@ -141,8 +144,9 @@ func newScheduleCmd() *cobra.Command {
 	}
 
 	status := &cobra.Command{
-		Use:   "status",
-		Short: "Show the report timer state and the age of its reports",
+		Use:     "status",
+		Short:   "Show the report timer state and the age of its reports",
+		Example: "  rootfiles schedule status",
 		Long: `Reports what systemd has right now: whether the units are installed, the
 enabled and active state of the timer, the OnCalendar expression it fires on,
 and how old check.json and doctor.json are. A report older than 48 hours is
