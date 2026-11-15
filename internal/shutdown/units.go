@@ -13,16 +13,24 @@ type Unit struct {
 }
 
 // TimerNames lists the timers a schedule installs, in the order a cancel stops
-// them: the poweroff first, because it is the one that must not fire.
+// them: the poweroff first, because it is the one that must not fire. Without a
+// schedule every notice timer the cap allows is listed too, because a recovery
+// from an unreadable state file has no way to know how many were written.
 func TimerNames(s *Schedule) []string {
 	names := []string{UnitName + ".timer", blockUnit() + ".timer"}
-	if s == nil {
-		return names
-	}
-	for i := range s.Notices {
+	for i := 0; i < noticeCount(s); i++ {
 		names = append(names, noticeUnit(i)+".timer")
 	}
 	return names
+}
+
+// noticeCount is how many notice units a schedule owns: its own list when the
+// record is readable, and the accepted maximum when it is not.
+func noticeCount(s *Schedule) int {
+	if s == nil {
+		return MaxNotices
+	}
+	return len(s.Notices)
 }
 
 // enableOrder is TimerNames reversed: the harmless timers are enabled first, so

@@ -3,6 +3,8 @@ package shutdown
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -48,7 +50,8 @@ exec)
 	[ "$1" = "-i" ] && shift
 	c="$1"; shift
 	case "$1" in
-	cat) cat '` + dir + `/'"$c"'.nologin' 2>/dev/null ;;
+	cat) if [ -e '` + dir + `/failcat' ]; then exit 1; fi; cat '` + dir + `/'"$c"'.nologin' 2>/dev/null ;;
+	test) [ -e '` + dir + `/'"$c"'.nologin' ] ;;
 	grep) [ -e '` + dir + `/'"$c"'.pam' ] ;;
 	wall) if [ -e '` + dir + `/'"$c"'.nowall' ]; then exit 1; fi; cat >> '` + dir + `/'"$c"'.wall' ;;
 	sh) cat >> '` + dir + `/'"$c"'.nologin' ;;
@@ -613,5 +616,145 @@ func TestCancelRunRecoversFromAnUnreadableState(t *testing.T) {
 	}
 	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "could not be read") {
 		t.Fatalf("no warning named the unreadable state: %v", warnings)
+	}
+}
+
+// AC4/AC6: a cancel must not report success while systemd declines to say
+// whether a timer is still armed. An unreachable manager says nothing either
+// way, and a timer it still holds fires after its files are gone.
+func TestCancelRunFailsWhenSystemdDoesNotAnswer(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "15m")); err != nil {
+		t.Fatal(err)
+	}
+	mute := filepath.Join(dir, "mutebin")
+	if err := os.MkdirAll(mute, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// disable --now succeeds, but is-active exits 5: not active, not inactive.
+	body := "#!/bin/sh\ncase \"$1\" in\nis-active) exit 5 ;;\nesac\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(mute, "systemctl"), []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", mute+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	_, _, err := CancelRun(context.Background(), env)
+	if err == nil || !strings.Contains(err.Error(), "does not answer") {
+		t.Fatalf("a cancel that could not verify the timer reported success: %v", err)
+	}
+	if s, loadErr := Load(); loadErr != nil || s == nil {
+		t.Fatalf("the record was removed although the schedule may still be armed: %+v err=%v", s, loadErr)
+	}
+}
+
+// AC3: a schedule created inside the five-minute window blocks logins at once.
+// Its own block timer would sit in the past with Persistent=false and never
+// fire, and a lead time that is still ahead leaves nothing for missed to catch.
+func TestScheduleRunBlocksLoginsWhenTheScheduleIsInsideTheWindow(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+
+	s, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Minute), "1m"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(NologinPath)
+	if err != nil || !WroteNologin(string(data), s.ID) {
+		t.Fatalf("a schedule inside the five-minute window did not close logins at once: %q err=%v", string(data), err)
+	}
+}
+
+// AC3: a tenant block file that cannot be read is not an absent one. Writing
+// over it would truncate a login block this feature did not write.
+func TestBlockLoginsKeepsAForeignFileWhenTheInspectionFails(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "containers"), []byte("tenant-a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.pam"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.nologin"), []byte("maintenance window\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// The file is there, but reading it fails.
+	if err := os.WriteFile(filepath.Join(dir, "failcat"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, warnings, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Minute), "1m"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept, readErr := os.ReadFile(filepath.Join(dir, "tenant-a.nologin"))
+	if readErr != nil || string(kept) != "maintenance window\n" {
+		t.Fatalf("a tenant login block that could not be read was overwritten: %q err=%v", string(kept), readErr)
+	}
+	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "cannot inspect") {
+		t.Fatalf("no warning named the failed inspection: %v", warnings)
+	}
+}
+
+// AC9: recovery from an unreadable state file stops and removes every notice
+// unit the accepted maximum allows, not just the poweroff and block pair.
+func TestCancelRunRecoversEveryNoticeUnitItWrote(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	s := testSchedule()
+	s.Notices = nil
+	for i := 0; i < MaxNotices; i++ {
+		s.Notices = append(s.Notices, Notice{Lead: fmt.Sprintf("%dm", 30+i), At: s.At.Add(-time.Duration(30+i) * time.Minute)})
+	}
+	if err := save(env.Runner, s); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installUnits(context.Background(), env.Runner, Units("/usr/local/bin/rootfiles", s)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(StatePath, []byte("{"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, _, err := CancelRun(context.Background(), env); err != nil {
+		t.Fatalf("recovery failed with an unreadable record: %v", err)
+	}
+	for i := 0; i < MaxNotices; i++ {
+		for _, suffix := range []string{".service", ".timer"} {
+			if _, err := os.Stat(filepath.Join(UnitDir, noticeUnit(i)+suffix)); !os.IsNotExist(err) {
+				t.Fatalf("notice unit %d%s survived a reported recovery", i, suffix)
+			}
+		}
+	}
+	log := readLog(t, filepath.Join(dir, "systemctl.log"))
+	if !strings.Contains(log, "disable --now "+noticeUnit(MaxNotices-1)+".timer") {
+		t.Fatalf("the last notice timer was never stopped:\n%s", log)
+	}
+}
+
+// AC6/AC8: a schedule that fails before it writes anything leaves an existing
+// record in force, and says so, so the controller does not cancel it as part of
+// a rollback.
+func TestScheduleRunMarksAFailureBeforeItWroteAsUntouched(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if err := save(env.Runner, testSchedule()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installUnits(context.Background(), env.Runner, Units("/usr/local/bin/rootfiles", testSchedule())); err != nil {
+		t.Fatal(err)
+	}
+
+	// An invalid notice list is rejected before the existing schedule is touched.
+	_, _, err := ScheduleRun(context.Background(), env, request(testSchedule().At, "soon"))
+	if !errors.Is(err, ErrUntouched) {
+		t.Fatalf("a pre-write failure was not marked as untouched: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(UnitDir, UnitName+".timer")); statErr != nil {
+		t.Fatalf("the existing schedule's poweroff timer was removed by a failed attempt: %v", statErr)
+	}
+	if s, loadErr := Load(); loadErr != nil || s == nil || s.ID != testSchedule().ID {
+		t.Fatalf("the existing record was not left in force: %+v err=%v", s, loadErr)
 	}
 }

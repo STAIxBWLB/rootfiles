@@ -203,6 +203,10 @@ func TestStatusReportCarriesTheScheduleOnlyWhenScheduled(t *testing.T) {
 	saved := shutdown.StatePath
 	shutdown.StatePath = filepath.Join(t.TempDir(), "shutdown.json")
 	t.Cleanup(func() { shutdown.StatePath = saved })
+	// collectStatus reads systemctl, ip, cloudflared and the account list, so the
+	// test runs on a private PATH with those seams stubbed: no host tool and no
+	// real account data.
+	noHostCommands(t)
 
 	sys := &config.SystemInfo{OS: "ubuntu"}
 	cfg := config.Fallback(sys, "")

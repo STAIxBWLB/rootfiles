@@ -1,6 +1,7 @@
 package shutdown
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -150,5 +151,24 @@ func TestSanitizeMessageKeepsOnePrintableLine(t *testing.T) {
 	}
 	if _, err := SanitizeMessage(strings.Repeat("x", MaxMessageRunes)); err != nil {
 		t.Fatalf("%d characters must be accepted: %v", MaxMessageRunes, err)
+	}
+}
+
+// AC9: the notice list is bounded, because a cancel without a readable state
+// file finds the units by scanning up to that bound. Without the bound the scan
+// is a guess and units can survive a reported recovery.
+func TestParseNoticesRefusesMoreThanTheMaximum(t *testing.T) {
+	leads := []string{"1h"}
+	for i := 0; i < MaxNotices; i++ {
+		leads = append(leads, fmt.Sprintf("%dm", 10+i))
+	}
+	at := testNow.Add(2 * time.Hour)
+	if _, _, err := ParseNotices(strings.Join(leads, ","), at, testNow); err == nil {
+		t.Fatalf("%d lead times were accepted, above the %d the recovery scan covers", len(leads), MaxNotices)
+	}
+	exact := strings.Join(leads[:MaxNotices], ",")
+	notices, _, err := ParseNotices(exact, at, testNow)
+	if err != nil || len(notices) != MaxNotices {
+		t.Fatalf("exactly %d lead times were refused: %v err=%v", MaxNotices, notices, err)
 	}
 }

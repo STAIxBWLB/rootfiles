@@ -118,8 +118,15 @@ func TestTimerNamesFollowTheNoticeOrder(t *testing.T) {
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("timers = %v, want %v", names, want)
 	}
-	if got := TimerNames(nil); len(got) != 2 || got[0] != "rootfiles-shutdown.timer" || got[1] != "rootfiles-shutdown-block.timer" {
-		t.Fatalf("timers without a schedule = %v", got)
+	// Without a schedule the poweroff and block timers come first and every
+	// notice timer the accepted maximum allows follows, because a recovery from
+	// an unreadable state file cannot know how many were written.
+	blind := TimerNames(nil)
+	if len(blind) != 2+MaxNotices || blind[0] != "rootfiles-shutdown.timer" || blind[1] != "rootfiles-shutdown-block.timer" {
+		t.Fatalf("timers without a schedule = %v", blind)
+	}
+	if last := blind[len(blind)-1]; last != "rootfiles-shutdown-notice-8.timer" {
+		t.Fatalf("timers without a schedule stop at %s, want the maximum notice timer last", last)
 	}
 }
 

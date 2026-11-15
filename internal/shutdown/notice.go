@@ -24,25 +24,25 @@ func ScheduleRun(ctx context.Context, env Env, req Request) (*Schedule, []string
 	now := env.now()
 	at := req.At.UTC().Truncate(time.Second)
 	if err := ValidateAt(at, now); err != nil {
-		return nil, nil, err
+		return nil, nil, untouched(err)
 	}
 	action := actionOrDefault(req.Action)
 	message, err := SanitizeMessage(req.Message)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, untouched(err)
 	}
 	notices, missed, err := ParseNotices(req.Notices, at, now)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, untouched(err)
 	}
 	bin := binaryPath(req.Binary)
 	if err := checkBinary(bin); err != nil {
-		return nil, nil, err
+		return nil, nil, untouched(err)
 	}
 
 	existing, err := Load()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, untouched(err)
 	}
 	var warnings []string
 	if Expired(existing, now) {
@@ -58,8 +58,8 @@ func ScheduleRun(ctx context.Context, env Env, req Request) (*Schedule, []string
 	}
 	if existing != nil {
 		if !req.Replace {
-			return nil, nil, fmt.Errorf("a %s is already scheduled for %s (id %s): pass --replace to replace it, or run 'rootfiles shutdown cancel' first",
-				actionVerb(existing.Action), existing.At.UTC().Format(time.RFC3339), existing.ID)
+			return nil, nil, untouched(fmt.Errorf("a %s is already scheduled for %s (id %s): pass --replace to replace it, or run 'rootfiles shutdown cancel' first",
+				actionVerb(existing.Action), existing.At.UTC().Format(time.RFC3339), existing.ID))
 		}
 		replaced, err := removeSchedule(ctx, env, existing, false)
 		warnings = append(warnings, replaced...)
@@ -96,12 +96,20 @@ func ScheduleRun(ctx context.Context, env Env, req Request) (*Schedule, []string
 			return s, warnings, fmt.Errorf("cannot enable %s: %w; the schedule is recorded, so run 'rootfiles shutdown cancel' to remove it before retrying", timer, err)
 		}
 	}
-	if req.NotifyNow || missed || len(s.Notices) == 0 {
-		// A lead time that has already passed still owes users one warning, and
-		// `fleet shutdown now` asks for it explicitly.
+	if req.NotifyNow || missed || len(s.Notices) == 0 || s.At.Sub(now) <= NologinLead {
+		// A lead time that has already passed still owes users one warning,
+		// `fleet shutdown now` asks for it explicitly, and a schedule created
+		// inside the five-minute window blocks logins at once: its block timer
+		// would be set in the past and would never fire.
 		warnings = append(warnings, announce(ctx, r, s, now)...)
 	}
 	return s, warnings, nil
+}
+
+// untouched marks a failure that happened before anything on the host changed,
+// so a schedule already recorded there is still in force as it was.
+func untouched(err error) error {
+	return fmt.Errorf("%w: %w", ErrUntouched, err)
 }
 
 // announce sends one notice and, inside the 5-minute window, blocks new
@@ -218,18 +226,43 @@ func installUnits(ctx context.Context, r *exec.Runner, units []Unit) (bool, erro
 	return changed, nil
 }
 
-// maxNoticeUnits bounds the scan a cancel without a readable state file makes
-// for notice units; a notice list that long is already absurd.
-const maxNoticeUnits = 16
+// unitFileNames lists what a schedule wrote. With a known schedule the notice
+// units come from its own list; without one every notice unit the accepted
+// maximum allows is listed, because the state file is what would have said how
+// many there were.
+func unitFileNames(s *Schedule) []string {
+	names := []string{UnitName + ".service", UnitName + ".timer", blockUnit() + ".service", blockUnit() + ".timer"}
+	for i := 0; i < noticeCount(s); i++ {
+		names = append(names, noticeUnit(i)+".service", noticeUnit(i)+".timer")
+	}
+	return names
+}
 
-// removeUnits stops the timers and deletes the unit files. A timer systemd
-// still holds can fire after its files are gone, so a failing stop or reload is
-// an error, not a warning; a host with no systemctl has nothing armed.
+// removeUnits stops the timers and deletes the unit files. A timer systemd can
+// still hold fires after its files are gone, so the stop must be confirmed
+// rather than assumed: a failing disable, a timer still active afterwards, or a
+// query that cannot answer all leave the schedule in force. A host with no
+// systemctl has nothing armed.
 func removeUnits(ctx context.Context, r *exec.Runner, s *Schedule) error {
 	if r.CommandExists("systemctl") {
 		for _, timer := range TimerNames(s) {
-			if _, err := r.Run(ctx, "systemctl", "disable", "--now", timer); err != nil && timerActive(ctx, r, timer) {
-				return fmt.Errorf("cannot stop %s: %w; the schedule is still in force, so restore systemd access and run 'rootfiles shutdown cancel' again", timer, err)
+			disableErr := error(nil)
+			if _, err := r.Run(ctx, "systemctl", "disable", "--now", timer); err != nil {
+				disableErr = err
+			}
+			switch queryTimer(ctx, r, timer) {
+			case timerInactive:
+				continue
+			case timerActive:
+				if disableErr != nil {
+					return fmt.Errorf("cannot stop %s: %w; the schedule is still in force, so restore systemd access and run 'rootfiles shutdown cancel' again", timer, disableErr)
+				}
+				return fmt.Errorf("%s is still active after disable --now: the schedule is still in force, so run 'systemctl stop %s' and then 'rootfiles shutdown cancel' again", timer, timer)
+			default:
+				if disableErr != nil {
+					return fmt.Errorf("cannot stop %s, and systemd does not answer whether it is still armed: %w; the schedule may still be in force, so restore systemd access and run 'rootfiles shutdown cancel' again", timer, disableErr)
+				}
+				return fmt.Errorf("systemd does not answer whether %s is still armed: the schedule may still be in force, so run 'systemctl is-active %s' and then 'rootfiles shutdown cancel' again", timer, timer)
 			}
 		}
 	}
@@ -254,28 +287,31 @@ func removeUnits(ctx context.Context, r *exec.Runner, s *Schedule) error {
 	return nil
 }
 
-// unitFileNames lists what a schedule wrote. With a known schedule the notice
-// units come from its own list; without one they are found by name, because the
-// state file is what would have said how many there were.
-func unitFileNames(s *Schedule) []string {
-	names := []string{UnitName + ".service", UnitName + ".timer", blockUnit() + ".service", blockUnit() + ".timer"}
-	if s != nil {
-		for i := range s.Notices {
-			names = append(names, noticeUnit(i)+".service", noticeUnit(i)+".timer")
-		}
-		return names
-	}
-	for i := 0; i < maxNoticeUnits; i++ {
-		names = append(names, noticeUnit(i)+".service", noticeUnit(i)+".timer")
-	}
-	return names
-}
+// timerState is what systemd answers about a timer. timerUnknown is the answer
+// that must never be read as "not running": an unreachable manager or a missing
+// systemctl says nothing about a timer that may still be armed.
+type timerState int
 
-// timerActive asks systemd whether a timer is still running. `is-active` exits
-// non-zero for every state but active, so an error means "not running".
-func timerActive(ctx context.Context, r *exec.Runner, timer string) bool {
+const (
+	timerUnknown timerState = iota
+	timerActive
+	timerInactive
+)
+
+// queryTimer reads a timer's state. `is-active` exits 3 for inactive and 4 for
+// not-found, which are answers; any other failure is the query not answering.
+func queryTimer(ctx context.Context, r *exec.Runner, timer string) timerState {
 	res, err := r.Query(ctx, "systemctl", "is-active", timer)
-	return err == nil && strings.TrimSpace(res.Stdout) == "active"
+	if res != nil && (res.ExitCode == 3 || res.ExitCode == 4) {
+		return timerInactive
+	}
+	if err != nil || res == nil {
+		return timerUnknown
+	}
+	if strings.TrimSpace(res.Stdout) == "active" {
+		return timerActive
+	}
+	return timerInactive
 }
 
 // removeNologin deletes /run/nologin only where this feature wrote it, on the
@@ -337,8 +373,15 @@ func blockLogins(ctx context.Context, r *exec.Runner, s *Schedule) []string {
 		if !pamNologinActive(ctx, r, c) {
 			continue
 		}
-		if existing, err := r.Query(ctx, "docker", "exec", c, "cat", containerNologin); err == nil && !strings.Contains(existing.Stdout, nologinMarker) {
+		state, detail := inspectContainerNologin(ctx, r, c)
+		switch state {
+		case nologinForeign:
 			warnings = append(warnings, fmt.Sprintf("%s: %s already exists and was not written by rootfiles: left it in place", c, containerNologin))
+			continue
+		case nologinUnknown:
+			// Writing over a file we could not read would truncate a login block
+			// this feature did not write, so an unknown state is not an absent one.
+			warnings = append(warnings, fmt.Sprintf("%s: cannot inspect %s (%s): left it in place rather than overwrite a login block rootfiles did not write", c, containerNologin, detail))
 			continue
 		}
 		if _, err := r.RunInput(ctx, text, "docker", "exec", "-i", c, "sh", "-c", "cat > "+containerNologin); err != nil {
@@ -346,6 +389,34 @@ func blockLogins(ctx context.Context, r *exec.Runner, s *Schedule) []string {
 		}
 	}
 	return warnings
+}
+
+// nologinState is what a tenant's login block file is: this feature's, someone
+// else's, absent, or unreadable.
+type nologinState int
+
+const (
+	nologinUnknown nologinState = iota
+	nologinAbsent
+	nologinOurs
+	nologinForeign
+)
+
+// inspectContainerNologin reads the container's block file. A failed read is
+// only treated as absence when a separate existence probe says the file is not
+// there, because `cat >` would otherwise truncate a file we failed to read.
+func inspectContainerNologin(ctx context.Context, r *exec.Runner, container string) (nologinState, string) {
+	res, err := r.Query(ctx, "docker", "exec", container, "cat", containerNologin)
+	if err == nil {
+		if strings.Contains(res.Stdout, nologinMarker) {
+			return nologinOurs, ""
+		}
+		return nologinForeign, ""
+	}
+	if probe, _ := r.Query(ctx, "docker", "exec", container, "test", "-e", containerNologin); probe != nil && probe.ExitCode == 1 {
+		return nologinAbsent, ""
+	}
+	return nologinUnknown, firstLine(err)
 }
 
 // pamNologinActive reports whether the container's sshd PAM stack loads

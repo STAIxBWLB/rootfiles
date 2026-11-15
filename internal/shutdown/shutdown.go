@@ -36,6 +36,11 @@ const (
 	// DefaultNotices is the notice schedule used when --notice is omitted.
 	DefaultNotices = "24h,1h,15m,5m"
 
+	// MaxNotices bounds the notice list. A cancel that has to find the units
+	// without a readable state file scans up to this many, so the bound is what
+	// makes that scan complete rather than a guess.
+	MaxNotices = 8
+
 	// NologinLead is when new logins stop being accepted.
 	NologinLead = 5 * time.Minute
 
@@ -56,6 +61,12 @@ var (
 	// StatePath overrides the state file, which lives in state.Dir() when empty.
 	StatePath = ""
 )
+
+// ErrUntouched marks a schedule attempt that failed before it changed anything
+// on the host: no unit written and no state saved, so a schedule that was
+// already recorded there is still in force exactly as it was. The fleet
+// controller reads this to leave such a host out of its rollback.
+var ErrUntouched = errors.New("nothing was changed")
 
 // Notice is one advance warning: the lead time the operator asked for and the
 // absolute instant it fires.
@@ -157,6 +168,9 @@ func ParseNotices(value string, at, now time.Time) ([]Notice, bool, error) {
 			continue
 		}
 		out = append(out, Notice{Lead: lead, At: moment})
+	}
+	if len(out) > MaxNotices {
+		return nil, false, fmt.Errorf("--notice lists %d lead times: at most %d are accepted, so a cancel without a readable state file can still find every unit this wrote", len(out), MaxNotices)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
 	return out, missed, nil
