@@ -19,18 +19,23 @@ Declarative server bootstrapping for Ubuntu, NVIDIA DGX OS and Rocky Linux: one 
 | Ubuntu (22.04, 24.04 tested) | Every module |
 | NVIDIA DGX OS | Every module (detected from `/etc/dgx-release`) |
 | Rocky Linux 8.9, 8.10, 9.x | Core modules: locale, system, packages, users, ssh, security ([docs/rocky.md](docs/rocky.md)) |
-| macOS | Fleet controller and read-only commands |
+| macOS | Fleet controller, read-only commands, non-root self-update |
 
 Anything else is refused before a change.
 
 ## Install
 
 ```bash
+# managed Linux host: root install at /usr/local/bin
 curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash
 # pin a release: ... | sudo bash -s -- --version v0.20.0
+
+# macOS fleet controller: no sudo, $HOME/.local/bin, self-updates without root
+curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | bash
+# choose the directory: ... | bash -s -- --prefix "$HOME/.local"
 ```
 
-The installer verifies the checksum and installs `/usr/local/bin/rootfiles` (plus a `root` symlink on Linux). Other channels and updates: [docs/operations.md](docs/operations.md#install).
+The installer verifies the checksum and installs `rootfiles` (plus a `root` symlink for a root Linux install). A non-root macOS run installs to `$HOME/.local/bin` and warns when that is not on `PATH`; `rootfiles update` then replaces that binary without root, and refuses a binary the user does not own. Other channels and updates: [docs/operations.md](docs/operations.md#install).
 
 ## Quick start
 

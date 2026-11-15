@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -31,6 +32,10 @@ const (
 	repoName  = "rootfiles"
 	githubAPI = "https://api.github.com"
 )
+
+// selfExecutable is overridable in tests, like nativeHostOS: a test points the
+// update at a temp binary instead of the running test process.
+var selfExecutable = os.Executable
 
 func newUpgradeCmd(currentVersion string) *cobra.Command {
 	cmd := &cobra.Command{
@@ -67,14 +72,24 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			ui.WriteText(out, "Current: %s "+ui.Relation+" Target: %s\n", currentVersion, targetVersion)
 
 			if checkOnly {
-				ui.WriteLine(out, "Update available. Run `sudo rootfiles update` to install.")
+				ui.WriteText(out, "Update available. Run `%s` to install.\n", updateCommandHint())
 				return &ExitError{Code: exitDrift}
 			}
 
 			osName := runtime.GOOS
 			arch := runtime.GOARCH
-			if osName != "linux" {
-				return fmt.Errorf("self-update only supported on linux (current: %s)", osName)
+			if nativeHostOS != "linux" && nativeHostOS != "darwin" {
+				return fmt.Errorf("self-update supports linux and macOS (current: %s)", nativeHostOS)
+			}
+
+			currentBinary, err := selfBinaryPath()
+			if err != nil {
+				return err
+			}
+			// A controller replaces a binary it owns; check that before the
+			// download so a root-owned install is refused without touching it.
+			if !dryRun && nativeHostOS != "linux" && !userOwnsBinary(currentBinary) {
+				return refuseForeignBinary(currentBinary)
 			}
 
 			// Download
@@ -112,15 +127,6 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			}
 
 			// Replace
-			currentBinary, err := os.Executable()
-			if err != nil {
-				return fmt.Errorf("resolving current binary: %w", err)
-			}
-			currentBinary, err = filepath.EvalSymlinks(currentBinary)
-			if err != nil {
-				return fmt.Errorf("resolving symlinks: %w", err)
-			}
-
 			ui.WriteText(out, "Replacing %s... ", currentBinary)
 			if err := replaceBinary(newBinary, currentBinary); err != nil {
 				return fmt.Errorf("replace failed: %w", err)
@@ -309,6 +315,71 @@ func ensureRootAlias(rootfilesPath string) (string, error) {
 		return "", err
 	}
 	return linkPath, nil
+}
+
+// selfBinaryPath resolves the running executable, following symlinks so an
+// update replaces the file itself rather than a link the installer owns.
+func selfBinaryPath() (string, error) {
+	path, err := selfExecutable()
+	if err != nil {
+		return "", fmt.Errorf("resolving current binary: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("resolving symlinks: %w", err)
+	}
+	return resolved, nil
+}
+
+// userOwnsBinary reports whether the running user can replace binary in place:
+// the file and its directory belong to that user, and the directory is writable
+// by its owner. A root-owned /usr/local/bin install fails here.
+func userOwnsBinary(binary string) bool {
+	info, err := os.Stat(binary)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	owner, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || int(owner.Uid) != geteuid() {
+		return false
+	}
+	dir, err := os.Stat(filepath.Dir(binary))
+	if err != nil || !dir.IsDir() {
+		return false
+	}
+	dirOwner, ok := dir.Sys().(*syscall.Stat_t)
+	if !ok || int(dirOwner.Uid) != geteuid() {
+		return false
+	}
+	return dir.Mode().Perm()&0200 != 0
+}
+
+// refuseForeignBinary names the ownership rule and the install that satisfies
+// it, so the operator fixes the cause instead of guessing at sudo.
+func refuseForeignBinary(binary string) error {
+	return withNext(
+		fmt.Errorf("update: %s is not owned by the running user; self-update without root replaces only a user-owned binary", binary),
+		reinstallCommand())
+}
+
+// reinstallCommand is the installer invocation that puts rootfiles under the
+// user's own prefix, where later updates need no root.
+func reinstallCommand() string {
+	return `curl -fsSL https://raw.githubusercontent.com/` + repoOwner + `/` + repoName +
+		`/main/scripts/install.sh | bash -s -- --prefix "$HOME/.local"`
+}
+
+// updateCommandHint is the update command that works for the current platform
+// and install location: root plus sudo on Linux, the plain command for a
+// controller that owns its binary, and a prefix reinstall when it does not.
+func updateCommandHint() string {
+	if nativeHostOS == "linux" {
+		return "sudo rootfiles update"
+	}
+	if binary, err := selfBinaryPath(); err == nil && userOwnsBinary(binary) {
+		return "rootfiles update"
+	}
+	return reinstallCommand()
 }
 
 // replaceBinary atomically swaps the current binary with the new one.

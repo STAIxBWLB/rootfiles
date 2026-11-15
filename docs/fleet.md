@@ -2,6 +2,20 @@
 
 `rootfiles fleet` runs on an operator's Linux or macOS machine and drives the per-host commands over the system `ssh` client. Hosts keep running rootfiles as a single-host tool; the controller adds no agent to them. Every flag: [commands.md](commands.md#rootfiles-fleet). Contract: [docs/specs/fleet.md](specs/fleet.md).
 
+## Install and update
+
+A macOS controller installs without root, into its own home:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | bash
+rootfiles update            # replaces that binary; no sudo
+rootfiles update --check    # exit 2 when an update exists
+```
+
+- The default destination is `$HOME/.local/bin`; `--prefix DIR` installs to `DIR/bin` instead. The installer prints the destination and warns when it is not on `PATH`.
+- A binary installed as root in `/usr/local/bin` is refused by `rootfiles update` without being touched, because replacing it would need sudo. Reinstall under your own prefix: `curl ... | bash -s -- --prefix "$HOME/.local"`.
+- Controller installs and updates take no host lock and need no sudoers entry; those belong to the managed Linux hosts ([self-update](specs/self-update.md)).
+
 ## Inventory
 
 The inventory is an operator-owned YAML file kept outside this repository. Create one with `rootfiles fleet init`, then replace the example host with your own. Alternatively, use `rootfiles fleet init --from-ssh-config` to import concrete aliases. `--match` filters aliases and `--group` assigns a group. Existing files require `--overwrite`, which saves a backup first. Use `--dry-run` to print the YAML without writing. The longer example is [fleet.example.yaml](fleet.example.yaml). The default path is `$XDG_CONFIG_HOME/rootfiles/fleet.yaml`, else `~/.config/rootfiles/fleet.yaml`; `--inventory` picks another.

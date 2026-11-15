@@ -95,13 +95,56 @@ func TestNativeMutationsRefuseNonLinuxBeforeLock(t *testing.T) {
 	geteuid = func() int { return 0 }
 	t.Cleanup(func() { nativeHostOS = oldOS; geteuid = oldEUID })
 	root := NewRootCmd("test", "abc")
-	cmd, _, _ := root.Find([]string{"update"})
+	cmd, _, _ := root.Find([]string{"apply"})
 	if err := preflight(cmd, nil); err == nil || !strings.Contains(err.Error(), "require Linux") {
-		t.Fatalf("native update: %v", err)
+		t.Fatalf("native apply: %v", err)
+	}
+	// update is the one exception: a controller replaces its own binary, and
+	// upgrade.go refuses one the user does not own.
+	updateCmd, _, _ := root.Find([]string{"update"})
+	if err := preflight(updateCmd, nil); err != nil {
+		t.Fatalf("darwin self-update refused: %v", err)
 	}
 	fleetCmd, _, _ := root.Find([]string{"fleet", "update"})
 	if err := preflight(fleetCmd, nil); err != nil {
 		t.Fatalf("operator controller refused: %v", err)
+	}
+}
+
+// TestUpdateStillNeedsRootOnLinux pins AC4: the controller exception is
+// non-Linux only, so Linux keeps root and the global lock.
+func TestUpdateStillNeedsRootOnLinux(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ROOTFILES_LOCK_FILE", filepath.Join(dir, "lock"))
+	t.Setenv("ROOTFILES_LOG_FILE", filepath.Join(dir, "audit.log"))
+	oldOS, oldEUID := nativeHostOS, geteuid
+	nativeHostOS = "linux"
+	t.Cleanup(func() {
+		nativeHostOS = oldOS
+		geteuid = oldEUID
+		if heldLock != nil {
+			heldLock.Release()
+			heldLock = nil
+		}
+	})
+	root := NewRootCmd("test", "abc")
+	cmd, _, _ := root.Find([]string{"update"})
+
+	geteuid = func() int { return 1000 }
+	err := preflight(cmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "must run as root") {
+		t.Fatalf("non-root linux update: %v", err)
+	}
+	if heldLock != nil {
+		t.Fatal("refused update took the lock")
+	}
+
+	geteuid = func() int { return 0 }
+	if err := preflight(cmd, nil); err != nil {
+		t.Fatalf("root linux update: %v", err)
+	}
+	if heldLock == nil {
+		t.Fatal("root linux update did not take the lock")
 	}
 }
 
@@ -259,8 +302,23 @@ func TestPreflightReadOnlyFlags(t *testing.T) {
 			}
 			cmd.Flags().Set("check", "false")
 			geteuid = func() int { return 1000 }
+			if path[0] == "tunnel" {
+				if err := preflight(cmd, nil); err == nil || !strings.Contains(err.Error(), "root") {
+					t.Fatalf("%v --check=false bypassed root: %v", path, err)
+				}
+				continue
+			}
+			// `update` replaces the user's own binary on a controller
+			// (selfUpdateWithoutRoot); Linux keeps the root and lock gate.
+			if err := preflight(cmd, nil); err != nil {
+				t.Fatalf("%v --check=false refused on a controller: %v", path, err)
+			}
+			if heldLock != nil || auditLogger != nil {
+				t.Fatal("controller update took lock or opened audit")
+			}
+			nativeHostOS = "linux"
 			if err := preflight(cmd, nil); err == nil || !strings.Contains(err.Error(), "root") {
-				t.Fatalf("%v --check=false bypassed root: %v", path, err)
+				t.Fatalf("%v --check=false bypassed root on Linux: %v", path, err)
 			}
 		}
 	}

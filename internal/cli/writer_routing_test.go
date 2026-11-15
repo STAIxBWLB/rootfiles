@@ -82,6 +82,13 @@ func TestApplyRoutesCommandAndModuleOutput(t *testing.T) {
 }
 
 func TestUpdateCheckKeepsTextAndExitCodeOnCommandWriter(t *testing.T) {
+	// The next step names the command for this platform and install location
+	// (`updateCommandHint`), so pin Linux here: on a controller the same bytes
+	// depend on which user owns the running binary. That branch is covered by
+	// TestUpdateCommandHint and TestUpdateCheckPrintsDarwinNextStep.
+	previousOS := nativeHostOS
+	nativeHostOS = "linux"
+	t.Cleanup(func() { nativeHostOS = previousOS })
 	for _, tc := range []struct {
 		version, want string
 		code          int
