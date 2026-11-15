@@ -104,10 +104,17 @@ func newFleetInitCmd() *cobra.Command {
 				if err := runner.WriteFileExclusive(backup, old, 0600); err != nil {
 					return fmt.Errorf("back up inventory %q: %w", backup, err)
 				}
-				if err := runner.Remove(path); err != nil {
-					return fmt.Errorf("remove old inventory after backup %q: %w", backup, err)
+				tmp := backup + ".new"
+				if err := runner.WriteFileExclusive(tmp, data, 0600); err != nil {
+					return fmt.Errorf("create replacement inventory: %w", err)
+				}
+				if err := runner.Rename(tmp, path); err != nil {
+					_ = runner.Remove(tmp)
+					return fmt.Errorf("replace inventory after backup %q: %w", backup, err)
 				}
 				fmt.Fprintf(c.ErrOrStderr(), "Backup: %s\n", backup)
+				_, err = fmt.Fprintf(c.OutOrStdout(), "Created inventory %s\n", path)
+				return err
 			} else if !os.IsNotExist(err) {
 				return fmt.Errorf("inspect inventory %q: %w", path, err)
 			}

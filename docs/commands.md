@@ -249,7 +249,7 @@ Create an inventory with `--inventory`, optionally importing SSH aliases with `-
 
 ### rootfiles fleet hosts
 
-Validate and list hosts without connecting. `--inventory`, `--host`, `--group` and `--all` select the inventory and hosts; without a selection all hosts are listed. `--json` returns an array of objects with `name`, `groups`, `ssh`, `sudo` and `config`.
+Validate and list hosts without connecting. `--inventory`, `--host`, `--group` and `--all` select the inventory and hosts; without a selection all hosts are listed. `--json` or `--output json` returns an array of objects with `name`, `groups`, `ssh`, `sudo` and `config`.
 
 ### rootfiles fleet apply
 
