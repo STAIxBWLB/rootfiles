@@ -252,7 +252,11 @@ func (r *Runner) WriteFileExclusive(path string, content []byte, perm os.FileMod
 	_, writeErr := f.Write(content)
 	closeErr := f.Close()
 	if writeErr != nil {
+		_ = r.Remove(path)
 		return writeErr
+	}
+	if closeErr != nil {
+		_ = r.Remove(path)
 	}
 	return closeErr
 }
