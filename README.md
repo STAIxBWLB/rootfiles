@@ -27,7 +27,7 @@ Anything else is refused before a change.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash
-# pin a release: ... | sudo bash -s -- --version v0.19.0
+# pin a release: ... | sudo bash -s -- --version v0.20.0
 ```
 
 The installer verifies the checksum and installs `/usr/local/bin/rootfiles` (plus a `root` symlink on Linux). Other channels and updates: [docs/operations.md](docs/operations.md#install).
