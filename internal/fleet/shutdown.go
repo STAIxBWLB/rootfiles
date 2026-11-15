@@ -27,6 +27,10 @@ const MaxClockSkew = 30 * time.Second
 // --in 1m would read as under a minute on the host and be refused there.
 const ShutdownMargin = MaxClockSkew + 5*time.Second
 
+// clockNow is this controller's clock, overridable so a test can put the run
+// next to an endpoint of the accepted window.
+var clockNow = time.Now
+
 // ShutdownRequest is what a fleet run hands to every selected host.
 type ShutdownRequest struct {
 	At        time.Time // identical for every host
@@ -58,6 +62,19 @@ func ShutdownSchedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, 
 	}
 
 	preflight := make([]Result, len(hosts))
+	// The host validates the lead again against its own clock, so the whole run
+	// is refused here when the instant is already too close for the worst clock
+	// the preflight will tolerate: transport and the preflight itself take time
+	// that a bare MinLead does not account for.
+	if lead := req.At.Sub(clockNow()); lead < shutdown.MinLead+MaxClockSkew {
+		reason := fmt.Sprintf("the instant is %s away, and every host needs at least %s after the run reaches it (the %s clock skew plus time to enable the timers): set a later --at or a larger --in",
+			lead.Round(time.Second), shutdown.MinLead, MaxClockSkew)
+		out := make([]Result, 0, len(hosts))
+		for _, h := range hosts {
+			out = append(out, Result{Host: h.Name, Command: op, State: "skipped", Reason: reason, ExitCode: -1})
+		}
+		return out
+	}
 	failed := ""
 	for i, h := range hosts {
 		preflight[i] = shutdownPreflight(ctx, runner, h, req)
@@ -85,6 +102,7 @@ func ShutdownSchedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, 
 
 	command := shutdownScheduleCommand(req)
 	attempted := make([]bool, len(hosts))
+	untouched := make([]bool, len(hosts))
 	out := make([]Result, 0, len(hosts))
 	stopped := -1
 	for i, h := range hosts {
@@ -100,6 +118,10 @@ func ShutdownSchedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, 
 		r := runner.runMutation(ctx, h, op, privileged(h.Sudo, command), nil)
 		if r.State != "ok" {
 			stopped = i
+			// The host says so when it refused before writing anything, which is
+			// what tells a rollback that a schedule already recorded there was
+			// never replaced and must not be cancelled.
+			untouched[i] = strings.Contains(r.Reason, shutdown.ErrUntouched.Error())
 		}
 		out = append(out, r)
 	}
@@ -112,6 +134,11 @@ func ShutdownSchedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, 
 	// only a failed cancel leaves it reported as possibly armed.
 	for i, h := range hosts {
 		if !attempted[i] {
+			continue
+		}
+		if untouched[i] {
+			out[i].Reason = "failed before it changed anything (" + out[i].Reason + "), so any schedule that was already there is still in force: nothing was cancelled"
+			out[i].ExitCode = 1
 			continue
 		}
 		cancel := runner.runMutation(ctx, h, "shutdown cancel", privileged(h.Sudo, remoteBinary+" shutdown cancel"), nil)

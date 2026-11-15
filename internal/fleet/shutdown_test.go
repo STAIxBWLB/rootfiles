@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/STAIxBWLB/rootfiles/internal/shutdown"
 )
 
 func shutdownHost(name, sudo string) NamedHost {
@@ -300,5 +302,56 @@ func TestFleetShutdownDryRunContactsNoHost(t *testing.T) {
 	}
 	if _, err := os.Stat(calls); !os.IsNotExist(err) {
 		t.Fatal("the dry run contacted a host")
+	}
+}
+
+// AC7: the instant must still clear the host's own one-minute minimum after
+// transport and the preflight, so a run that would arrive too close is refused
+// before any host is contacted.
+func TestFleetShutdownRefusesAnInstantInsideTheTransportMargin(t *testing.T) {
+	previous := clockNow
+	t.Cleanup(func() { clockNow = previous })
+	pinned := time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
+	clockNow = func() time.Time { return pinned }
+
+	calls := filepath.Join(t.TempDir(), "calls")
+	bin := writeShutdownSSH(t, calls, "")
+	hosts := []NamedHost{shutdownHost("a", "root")}
+	got := ShutdownSchedule(context.Background(), SSHRunner{Binary: bin}, hosts,
+		ShutdownRequest{At: pinned.Add(shutdown.MinLead + 10*time.Second)}, false)
+	if got[0].State != "skipped" {
+		t.Fatalf("an instant inside the transport margin was accepted: %#v", got[0])
+	}
+	for _, want := range []string{"away", "at least 1m0s", "larger --in"} {
+		if !strings.Contains(got[0].Reason, want) {
+			t.Fatalf("refusal %q does not name %q", got[0].Reason, want)
+		}
+	}
+	if _, err := os.Stat(calls); !os.IsNotExist(err) {
+		t.Fatalf("a host was contacted although the instant was too close:\n%s", strings.Join(shutdownCalls(t, calls), "\n"))
+	}
+}
+
+// AC8: a host that refused before writing anything keeps the schedule it
+// already had. Cancelling it would remove a stop the operator never replaced.
+func TestFleetShutdownLeavesAPreExistingScheduleWhenTheHostNeverWrote(t *testing.T) {
+	calls := filepath.Join(t.TempDir(), "calls")
+	bin := writeShutdownSSH(t, calls,
+		`if [ "${7#*shutdown schedule}" != "$7" ] && [ "$6" = "bad" ]; then printf '%s\n' 'rootfiles: nothing was changed: --notice "soon": use positive durations' >&2; exit 1; fi`)
+	hosts := []NamedHost{shutdownHost("good", "root"), shutdownHost("bad", "root")}
+	got := ShutdownSchedule(context.Background(), SSHRunner{Binary: bin}, hosts,
+		ShutdownRequest{At: time.Now().Add(time.Hour)}, false)
+	if got[1].State != "error" {
+		t.Fatalf("a host that never wrote was reported as %q", got[1].State)
+	}
+	if !strings.Contains(got[1].Reason, "nothing was cancelled") {
+		t.Fatalf("the reason %q does not say the pre-existing schedule was left alone", got[1].Reason)
+	}
+	joined := strings.Join(shutdownCalls(t, calls), "\n")
+	if strings.Contains(joined, "bad|/usr/local/bin/rootfiles shutdown cancel") {
+		t.Fatalf("a host that never wrote a schedule was cancelled anyway:\n%s", joined)
+	}
+	if !strings.Contains(joined, "good|/usr/local/bin/rootfiles shutdown cancel") {
+		t.Fatalf("the host that did schedule was not rolled back:\n%s", joined)
 	}
 }
