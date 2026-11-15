@@ -82,6 +82,12 @@ func TestFleetInitDryRunAndImport(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("dry-run wrote file: %v", err)
 	}
+	if _, _, err := runFleetOnboarding(t, "init", "--from-ssh-config", "--group", "gpu"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fleet.LoadInventory(path); err != nil {
+		t.Fatalf("written import: %v", err)
+	}
 	inv, err := fleet.ParseInventory([]byte(out), path)
 	if err != nil {
 		t.Fatal(err)

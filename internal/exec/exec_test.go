@@ -72,3 +72,27 @@ func TestRunner_RemoveIsNotRecursive(t *testing.T) {
 		t.Error("file inside directory was removed")
 	}
 }
+
+func TestRunnerWriteFileExclusive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inventory")
+	r := NewRunner(false, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err := r.WriteFileExclusive(path, []byte("first"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.WriteFileExclusive(path, []byte("second"), 0600); err == nil {
+		t.Fatal("existing file replaced")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != "first" {
+		t.Fatalf("content: %q %v", data, err)
+	}
+	r.DryRun = true
+	preview := filepath.Join(dir, "preview")
+	if err := r.WriteFileExclusive(preview, []byte("preview"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(preview); !os.IsNotExist(err) {
+		t.Fatalf("dry run wrote file: %v", err)
+	}
+}
