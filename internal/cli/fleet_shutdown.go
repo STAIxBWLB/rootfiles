@@ -132,66 +132,116 @@ func controllerHostsIn(hosts []fleet.NamedHost) []string {
 	local := localHostIdentities()
 	var out []string
 	for _, h := range hosts {
-		for _, candidate := range hostCandidates(h) {
-			if candidate == "" {
-				continue
-			}
-			if local[hostIdentity(candidate)] || local[hostShort(candidate)] {
-				out = append(out, h.Name)
-				break
-			}
+		if isThisController(h, local) {
+			out = append(out, h.Name)
 		}
 	}
 	return out
 }
 
-// hostCandidates is every name a host can be reached by: the inventory name,
-// the address, the ssh destination as written, and the hostname the local ssh
-// client resolves that destination to, so an alias pointing back here is not a
-// way around --include-self.
-func hostCandidates(h fleet.NamedHost) []string {
+// isThisController decides one host. A name or address that is this machine is
+// this machine on any port: its hostname and its own interface addresses are not
+// shared with a separate host. A loopback name is this controller only on its own
+// ssh port, because a forwarded port on loopback is a different machine - the
+// same distinction ssh itself makes when it keys known_hosts by [127.0.0.1]:2222
+// rather than by 127.0.0.1.
+func isThisController(h fleet.NamedHost, local localIdentities) bool {
 	destination := sshDestinationHost(h.Host.SSH)
-	return []string{h.Name, destination, h.Host.Address, sshEffectiveHost(destination)}
+	for _, candidate := range []string{h.Name, destination, h.Host.Address} {
+		for _, id := range identityForms(candidate) {
+			if local.definite[id] {
+				return true
+			}
+		}
+	}
+	host, port := sshEffectiveTarget(destination)
+	if port != "" && port != local.sshPort {
+		return false
+	}
+	for _, id := range identityForms(host) {
+		if local.definite[id] || local.loopback[id] {
+			return true
+		}
+	}
+	return false
 }
 
-// sshEffectiveHost asks the local ssh client what a destination resolves to.
+// sshEffectiveTarget asks the local ssh client what a destination resolves to.
 // -G prints the configuration ssh would use and opens no connection.
-var sshEffectiveHost = func(destination string) string {
+var sshEffectiveTarget = func(destination string) (host, port string) {
 	if destination == "" || strings.HasPrefix(destination, "-") {
-		return ""
+		return "", ""
 	}
 	out, err := osexec.Command("ssh", "-G", destination).Output()
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		if rest, ok := strings.CutPrefix(line, "hostname "); ok {
-			return strings.TrimSpace(rest)
+			host = strings.TrimSpace(rest)
+		}
+		if rest, ok := strings.CutPrefix(line, "port "); ok {
+			port = strings.TrimSpace(rest)
 		}
 	}
-	return ""
+	return host, port
+}
+
+// localIdentities is this controller's own identity, split by how strongly a
+// match proves it: a name in definite is this machine whatever port is used,
+// while a name in loopback only reaches this machine on its own ssh port.
+type localIdentities struct {
+	definite map[string]bool
+	loopback map[string]bool
+	sshPort  string
 }
 
 // localHostIdentities is every name or address that means this machine: its
-// hostname and short form, the loopback names, and its own interface addresses.
-var localHostIdentities = func() map[string]bool {
-	names := []string{"localhost", "localhost.localdomain", "127.0.0.1", "::1", "0.0.0.0", "::"}
+// hostname and short form plus its own interface addresses (definite), and the
+// loopback names (loopback).
+var localHostIdentities = func() localIdentities {
+	definite := []string{}
 	if name, err := os.Hostname(); err == nil && name != "" {
-		names = append(names, name)
+		definite = append(definite, name)
 	}
 	if addrs, err := net.InterfaceAddrs(); err == nil {
 		for _, addr := range addrs {
 			if ipnet, ok := addr.(*net.IPNet); ok {
-				names = append(names, ipnet.IP.String())
+				definite = append(definite, ipnet.IP.String())
 			}
 		}
 	}
+	loopback := []string{"localhost", "localhost.localdomain", "127.0.0.1", "::1", "0.0.0.0", "::"}
+	return localIdentities{
+		definite: identitySet(definite),
+		loopback: identitySet(loopback),
+		sshPort:  controllerSSHPort,
+	}
+}
+
+// controllerSSHPort is the port this controller's own sshd answers on, so a
+// loopback destination on any other port is treated as a forwarded host rather
+// than as this machine. An inventory that reaches the controller's own sshd on a
+// non-standard port must name it by hostname or address instead.
+const controllerSSHPort = "22"
+
+func identitySet(names []string) map[string]bool {
 	out := make(map[string]bool, len(names)*2)
 	for _, name := range names {
-		out[hostIdentity(name)] = true
-		out[hostShort(name)] = true
+		for _, id := range identityForms(name) {
+			out[id] = true
+		}
 	}
 	return out
+}
+
+// identityForms is the two spellings a name is compared under: its normalised
+// identity and, for a hostname, the short form.
+func identityForms(name string) []string {
+	if name == "" {
+		return nil
+	}
+	return []string{hostIdentity(name), hostShort(name)}
 }
 
 // hostIdentity normalises a name for comparison: lowercase, no trailing dot and

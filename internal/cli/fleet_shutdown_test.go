@@ -264,23 +264,24 @@ func TestFleetShutdownCancelDryRunReachesEveryHost(t *testing.T) {
 // AC9: self-detection follows what ssh would actually connect to, so an alias
 // or a loopback address cannot carry the rollout onto this machine.
 func TestFleetShutdownResolvesAliasesAndLoopbackToThisController(t *testing.T) {
-	previousHost := sshEffectiveHost
+	previousTarget := sshEffectiveTarget
 	previousLocal := localHostIdentities
-	t.Cleanup(func() { sshEffectiveHost, localHostIdentities = previousHost, previousLocal })
-	sshEffectiveHost = func(destination string) string {
-		if destination == "buildbox" {
-			return "127.0.0.1"
+	t.Cleanup(func() { sshEffectiveTarget, localHostIdentities = previousTarget, previousLocal })
+	sshEffectiveTarget = func(destination string) (string, string) {
+		switch destination {
+		case "buildbox":
+			return "127.0.0.1", "22"
+		case "forwarded":
+			return "127.0.0.1", "2222"
 		}
-		return destination
+		return destination, "22"
 	}
-	localHostIdentities = func() map[string]bool {
-		names := []string{"localhost", "127.0.0.1", "::1", "controller.example.org", "192.0.2.10"}
-		out := map[string]bool{}
-		for _, name := range names {
-			out[hostIdentity(name)] = true
-			out[hostShort(name)] = true
+	localHostIdentities = func() localIdentities {
+		return localIdentities{
+			definite: identitySet([]string{"controller.example.org", "192.0.2.10"}),
+			loopback: identitySet([]string{"localhost", "127.0.0.1", "::1"}),
+			sshPort:  "22",
 		}
-		return out
 	}
 
 	for _, tc := range []struct {
@@ -300,6 +301,17 @@ func TestFleetShutdownResolvesAliasesAndLoopbackToThisController(t *testing.T) {
 				t.Fatalf("%s was not recognised as this controller: %v", tc.name, got)
 			}
 		})
+	}
+	// A loopback destination on a forwarded port is a different machine: ssh keys
+	// known_hosts by [127.0.0.1]:2222, not by 127.0.0.1. The fleet scenario
+	// reaches both of its containers this way, so refusing them would leave every
+	// container fleet unable to schedule a shutdown at all.
+	forwarded := []fleet.NamedHost{
+		{Name: "ssh-good", Host: fleet.Host{SSH: "forwarded"}},
+		{Name: "ssh-bad", Host: fleet.Host{SSH: "forwarded", Address: "127.0.0.1"}},
+	}
+	if got := controllerHostsIn(forwarded); len(got) != 0 {
+		t.Fatalf("a host reached through a loopback forward was refused as the controller: %v", got)
 	}
 	// A genuinely remote host stays selectable.
 	remote := []fleet.NamedHost{{Name: "web1", Host: fleet.Host{SSH: "web1.example.org", Address: "192.0.2.55"}}}
