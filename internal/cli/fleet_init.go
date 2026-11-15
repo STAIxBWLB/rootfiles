@@ -124,6 +124,14 @@ func newFleetInitCmd() *cobra.Command {
 			_, err = fmt.Fprintf(c.OutOrStdout(), "Created inventory %s\n", path)
 			return err
 		}}
+	setFleetOnboardingHelp(c, []string{
+		"  --inventory string     Inventory path (default: user config directory)",
+		"  --from-ssh-config      Import aliases from SSH config",
+		"  --match string         Import aliases matching this glob",
+		"  --group string         Assign imported hosts to a group",
+		"  --overwrite            Back up and replace an existing inventory",
+		"  --dry-run              Print YAML without writing",
+	})
 	c.Flags().String("inventory", defaultFleetInventory(), "Inventory file path")
 	c.Flags().Bool("from-ssh-config", false, "Import aliases from SSH config")
 	c.Flags().String("match", "", "Import aliases matching this glob")
@@ -177,7 +185,30 @@ func newFleetHostsCmd() *cobra.Command {
 			}
 			return ui.WriteTable(c.OutOrStdout(), []string{"host", "groups", "ssh", "sudo", "config"}, table, -1)
 		}}
+	setFleetOnboardingHelp(c, []string{
+		"  --inventory string     Inventory path (default: user config directory)",
+		"  --host strings         Select host names",
+		"  --group strings        Select groups",
+		"  --all                  Select every host",
+		"  -o, --output string    Output format: text or json",
+		"  --json                 Output JSON",
+	})
 	fleetCommonFlags(c)
 	addOutputFlag(c)
 	return c
+}
+
+// setFleetOnboardingHelp shows only the inputs these commands use, with a
+// stable width independent of the operator's home directory.
+func setFleetOnboardingHelp(c *cobra.Command, flags []string) {
+	c.SetHelpFunc(func(cmd *cobra.Command, _ []string) {
+		w := cmd.OutOrStdout()
+		fmt.Fprintf(w, "%s\n\nUsage:\n  %s [flags]\n\nExamples:\n%s\n\nFlags:\n", cmd.Short, cmd.CommandPath(), cmd.Example)
+		for _, flag := range flags {
+			fmt.Fprintln(w, flag)
+		}
+		fmt.Fprintln(w, "  -h, --help             Show help")
+		fmt.Fprintln(w, "  --color string         Color mode: auto, always or never")
+		fmt.Fprintln(w, "  --ascii                Use ASCII markers")
+	})
 }
