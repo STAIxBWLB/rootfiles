@@ -193,7 +193,11 @@ func controllerIdentity(ctx context.Context, inv *fleet.Inventory) bool {
 		}
 		info, err := os.Stat(path)
 		if err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0077 == 0 {
-			return true
+			f, err := os.Open(path)
+			if err == nil {
+				_ = f.Close()
+				return true
+			}
 		}
 	}
 	return false
@@ -206,7 +210,7 @@ func writableDirectory(path string) error {
 			if !info.IsDir() {
 				return fmt.Errorf("%s is not a directory", path)
 			}
-			return syscall.Access(path, 2)
+			return syscall.Access(path, 3)
 		}
 		if !os.IsNotExist(err) {
 			return err
@@ -284,6 +288,10 @@ func runControllerDoctor(cmd *cobra.Command) error {
 		fmt.Fprintln(out, "# HELP rootfiles_doctor_findings Doctor findings by level.\n# TYPE rootfiles_doctor_findings gauge")
 		for _, level := range []string{module.LevelOK, module.LevelWarn, module.LevelFail, module.LevelSkip} {
 			fmt.Fprintf(out, "rootfiles_doctor_findings{level=%q} %d\n", level, counts[level])
+		}
+		fmt.Fprintln(out, "# HELP rootfiles_doctor_check_ok 1 when a doctor check is ok or skipped.\n# TYPE rootfiles_doctor_check_ok gauge")
+		for _, f := range findings {
+			fmt.Fprintf(out, "rootfiles_doctor_check_ok{check=%q} %d\n", f.Check, boolMetric(f.Level == module.LevelOK || f.Level == module.LevelSkip))
 		}
 	default:
 		ui.WriteHeader(out, "rootfiles doctor")

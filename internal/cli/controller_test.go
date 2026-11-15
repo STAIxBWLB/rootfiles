@@ -84,3 +84,31 @@ func TestControllerDoctorMissingInventoryAndIdentity(t *testing.T) {
 		t.Fatalf("doctor: %s %v", out, err)
 	}
 }
+
+func TestControllerIdentityFileAndUnsafeInventory(t *testing.T) {
+	home, inventory := controllerFixture(t)
+	key := filepath.Join(home, "id_fixture")
+	if err := os.WriteFile(key, []byte("fixture"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(home, "bin")
+	if err := os.WriteFile(filepath.Join(bin, "ssh-add"), []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	ssh := "#!/bin/sh\ncase \"$1\" in -V) echo OpenSSH_fixture;; -G) echo 'identityfile " + key + "';; *) exit 1;; esac\n"
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(ssh), 0700); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runControllerTest(t, "doctor", "--inventory", inventory, "--json")
+	if err != nil || !strings.Contains(out, "SSH identity available") {
+		t.Fatalf("identity: %s %v", out, err)
+	}
+	if err := os.Chmod(inventory, 0666); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runControllerTest(t, "doctor", "--inventory", inventory, "--json")
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != 2 || !strings.Contains(out, "writable by group or others") {
+		t.Fatalf("permissions: %s %v", out, err)
+	}
+}
