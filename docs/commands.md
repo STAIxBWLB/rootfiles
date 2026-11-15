@@ -352,7 +352,7 @@ The same schedule with `--in` instead of `--at`, and one notice sent immediately
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--in` | `2m` | Lead time before the poweroff; at least 1 minute, at most 30 days. The instant carries up to 35s of margin (the allowed clock skew plus transport), so the host's own one-minute minimum still holds when the command arrives. |
+| `--in` | `2m` | Lead time before the poweroff; at least 1 minute, at most 30 days minus the 35s margin (the allowed clock skew plus transport), so a host never receives a lead past its own maximum. The margin is what keeps the host's own one-minute minimum true when the command arrives, and a run whose instant is already closer than that minimum plus the skew is refused before any host is contacted. |
 | `--reboot` | `false` | Reboot instead of powering off. |
 | `--message` | unset | Reason shown in every notice. |
 | `--notice` | `24h,1h,15m,5m` | Lead times that still fire if `--in` is far enough away. |
@@ -475,7 +475,7 @@ Schedule one poweroff or reboot at an absolute UTC instant, with advance notice 
 | `--at` | required | RFC 3339 instant **with an explicit offset** (`Z` or `+09:00`). A time without one is refused, and the accepted window is 1 minute to 30 days ahead. |
 | `--reboot` | `false` | Reboot instead of powering off. |
 | `--message` | unset | Reason shown in every notice; printable text, at most 300 characters. |
-| `--notice` | `24h,1h,15m,5m` | Lead times before the instant. A lead whose moment has passed is skipped; when none is left, one notice is sent immediately. |
+| `--notice` | `24h,1h,15m,5m` | Lead times before the instant, at most 8. A lead whose moment has passed is skipped; when none is left, one notice is sent immediately, and a schedule created inside the five-minute login-block window blocks new logins at once. |
 | `--replace` | `false` | Replace a schedule that already exists; without it a second schedule is refused and names the existing one. |
 | `--notify-now` | `false` | Also announce immediately. `rootfiles fleet shutdown now` uses it. |
 
