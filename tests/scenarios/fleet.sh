@@ -361,6 +361,7 @@ done
 
 SHUTDOWN_AT="$(python3 -c 'import datetime;print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
 SHUTDOWN_CALENDAR="$(python3 -c 'import datetime,sys;d=datetime.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ");print(d.strftime("%Y-%m-%d %H:%M:%S")+" UTC")' "$SHUTDOWN_AT")"
+SHUTDOWN_BLOCK_CALENDAR="$(python3 -c 'import datetime,sys;d=datetime.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ")-datetime.timedelta(minutes=5);print(d.strftime("%Y-%m-%d %H:%M:%S")+" UTC")' "$SHUTDOWN_AT")"
 
 set +e
 run_rootfiles fleet shutdown schedule --inventory "$TMP/status.yaml" --all --yes \
@@ -407,6 +408,18 @@ if [[ "$SCHEDULE_FILES_OK" == yes ]]; then
     pass "both hosts recorded the state file and their notice timers"
 else
     fail "a host recorded neither the state file nor its notice timers"
+fi
+
+BLOCK_TIMER="$(docker exec "$GOOD" cat /etc/systemd/system/rootfiles-shutdown-block.timer 2>/dev/null || true)"
+if grep -qxF "OnCalendar=$SHUTDOWN_BLOCK_CALENDAR" <<<"$BLOCK_TIMER"; then
+    pass "the login block has its own timer five minutes before the instant"
+else
+    fail "the login-block timer is not at five minutes before the instant: $BLOCK_TIMER"
+fi
+if grep -qxF 'AccuracySec=1s' <<<"$GOOD_TIMER"; then
+    pass "the timers are pinned to the second, not systemd's one-minute window"
+else
+    fail "the timer leaves systemd's accuracy window: $GOOD_TIMER"
 fi
 
 if docker exec "$GOOD" grep -qF 'enable --now rootfiles-shutdown.timer' /run/rootfiles-systemctl-calls; then

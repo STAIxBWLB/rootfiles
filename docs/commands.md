@@ -352,7 +352,7 @@ The same schedule with `--in` instead of `--at`, and one notice sent immediately
 
 | Flag | Default | Purpose |
 |---|---|---|
-| `--in` | `2m` | Lead time before the poweroff; at least 1 minute, at most 30 days. |
+| `--in` | `2m` | Lead time before the poweroff; at least 1 minute, at most 30 days. The instant carries up to 35s of margin (the allowed clock skew plus transport), so the host's own one-minute minimum still holds when the command arrives. |
 | `--reboot` | `false` | Reboot instead of powering off. |
 | `--message` | unset | Reason shown in every notice. |
 | `--notice` | `24h,1h,15m,5m` | Lead times that still fire if `--in` is far enough away. |
@@ -364,13 +364,13 @@ The same schedule with `--in` instead of `--at`, and one notice sent immediately
 
 ### rootfiles fleet shutdown cancel
 
-Cancel any schedule on every selected host. This is the one mutating fleet command that continues past failures, so cancel reaches every host it can; the run exits 2 when any host failed.
+Cancel any schedule on every selected host. This is the one mutating fleet command that continues past failures, so cancel reaches every host it can; the run exits 2 when any host failed. It is also the recovery for a host whose state file cannot be read: the host finds its units by name and removes them.
 
 Flags: `--inventory`, `--host`, `--group`, `--all` for the selection, `--timeout` and `--skip-unreachable` for the rollout limits, and `-o`/`--output` (`--json` is its alias) for the report. It takes no instant, message or notice flag.
 
 ### rootfiles fleet shutdown status
 
-Read-only, parallel, from `scheduled_shutdown` in each host's `status -o json`. Prints the same table as `rootfiles fleet status`, whose `SHUTDOWN` column carries the instant and the action.
+Read-only, parallel, from `scheduled_shutdown` in each host's `status -o json`. Prints the same table as `rootfiles fleet status`, whose `SHUTDOWN` column carries the instant and the action, or `unknown` when the host's state file cannot be read.
 
 Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
 
@@ -479,17 +479,17 @@ Schedule one poweroff or reboot at an absolute UTC instant, with advance notice 
 | `--replace` | `false` | Replace a schedule that already exists; without it a second schedule is refused and names the existing one. |
 | `--notify-now` | `false` | Also announce immediately. `rootfiles fleet shutdown now` uses it. |
 
-The timer sets `OnCalendar` to the UTC instant and `Persistent=false`, so a host that boots late never acts on a moment that has passed. `--dry-run` writes nothing.
+The timer sets `OnCalendar` to the UTC instant, `Persistent=false` so a host that boots late never acts on a moment that has passed, and `AccuracySec=1s` so systemd's one-minute default cannot move the moment. A separate login-block timer fires five minutes before the instant whatever `--notice` says. A lead whose moment has passed still owes users one notice right away. `--dry-run` writes nothing.
 
 ### rootfiles shutdown cancel
 
-Remove the units, the state file and any `/run/nologin` this schedule wrote, then announce the cancellation to host sessions and tenant containers. Running it again is a no-op. Mutating.
+Remove the units, the state file and any `/run/nologin` this schedule wrote, then announce the cancellation to host sessions and tenant containers. Running it again is a no-op. A timer that will not stop or a unit that will not be removed is an error, not a warning: the state file stays so the schedule remains on record. It is also the recovery for a state file that cannot be read, which it removes by name. Mutating.
 
 ### rootfiles shutdown status
 
-Show the schedule, the instant in UTC and host local time, the time left, the notice instants and whether logins are blocked. Read-only; exit 0, including when nothing is scheduled. `-o`/`--output` takes `text` or `json`, and `--json` is its alias; the JSON report holds `scheduled_shutdown`, `next_notice`, `logins_blocked` and `units_installed`.
+Show the schedule, the instant in UTC and host local time, the time left, the notice instants and whether logins are blocked. Read-only; exit 0, including when nothing is scheduled. An instant that has already passed is not a schedule, so it is not reported. `-o`/`--output` takes `text` or `json`, and `--json` is its alias; the JSON report holds `scheduled_shutdown`, `next_notice`, `logins_blocked`, `units_installed` and, when the state file cannot be read, `scheduled_shutdown_error`.
 
-`rootfiles status -o json` also carries a `scheduled_shutdown` object, but only when a schedule exists.
+`rootfiles status -o json` also carries a `scheduled_shutdown` object, but only when a schedule exists; an unreadable state file appears as `scheduled_shutdown_error` so a fleet pre-flight never reads silence as "nothing scheduled".
 
 ### rootfiles status
 
