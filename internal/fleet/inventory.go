@@ -48,6 +48,11 @@ func LoadInventory(path string) (*Inventory, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading inventory %q: %w", path, err)
 	}
+	return ParseInventory(data, path)
+}
+
+// ParseInventory validates inventory bytes as if they were stored at path.
+func ParseInventory(data []byte, path string) (*Inventory, error) {
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
 	var inv Inventory

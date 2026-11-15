@@ -4,7 +4,7 @@
 
 ## Inventory
 
-The inventory is an operator-owned YAML file kept outside this repository. Start from [fleet.example.yaml](fleet.example.yaml). The default path is `$XDG_CONFIG_HOME/rootfiles/fleet.yaml`, else `~/.config/rootfiles/fleet.yaml`; `--inventory` picks another.
+The inventory is an operator-owned YAML file kept outside this repository. Create one with `rootfiles fleet init`, then replace the example host with your own. Alternatively, use `rootfiles fleet init --from-ssh-config` to import concrete aliases. `--match` filters aliases and `--group` assigns a group. Existing files require `--overwrite`, which saves a backup first. Use `--dry-run` to print the YAML without writing. The longer example is [fleet.example.yaml](fleet.example.yaml). The default path is `$XDG_CONFIG_HOME/rootfiles/fleet.yaml`, else `~/.config/rootfiles/fleet.yaml`; `--inventory` picks another.
 
 ```yaml
 defaults:
@@ -48,7 +48,7 @@ The `users` module writes it to `/etc/sudoers.d/rootfiles-fleet` and refuses whe
 
 ## Selection
 
-Every fleet command except `fleet targets` needs a selection, the read-only ones included; `fleet targets` uses the whole inventory unless one is given:
+Use `rootfiles fleet hosts` to validate the inventory and list all hosts without connecting; `--host`, `--group`, or `--all` narrows the list. `--json` outputs an array with `name`, `groups`, `ssh`, `sudo` (effective mode), and `config` fields. Every fleet report and rollout needs a selection; `fleet targets` uses the whole inventory unless one is given:
 
 - `--host gpu01,gpu02` (comma-separated or repeated) and `--group gpu` select a union, in inventory order.
 - `--all` selects every host and cannot be combined with `--host` or `--group`.

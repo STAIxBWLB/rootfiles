@@ -224,7 +224,7 @@ Read-only health checks of the live host, as opposed to `check`, which compares 
 
 Operator-side SSH controller ([fleet.md](fleet.md)). It runs as the operator, takes no host lock and refuses native-host flags (`--module`, `--profile`, `--config`, `--force`, `--home-base`, `--user`, `--ssh-pubkey`, `--tunnel-token`, `--vlan-address`) before connecting.
 
-Flags shared by every fleet subcommand:
+Selection flags shared by fleet report and rollout commands:
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -242,6 +242,14 @@ Rollouts (`apply`, `update`, `bootstrap`, `schedule`) also take:
 
 - Rollouts need a selection and `--yes`; a `--dry-run` preview needs no `--yes`. They run one host at a time and stop at the first failure.
 - Exit codes: 0 when every host is `ok`, 2 when any host is not, 1 for controller or inventory errors.
+
+### rootfiles fleet init
+
+Create an inventory with `--inventory`, optionally importing SSH aliases with `--from-ssh-config`, `--match` and `--group`. `--overwrite` backs up the existing file; `--dry-run` prints YAML.
+
+### rootfiles fleet hosts
+
+Validate and list hosts without connecting. `--inventory`, `--host`, `--group` and `--all` select the inventory and hosts; without a selection all hosts are listed. `--json` returns an array of objects with `name`, `groups`, `ssh`, `sudo` and `config`.
 
 ### rootfiles fleet apply
 

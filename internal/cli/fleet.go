@@ -36,7 +36,7 @@ func newFleetCmd() *cobra.Command {
 	for _, op := range []string{"status", "check", "doctor"} {
 		c.AddCommand(newFleetReadCmd(op))
 	}
-	c.AddCommand(newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetTargetsCmd())
+	c.AddCommand(newFleetInitCmd(), newFleetHostsCmd(), newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetTargetsCmd())
 	return c
 }
 
@@ -91,6 +91,13 @@ func loadFleetSelection(c *cobra.Command, explicit bool) (*fleet.Inventory, []fl
 	all, _ := c.Flags().GetBool("all")
 	if explicit && !all && len(hosts) == 0 && len(groups) == 0 {
 		return nil, nil, fmt.Errorf("mutating fleet commands require --host, --group, or --all")
+	}
+	if !explicit && !all && len(hosts) == 0 && len(groups) == 0 {
+		hint := "rootfiles fleet hosts"
+		if c.Flags().Changed("inventory") {
+			hint += " --inventory " + fleet.ShellQuote(path)
+		}
+		return nil, nil, fmt.Errorf("select hosts with --host, --group, or --all; run %s to list names", hint)
 	}
 	selected, err := inv.Select(hosts, groups, all)
 	return inv, selected, err
