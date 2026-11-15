@@ -164,7 +164,7 @@ func NoticeText(s Schedule, now time.Time) string {
 		fmt.Fprintf(&b, "%s\n", s.Message)
 	}
 	if s.At.Sub(now) <= NologinLead {
-		b.WriteString("New logins are blocked. Save your work now.\n")
+		b.WriteString("Tenant logins may be blocked. Save your work now.\n")
 	}
 	return b.String()
 }
@@ -172,7 +172,7 @@ func NoticeText(s Schedule, now time.Time) string {
 // CancelText tells sessions the scheduled stop will not happen.
 func CancelText(s Schedule) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Cancelled: the %s scheduled for %s will not happen. Logins are open again.\n",
+	fmt.Fprintf(&b, "Cancelled: the %s scheduled for %s will not happen. Tenant login restrictions from this schedule are being removed.\n",
 		actionVerb(s.Action), s.At.UTC().Format("2006-01-02 15:04:05")+" UTC")
 	if s.Message != "" {
 		fmt.Fprintf(&b, "It was announced as: %s\n", s.Message)

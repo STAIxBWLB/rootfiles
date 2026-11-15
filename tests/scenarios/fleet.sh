@@ -361,6 +361,7 @@ done
 
 SHUTDOWN_AT="$(python3 -c 'import datetime;print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
 SHUTDOWN_CALENDAR="$(python3 -c 'import datetime,sys;d=datetime.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ");print(d.strftime("%Y-%m-%d %H:%M:%S")+" UTC")' "$SHUTDOWN_AT")"
+SHUTDOWN_CELL="$(python3 -c 'import datetime,sys;d=datetime.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ");print(d.strftime("%Y-%m-%dT%H:%MZ"))' "$SHUTDOWN_AT")"
 SHUTDOWN_BLOCK_CALENDAR="$(python3 -c 'import datetime,sys;d=datetime.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ")-datetime.timedelta(minutes=5);print(d.strftime("%Y-%m-%d %H:%M:%S")+" UTC")' "$SHUTDOWN_AT")"
 
 set +e
@@ -432,8 +433,12 @@ set +e
 run_rootfiles fleet shutdown status --inventory "$TMP/status.yaml" --all >"$TMP/shutdown-status.txt" 2>&1
 SHUTDOWN_STATUS_CODE=$?
 set -e
-if [[ "$SHUTDOWN_STATUS_CODE" -eq 0 ]] && grep -q 'SHUTDOWN' "$TMP/shutdown-status.txt" &&
-    grep -q "$SHUTDOWN_CALENDAR" "$TMP/shutdown-status.txt"; then
+if [[ "$SHUTDOWN_STATUS_CODE" -eq 2 ]] && grep -q 'SHUTDOWN' "$TMP/shutdown-status.txt" &&
+    awk -v instant="$SHUTDOWN_CELL" '
+        $1 == "ssh-good" && $2 == "ok" && $3 == instant && $4 == "poweroff" { good++ }
+        $1 == "ssh-bad" && $2 == "drift" && $3 == instant && $4 == "poweroff" { bad++ }
+        END { exit !(good == 1 && bad == 1) }
+    ' "$TMP/shutdown-status.txt"; then
     pass "fleet shutdown status shows the scheduled instant"
 else
     fail "fleet shutdown status did not show the instant (exit $SHUTDOWN_STATUS_CODE): $(cat "$TMP/shutdown-status.txt")"

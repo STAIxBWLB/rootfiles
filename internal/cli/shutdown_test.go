@@ -135,7 +135,7 @@ func TestShutdownScheduleWritesAndReportsThroughStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Scheduled shutdown", "poweroff", at.Format(time.RFC3339), "Building power work", "30m before", "Blocked"} {
+	for _, want := range []string{"Scheduled shutdown", "poweroff", at.Format(time.RFC3339), "Building power work", "30m before", "Blocked", "tenant login blocks start"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("status text lacks %q:\n%s", want, text)
 		}
@@ -148,7 +148,7 @@ func TestShutdownScheduleWritesAndReportsThroughStatus(t *testing.T) {
 	var report struct {
 		Scheduled *shutdown.Schedule `json:"scheduled_shutdown"`
 		Next      *shutdown.Notice   `json:"next_notice"`
-		Blocked   bool               `json:"logins_blocked"`
+		Blocked   *bool              `json:"logins_blocked"`
 		Units     bool               `json:"units_installed"`
 	}
 	if err := json.Unmarshal([]byte(jsonOut), &report); err != nil {
@@ -157,7 +157,7 @@ func TestShutdownScheduleWritesAndReportsThroughStatus(t *testing.T) {
 	if report.Scheduled == nil || !report.Scheduled.At.Equal(at) || report.Scheduled.Action != shutdown.ActionPoweroff {
 		t.Fatalf("status JSON schedule = %+v", report.Scheduled)
 	}
-	if report.Next == nil || report.Next.Lead != "30m" || !report.Units || report.Blocked {
+	if report.Next == nil || report.Next.Lead != "30m" || !report.Units || report.Blocked == nil || *report.Blocked {
 		t.Fatalf("status JSON details = %+v", report)
 	}
 
@@ -352,11 +352,11 @@ func TestShutdownBlockIsHiddenAndBlocksLogins(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _, err := runShutdown(t, "shutdown", "block")
-	if err != nil || !strings.Contains(out, "new logins are blocked") {
+	if err != nil || !strings.Contains(out, "tenant login block attempted") {
 		t.Fatalf("block = %q, %v", out, err)
 	}
-	if data, err := os.ReadFile(shutdown.NologinPath); err != nil || !strings.Contains(string(data), "rootfiles-shutdown: ") {
-		t.Fatalf("block did not write its own /run/nologin: %q err=%v", data, err)
+	if _, err := os.Stat(shutdown.NologinPath); !os.IsNotExist(err) {
+		t.Fatalf("block touched the host nologin file: %v", err)
 	}
 	help, _, err := runShutdown(t, "shutdown", "--help")
 	if err != nil {
@@ -393,5 +393,39 @@ func TestShutdownCancelRecoversFromAnUnreadableState(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(shutdown.UnitDir); len(entries) != 0 {
 		t.Fatalf("recovery cancel left %v", entries)
+	}
+}
+
+func TestShutdownStatusTenantStateAndUnknown(t *testing.T) {
+	dir := shutdownFixture(t)
+	at := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	if _, _, err := runShutdown(t, "shutdown", "schedule", "--at", at.Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "bin")
+	script := "#!/bin/sh\ncase \"$1:$3\" in ps:*) echo tenant-a;; exec:grep) exit 0;; exec:cat) echo maintenance;; esac\n"
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(script), 0700); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := runShutdown(t, "shutdown", "status", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report struct {
+		Blocked *bool                      `json:"logins_blocked"`
+		Tenant  shutdown.TenantLoginStatus `json:"tenant_logins"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil || report.Blocked == nil || !*report.Blocked || report.Tenant.Blocked != 1 {
+		t.Fatalf("blocked status: %s %v", out, err)
+	}
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte("#!/bin/sh\nexit 2\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err = runShutdown(t, "shutdown", "status", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil || report.Blocked != nil || report.Tenant.Unknown == 0 {
+		t.Fatalf("unknown status: %s %v", out, err)
 	}
 }

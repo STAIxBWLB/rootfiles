@@ -55,7 +55,7 @@ The instant must carry an explicit offset; a host's own time zone never moves it
 
 	block := &cobra.Command{
 		Use:    "block",
-		Short:  "Stop new logins (run by the login-block timer)",
+		Short:  "Stop new tenant logins (run by the login-block timer)",
 		Args:   cobra.NoArgs,
 		Hidden: true,
 		RunE:   runShutdownBlock,
@@ -63,14 +63,14 @@ The instant must carry an explicit offset; a host's own time zone never moves it
 
 	cancel := &cobra.Command{
 		Use:   "cancel",
-		Short: "Remove the schedule, the units and any login block",
+		Short: "Remove the schedule, the units and any tenant login block",
 		Args:  cobra.NoArgs,
 		RunE:  runShutdownCancel,
 	}
 
 	status := &cobra.Command{
 		Use:   "status",
-		Short: "Show the schedule, the next notice and whether logins are blocked",
+		Short: "Show the schedule, the next notice and the tenant login block",
 		Long:  "Read-only: reads the state file and the units it wrote. Nothing is changed, so a host with no schedule reports that.",
 		Args:  cobra.NoArgs,
 		RunE:  runShutdownStatus,
@@ -167,7 +167,7 @@ func runShutdownBlock(cmd *cobra.Command, _ []string) error {
 		ui.WriteText(cmd.OutOrStdout(), "%s no scheduled shutdown; logins stay open\n", ui.MarkOK)
 		return nil
 	}
-	ui.WriteText(cmd.OutOrStdout(), "%s new logins are blocked until the %s at %s\n", ui.MarkOK,
+	ui.WriteText(cmd.OutOrStdout(), "%s tenant login block attempted for the %s at %s\n", ui.MarkOK,
 		shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339))
 	return nil
 }
@@ -191,16 +191,18 @@ func runShutdownCancel(cmd *cobra.Command, _ []string) error {
 	if dryRun {
 		verb = "dry-run: would cancel"
 	}
-	ui.WriteText(cmd.OutOrStdout(), "%s %s the %s scheduled for %s; logins are open again\n",
+	ui.WriteText(cmd.OutOrStdout(), "%s %s the %s scheduled for %s; this schedule's tenant login restrictions were removed where possible\n",
 		ui.MarkOK, verb, shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339))
 	return nil
 }
 
 type shutdownStatusReport struct {
-	Scheduled      *shutdown.Schedule `json:"scheduled_shutdown,omitempty"`
-	NextNotice     *shutdown.Notice   `json:"next_notice,omitempty"`
-	LoginsBlocked  bool               `json:"logins_blocked"`
-	UnitsInstalled bool               `json:"units_installed"`
+	Scheduled       *shutdown.Schedule          `json:"scheduled_shutdown,omitempty"`
+	NextNotice      *shutdown.Notice            `json:"next_notice,omitempty"`
+	LoginsBlocked   *bool                       `json:"logins_blocked"`
+	TenantLogins    *shutdown.TenantLoginStatus `json:"tenant_logins,omitempty"`
+	LegacyHostBlock bool                        `json:"legacy_host_block"`
+	UnitsInstalled  bool                        `json:"units_installed"`
 	// ScheduledError reports a state file that cannot be read, so a fleet
 	// pre-flight refuses to schedule over a timer it cannot inspect instead of
 	// reading the silence as "nothing scheduled".
@@ -220,7 +222,13 @@ func runShutdownStatus(cmd *cobra.Command, _ []string) error {
 	if s != nil {
 		report.Scheduled = s
 		report.NextNotice = nextShutdownNotice(*s, time.Now())
-		report.LoginsBlocked = shutdownLoginsBlocked(s)
+		report.LegacyHostBlock = shutdownLoginsBlocked(s)
+		loginStatus := shutdown.InspectTenantLogins(cmd.Context(), newRunner(cmd, true))
+		report.TenantLogins = &loginStatus
+		if loginStatus.Unknown == 0 {
+			blocked := loginStatus.Blocked > 0
+			report.LoginsBlocked = &blocked
+		}
 		report.UnitsInstalled = newRunner(cmd, true).FileExists(filepath.Join(shutdown.UnitDir, shutdown.UnitName+".timer"))
 	}
 	if format == "json" {
@@ -239,6 +247,10 @@ func nextShutdownNotice(s shutdown.Schedule, now time.Time) *shutdown.Notice {
 	return nil
 }
 
+// shutdownLoginsBlocked reports a host /run/nologin carrying this schedule's
+// marker. This build blocks logins inside tenant containers only, so the file
+// can only be a leftover from an earlier build: reading the host path keeps that
+// leftover visible without claiming anything about the tenants.
 func shutdownLoginsBlocked(s *shutdown.Schedule) bool {
 	data, err := os.ReadFile(shutdown.NologinPath)
 	return err == nil && shutdown.WroteNologin(string(data), s.ID)
@@ -276,12 +288,18 @@ func renderShutdownStatusText(out io.Writer, report shutdownStatusReport) {
 	}
 
 	ui.WriteSection(out, "Logins")
-	if report.LoginsBlocked {
-		ui.WriteKV(out, "Blocked", "yes: "+shutdown.NologinPath+" was written by this schedule")
-	} else {
-		ui.WriteKV(out, "Blocked", "no")
-		ui.WriteHint(out, fmt.Sprintf("new logins are blocked from %s before the instant", shutdown.NologinLead))
+	if report.LegacyHostBlock {
+		ui.WriteKV(out, "Legacy host block", "yes: "+shutdown.NologinPath+" carries this schedule's marker")
+		ui.WriteHint(out, "run 'rootfiles shutdown cancel' to remove the legacy block")
 	}
+	if report.TenantLogins != nil {
+		state := fmt.Sprintf("%d of %d checked containers", report.TenantLogins.Blocked, report.TenantLogins.Checked)
+		if report.TenantLogins.Unknown > 0 {
+			state += fmt.Sprintf("; %d unknown", report.TenantLogins.Unknown)
+		}
+		ui.WriteKV(out, "Blocked", state)
+	}
+	ui.WriteHint(out, fmt.Sprintf("tenant login blocks start %s before the instant; host SSH stays open", shutdown.NologinLead))
 }
 
 func installedWord(installed bool) string {

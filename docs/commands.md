@@ -479,7 +479,7 @@ Schedule one poweroff or reboot at an absolute UTC instant, with advance notice 
 | `--replace` | `false` | Replace a schedule that already exists; without it a second schedule is refused and names the existing one. |
 | `--notify-now` | `false` | Also announce immediately. `rootfiles fleet shutdown now` uses it. |
 
-The timer sets `OnCalendar` to the UTC instant, `Persistent=false` so a host that boots late never acts on a moment that has passed, and `AccuracySec=1s` so systemd's one-minute default cannot move the moment. A separate login-block timer fires five minutes before the instant whatever `--notice` says. A lead whose moment has passed still owes users one notice right away. `--dry-run` writes nothing.
+The timer sets `OnCalendar` to the UTC instant, `Persistent=false` so a host that boots late never acts on a moment that has passed, and `AccuracySec=1s` so systemd's one-minute default cannot move the moment. A separate tenant login-block timer fires five minutes before the instant whatever `--notice` says; host SSH remains available for cancellation. A lead whose moment has passed still owes users one notice right away. `--dry-run` writes nothing.
 
 ### rootfiles shutdown cancel
 
@@ -487,7 +487,7 @@ Remove the units, the state file and any `/run/nologin` this schedule wrote, the
 
 ### rootfiles shutdown status
 
-Show the schedule, the instant in UTC and host local time, the time left, the notice instants and whether logins are blocked. Read-only; exit 0, including when nothing is scheduled. An instant that has already passed is not a schedule, so it is not reported. `-o`/`--output` takes `text` or `json`, and `--json` is its alias; the JSON report holds `scheduled_shutdown`, `next_notice`, `logins_blocked`, `units_installed` and, when the state file cannot be read, `scheduled_shutdown_error`.
+Show the schedule, the instant in UTC and host local time, the time left, the notice instants and whether logins are blocked. Read-only; exit 0, including when nothing is scheduled. An instant that has already passed is not a schedule, so it is not reported. `-o`/`--output` takes `text` or `json`, and `--json` is its alias; the JSON report holds `scheduled_shutdown`, `next_notice`, `logins_blocked` (true or false when tenant state is known, null when unknown), `tenant_logins` (checked, blocked and unknown counts), `legacy_host_block`, `units_installed` and, when the state file cannot be read, `scheduled_shutdown_error`.
 
 `rootfiles status -o json` also carries a `scheduled_shutdown` object, but only when a schedule exists; an unreadable state file appears as `scheduled_shutdown_error` so a fleet pre-flight never reads silence as "nothing scheduled".
 

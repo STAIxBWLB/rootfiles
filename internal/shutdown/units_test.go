@@ -151,11 +151,11 @@ func TestNoticeTextCarriesUTCZoneTimeLeftAndMessage(t *testing.T) {
 			t.Fatalf("notice text lacks %q:\n%s", want, text)
 		}
 	}
-	if strings.Contains(text, "New logins are blocked") {
+	if strings.Contains(text, "Tenant logins may be blocked") {
 		t.Fatalf("a 15m notice announced the login block:\n%s", text)
 	}
 	late := NoticeText(s, testAt.Add(-2*time.Minute))
-	if !strings.Contains(late, "New logins are blocked") {
+	if !strings.Contains(late, "Tenant logins may be blocked") {
 		t.Fatalf("a notice inside the 5m window did not announce the block:\n%s", late)
 	}
 }

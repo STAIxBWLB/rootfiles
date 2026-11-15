@@ -240,8 +240,8 @@ func TestCancelRunRemovesExactlyWhatItWroteAndIsIdempotent(t *testing.T) {
 	if _, _, err := ScheduleRun(context.Background(), env, req); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(NologinPath); err != nil {
-		t.Fatalf("a notice inside the 5m window did not block logins: %v", err)
+	if _, err := os.Stat(NologinPath); !os.IsNotExist(err) {
+		t.Fatalf("notice touched the host login block: %v", err)
 	}
 
 	ctx := context.Background()
@@ -357,12 +357,8 @@ func TestNotifyBlocksLoginsInsideTheFiveMinuteWindow(t *testing.T) {
 	if _, _, err := NotifyRun(context.Background(), env, "5m"); err != nil {
 		t.Fatal(err)
 	}
-	host, err := os.ReadFile(NologinPath)
-	if err != nil {
-		t.Fatalf("the host did not block logins: %v", err)
-	}
-	if !WroteNologin(string(host), s.ID) {
-		t.Fatalf("the host block file is not attributable: %q", host)
+	if _, err := os.Stat(NologinPath); !os.IsNotExist(err) {
+		t.Fatalf("notify touched the host login block: %v", err)
 	}
 	if text := readLog(t, filepath.Join(dir, "tenant-a.nologin")); !WroteNologin(text, s.ID) {
 		t.Fatalf("tenant-a with pam_nologin was not blocked: %q", text)
@@ -396,7 +392,10 @@ func TestNotifyAfterTheMomentOrWithoutAScheduleDoesNothing(t *testing.T) {
 func TestBlockRunClosesLoginsWhateverTheNoticeList(t *testing.T) {
 	env, dir := testEnv(t)
 	installFakes(t, dir)
-	if err := os.WriteFile(filepath.Join(dir, "containers"), nil, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "containers"), []byte("tenant-a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.pam"), nil, 0644); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "1h")); err != nil {
@@ -417,9 +416,12 @@ func TestBlockRunClosesLoginsWhateverTheNoticeList(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %v", warnings)
 	}
-	data, err := os.ReadFile(NologinPath)
+	data, err := os.ReadFile(filepath.Join(dir, "tenant-a.nologin"))
 	if err != nil || !WroteNologin(string(data), s.ID) {
-		t.Fatalf("the block did not write its own /run/nologin: %q err=%v", data, err)
+		t.Fatalf("tenant block missing: %q err=%v", data, err)
+	}
+	if _, err := os.Stat(NologinPath); !os.IsNotExist(err) {
+		t.Fatalf("block touched the host file: %v", err)
 	}
 }
 
@@ -557,7 +559,7 @@ func TestBlockLoginsKeepsAForeignFileOnHostAndTenants(t *testing.T) {
 		t.Fatal(err)
 	}
 	joined := strings.Join(warnings, "\n")
-	for _, want := range []string{NologinPath, "tenant-a", "was not written by rootfiles"} {
+	for _, want := range []string{"tenant-a", "was not written by rootfiles"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("warnings do not name %q:\n%s", want, joined)
 		}
@@ -655,13 +657,22 @@ func TestScheduleRunBlocksLoginsWhenTheScheduleIsInsideTheWindow(t *testing.T) {
 	env, dir := testEnv(t)
 	installFakes(t, dir)
 
+	if err := os.WriteFile(filepath.Join(dir, "containers"), []byte("tenant-a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.pam"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
 	s, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Minute), "1m"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(NologinPath)
+	data, err := os.ReadFile(filepath.Join(dir, "tenant-a.nologin"))
 	if err != nil || !WroteNologin(string(data), s.ID) {
-		t.Fatalf("a schedule inside the five-minute window did not close logins at once: %q err=%v", string(data), err)
+		t.Fatalf("tenant block missing: %q err=%v", data, err)
+	}
+	if _, err := os.Stat(NologinPath); !os.IsNotExist(err) {
+		t.Fatalf("schedule touched the host file: %v", err)
 	}
 }
 
@@ -756,5 +767,98 @@ func TestScheduleRunMarksAFailureBeforeItWroteAsUntouched(t *testing.T) {
 	}
 	if s, loadErr := Load(); loadErr != nil || s == nil || s.ID != testSchedule().ID {
 		t.Fatalf("the existing record was not left in force: %+v err=%v", s, loadErr)
+	}
+}
+
+// Old versions may have written a marked host file; cancel still removes it.
+func TestCancelRemovesLegacyMarkedHostNologin(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	s := testSchedule()
+	if err := save(env.Runner, s); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(NologinPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(NologinPath, []byte(NologinText(s)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := CancelRun(context.Background(), env); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(NologinPath); !os.IsNotExist(err) {
+		t.Fatalf("legacy marked host file remains: %v", err)
+	}
+}
+
+// D2: logins are blocked inside tenant containers only. The block never writes
+// the host's /run/nologin, because that would close host sshd and the
+// controller needs it to stay reachable so `fleet shutdown cancel` can always
+// disarm a run it just armed. A marked host file an earlier version left is not
+// even rewritten by the block: only the cancel removes it.
+func TestBlockLoginsNeverWritesTheHostNologin(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "containers"), []byte("tenant-a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.pam"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	s, warnings, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Minute), "1m"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	if _, err := os.Stat(NologinPath); !os.IsNotExist(err) {
+		t.Fatalf("the block wrote the host's %s, which closes host sshd: %v", NologinPath, err)
+	}
+	if text := readLog(t, filepath.Join(dir, "tenant-a.nologin")); !WroteNologin(text, s.ID) {
+		t.Fatalf("tenant-a was not blocked: %q", text)
+	}
+
+	// An earlier version's marked host file is left byte for byte as it is, and
+	// the block does not warn about a file it no longer manages.
+	legacy := NologinText(*s)
+	if err := os.MkdirAll(filepath.Dir(NologinPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(NologinPath, []byte(legacy), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, warnings, err := BlockRun(context.Background(), env); err != nil || len(warnings) != 0 {
+		t.Fatalf("block = %v, %v", warnings, err)
+	}
+	if data, err := os.ReadFile(NologinPath); err != nil || string(data) != legacy {
+		t.Fatalf("the block rewrote the host's %s: %q err=%v", NologinPath, data, err)
+	}
+}
+
+func TestInspectTenantLoginsReportsBlockedAndUnknown(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "containers"), []byte("tenant-a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.pam"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.nologin"), []byte("maintenance\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	got := InspectTenantLogins(context.Background(), env.Runner)
+	if got.Checked != 1 || got.Blocked != 1 || got.Unknown != 0 {
+		t.Fatalf("blocked: %+v", got)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "failcat"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	got = InspectTenantLogins(context.Background(), env.Runner)
+	if got.Checked != 1 || got.Blocked != 0 || got.Unknown != 1 {
+		t.Fatalf("unknown: %+v", got)
 	}
 }

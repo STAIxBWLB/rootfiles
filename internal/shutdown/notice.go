@@ -314,9 +314,12 @@ func queryTimer(ctx context.Context, r *exec.Runner, timer string) timerState {
 	return timerInactive
 }
 
-// removeNologin deletes /run/nologin only where this feature wrote it, on the
-// host and inside tenant containers. With no schedule (an unreadable state
-// file) a file carrying this feature's marker for any id is ours.
+// removeNologin deletes /run/nologin where this feature wrote it: inside tenant
+// containers, and on the host as legacy cleanup. This build blocks logins in
+// tenants only, but an earlier build wrote the host file, so a host file
+// carrying this feature's marker is still ours to delete while a foreign one is
+// never touched. With no schedule (an unreadable state file) a file carrying
+// the marker for any id is ours.
 func removeNologin(ctx context.Context, r *exec.Runner, s *Schedule) []string {
 	var warnings []string
 	ours := func(content string) bool {
@@ -346,25 +349,16 @@ func removeNologin(ctx context.Context, r *exec.Runner, s *Schedule) []string {
 	return warnings
 }
 
-// blockLogins writes /run/nologin on the host and in every running tenant
-// container whose sshd PAM stack honours pam_nologin. A /run/nologin this
-// feature did not write is someone else's maintenance lock: it stays, and it
-// stays after the cancel too.
+// blockLogins writes /run/nologin in every running tenant container whose sshd
+// PAM stack honours pam_nologin, and nowhere else. The host's own /run/nologin
+// is never written: it would close host sshd, and the controller needs host sshd
+// to stay reachable so `fleet shutdown cancel` can always disarm a run it just
+// armed. Those who need the warning are the ones logging in to the tenants
+// anyway. A tenant file this feature did not write is someone else's maintenance
+// lock: it stays, and it stays after the cancel too.
 func blockLogins(ctx context.Context, r *exec.Runner, s *Schedule) []string {
 	var warnings []string
 	text := NologinText(*s)
-	switch existing, err := r.ReadFile(NologinPath); {
-	case err == nil && !strings.Contains(string(existing), nologinMarker):
-		warnings = append(warnings, fmt.Sprintf("%s already exists and was not written by rootfiles: left it in place", NologinPath))
-	case err != nil && !errors.Is(err, os.ErrNotExist):
-		warnings = append(warnings, fmt.Sprintf("cannot read %s: %s", NologinPath, firstLine(err)))
-	default:
-		if err := r.MkdirAll(filepath.Dir(NologinPath), 0755); err != nil {
-			warnings = append(warnings, fmt.Sprintf("cannot create %s: %s", filepath.Dir(NologinPath), firstLine(err)))
-		} else if err := r.WriteFile(NologinPath, []byte(text), 0644); err != nil {
-			warnings = append(warnings, fmt.Sprintf("cannot write %s: %s", NologinPath, firstLine(err)))
-		}
-	}
 	containers, err := tenantContainers(ctx, r)
 	if err != nil {
 		return append(warnings, firstLine(err))
@@ -389,6 +383,48 @@ func blockLogins(ctx context.Context, r *exec.Runner, s *Schedule) []string {
 		}
 	}
 	return warnings
+}
+
+// TenantLoginStatus reports only what can be established from local container
+// inspection. Unknown counts prevent an unreadable container from being called
+// unblocked. Foreign nologin files still block logins and count as blocked.
+type TenantLoginStatus struct {
+	Checked int    `json:"checked"`
+	Blocked int    `json:"blocked"`
+	Unknown int    `json:"unknown"`
+	Error   string `json:"error,omitempty"`
+}
+
+// InspectTenantLogins reads running tenant container state without changing it.
+func InspectTenantLogins(ctx context.Context, r *exec.Runner) TenantLoginStatus {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	var report TenantLoginStatus
+	containers, err := tenantContainers(ctx, r)
+	if err != nil {
+		report.Unknown = 1
+		report.Error = firstLine(err)
+		return report
+	}
+	for _, c := range containers {
+		probe, err := r.Query(ctx, "docker", "exec", c, "grep", "-qs", "pam_nologin", "/etc/pam.d/sshd")
+		if err != nil {
+			if probe != nil && probe.ExitCode == 1 {
+				continue
+			}
+			report.Unknown++
+			continue
+		}
+		report.Checked++
+		status, _ := inspectContainerNologin(ctx, r, c)
+		switch status {
+		case nologinOurs, nologinForeign:
+			report.Blocked++
+		case nologinUnknown:
+			report.Unknown++
+		}
+	}
+	return report
 }
 
 // nologinState is what a tenant's login block file is: this feature's, someone
