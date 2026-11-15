@@ -20,6 +20,7 @@ paths:
 
 ## Contracts and invariants
 
+- **Controller mode.** On non-Linux hosts `doctor` uses the local controller checks in [cli-runtime](cli-runtime.md#controller-reports), not the native server checks below.
 - **Doctor never changes the system.** `runDoctor` uses shared `readOnlyRunContext` with its discard logger by default (root `--verbose` selects the configured INFO logger) and report-backend fallback, preserving a dry-run `exec.Runner` and needs no root or lock (not in `mutatingCommands`). `doctorSSH` reports an unavailable effective-config query with repair guidance and never creates runtime directories.
 - Command-format tests replace the `doctorChecks` discovery seam; its production default remains `module.Doctor`. No findings or native probe policy change. JSON/Prometheus bytes are pinned against the previous command implementation.
 - Human skipped findings use the absent marker in both rows and summary, with the word "skipped"; the machine level remains `skip`.
