@@ -36,7 +36,7 @@ func newFleetCmd() *cobra.Command {
 	for _, op := range []string{"status", "check", "doctor"} {
 		c.AddCommand(newFleetReadCmd(op))
 	}
-	c.AddCommand(newFleetInitCmd(), newFleetHostsCmd(), newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetTargetsCmd())
+	c.AddCommand(newFleetPingCmd(), newFleetInitCmd(), newFleetHostsCmd(), newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetTargetsCmd())
 	return c
 }
 
