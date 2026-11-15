@@ -5,6 +5,7 @@ title: CLI Runtime
 status: active
 parent: architecture
 paths:
+  - internal/cli/controller.go
   - internal/cli/root.go
   - internal/cli/runtime.go
   - internal/cli/output.go
