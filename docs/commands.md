@@ -332,7 +332,7 @@ Schedule, cancel or inspect a poweroff across the fleet ([fleet.md](fleet.md#shu
 rootfiles fleet shutdown schedule --group gpu --at 2026-11-21T18:00:00+09:00 --message 'Building power work' --yes
 ```
 
-Pre-flights every host before writing anything: the host clock must be within 30 seconds of the controller's, rootfiles there must have `shutdown`, and no schedule may exist unless `--replace` is given. If a host fails while being scheduled, the hosts this run already scheduled are cancelled and reported `cancelled`, or `cancel-failed` with the exact rerun command.
+Pre-flights every host before writing anything: the host clock must be within 30 seconds of the controller's, rootfiles there must have `shutdown`, and no schedule may exist unless `--replace` is given. If a host fails while being scheduled, every host this run touched is cancelled - the failing one included, because its poweroff timer may already be enabled - and reported `cancelled`, or `cancel-failed` with the exact rerun command.
 
 | Flag | Default | Purpose |
 |---|---|---|
