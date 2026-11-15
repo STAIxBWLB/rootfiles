@@ -247,3 +247,147 @@ func TestStatusReportCarriesTheScheduleOnlyWhenScheduled(t *testing.T) {
 		t.Fatalf("status text does not name the schedule:\n%s", out.String())
 	}
 }
+
+// AC5: an expired record is not a schedule any more, and a state file that
+// cannot be read is reported instead of reading as "nothing scheduled".
+func TestStatusIgnoresAnExpiredScheduleAndReportsAnUnreadableOne(t *testing.T) {
+	saved := shutdown.StatePath
+	shutdown.StatePath = filepath.Join(t.TempDir(), "shutdown.json")
+	t.Cleanup(func() { shutdown.StatePath = saved })
+	noHostCommands(t)
+
+	sys := &config.SystemInfo{OS: "ubuntu"}
+	cfg := config.Fallback(sys, "")
+	rc := readOnlyRunContext(cfg, sys, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
+	expired := shutdown.Schedule{
+		ID: "20261119T090000Z", At: time.Now().Add(-time.Hour).UTC(), Action: shutdown.ActionPoweroff,
+		Notices: []shutdown.Notice{{Lead: "15m", At: time.Now().Add(-75 * time.Minute).UTC()}},
+	}
+	encoded, err := json.Marshal(expired)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(shutdown.StatePath, encoded, 0644); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(collectStatus(context.Background(), rc, sys, "minimal", "", nil, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "scheduled_shutdown") {
+		t.Fatalf("an expired record was reported as a schedule:\n%s", data)
+	}
+
+	if err := os.WriteFile(shutdown.StatePath, []byte("{not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	data, err = json.Marshal(collectStatus(context.Background(), rc, sys, "minimal", "", nil, nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"scheduled_shutdown_error"`) {
+		t.Fatalf("an unreadable state file read as nothing scheduled:\n%s", data)
+	}
+	if strings.Contains(string(data), `"scheduled_shutdown":`) {
+		t.Fatalf("an unreadable state file also claimed a schedule:\n%s", data)
+	}
+}
+
+// The status report must not depend on an ambient toolchain: a host with a
+// failing systemctl and ip answers the same way as one without them.
+func TestStatusScheduleFieldsSurviveFailingAmbientTools(t *testing.T) {
+	saved := shutdown.StatePath
+	shutdown.StatePath = filepath.Join(t.TempDir(), "shutdown.json")
+	t.Cleanup(func() { shutdown.StatePath = saved })
+	noHostCommands(t)
+	failing := t.TempDir()
+	for _, name := range []string{"systemctl", "ip", "cloudflared"} {
+		body := "#!/bin/sh\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(failing, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", failing)
+
+	sys := &config.SystemInfo{OS: "ubuntu"}
+	cfg := config.Fallback(sys, "")
+	rc := readOnlyRunContext(cfg, sys, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	report := collectStatus(context.Background(), rc, sys, "minimal", "", nil, nil)
+	if report.ScheduledShutdown != nil || report.ScheduledShutdownError != "" {
+		t.Fatalf("a failing toolchain invented a schedule state: %+v / %q", report.ScheduledShutdown, report.ScheduledShutdownError)
+	}
+}
+
+// A --replace must not tell sessions a live stop was cancelled.
+func TestShutdownReplaceDoesNotAnnounceACancellation(t *testing.T) {
+	dir := shutdownFixture(t)
+	wall := filepath.Join(dir, "wall.log")
+	bin := filepath.Join(dir, "bin")
+	if err := os.WriteFile(filepath.Join(bin, "wall"), []byte("#!/bin/sh\ncat >> '"+wall+"'\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	if _, _, err := runShutdown(t, "shutdown", "schedule", "--at", at.Format(time.RFC3339), "--notice", "15m"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runShutdown(t, "shutdown", "schedule", "--at", at.Add(time.Hour).Format(time.RFC3339), "--notice", "15m", "--replace"); err != nil {
+		t.Fatalf("--replace: %v", err)
+	}
+	if data, err := os.ReadFile(wall); err == nil && strings.Contains(string(data), "Cancelled") {
+		t.Fatalf("--replace told sessions the stop was cancelled:\n%s", data)
+	}
+}
+
+// The login-block command is internal, like notify, and closes logins for the
+// stored schedule.
+func TestShutdownBlockIsHiddenAndBlocksLogins(t *testing.T) {
+	shutdownFixture(t)
+	at := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	if _, _, err := runShutdown(t, "shutdown", "schedule", "--at", at.Format(time.RFC3339), "--notice", "1h"); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := runShutdown(t, "shutdown", "block")
+	if err != nil || !strings.Contains(out, "new logins are blocked") {
+		t.Fatalf("block = %q, %v", out, err)
+	}
+	if data, err := os.ReadFile(shutdown.NologinPath); err != nil || !strings.Contains(string(data), "rootfiles-shutdown: ") {
+		t.Fatalf("block did not write its own /run/nologin: %q err=%v", data, err)
+	}
+	help, _, err := runShutdown(t, "shutdown", "--help")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(help, "\n  block") {
+		t.Fatalf("the internal block command is listed in help:\n%s", help)
+	}
+}
+
+// An unreadable state file cannot block the cancel its own error message names.
+func TestShutdownCancelRecoversFromAnUnreadableState(t *testing.T) {
+	shutdownFixture(t)
+	at := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	if _, _, err := runShutdown(t, "shutdown", "schedule", "--at", at.Format(time.RFC3339)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(shutdown.StatePath, []byte("{not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	jsonOut, _, err := runShutdown(t, "shutdown", "status", "-o", "json")
+	if err != nil {
+		t.Fatalf("status on an unreadable state failed instead of reporting it: %v", err)
+	}
+	if !strings.Contains(jsonOut, "scheduled_shutdown_error") {
+		t.Fatalf("status JSON hid the unreadable state:\n%s", jsonOut)
+	}
+	out, errOut, err := runShutdown(t, "shutdown", "cancel")
+	if err != nil {
+		t.Fatalf("cancel could not recover: %v\n%s", err, errOut)
+	}
+	if !strings.Contains(out, "leftover") || !strings.Contains(errOut, "could not be read") {
+		t.Fatalf("cancel = %q, %q; want the leftovers named on stdout and the cause on stderr", out, errOut)
+	}
+	if entries, _ := os.ReadDir(shutdown.UnitDir); len(entries) != 0 {
+		t.Fatalf("recovery cancel left %v", entries)
+	}
+}

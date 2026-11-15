@@ -198,11 +198,14 @@ type statusReport struct {
 	AppliedConfigSHA256 string     `json:"applied_config_sha256,omitempty"`
 	LastApply           *state.Run `json:"last_apply"`
 	// ScheduledShutdown is additive: absent unless this host has a schedule.
-	ScheduledShutdown *shutdown.Schedule       `json:"scheduled_shutdown,omitempty"`
-	Modules           []checkModule            `json:"modules"`
-	GPU               *module.GPUAllocationsDB `json:"gpu,omitempty"`
-	Tunnel            statusTunnel             `json:"tunnel"`
-	Users             statusUsers              `json:"users"`
+	ScheduledShutdown *shutdown.Schedule `json:"scheduled_shutdown,omitempty"`
+	// ScheduledShutdownError reports a state file that cannot be read: silence
+	// would otherwise read as "nothing scheduled" to a fleet pre-flight.
+	ScheduledShutdownError string                   `json:"scheduled_shutdown_error,omitempty"`
+	Modules                []checkModule            `json:"modules"`
+	GPU                    *module.GPUAllocationsDB `json:"gpu,omitempty"`
+	Tunnel                 statusTunnel             `json:"tunnel"`
+	Users                  statusUsers              `json:"users"`
 }
 
 type statusTunnel struct {
@@ -228,10 +231,11 @@ func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.Syste
 	}
 	r.Version = buildVersion
 	r.Hostname, _ = os.Hostname()
-	if scheduled, err := shutdown.Load(); err == nil {
+	if scheduled, err := shutdown.LoadForReport(time.Now()); err == nil {
 		r.ScheduledShutdown = scheduled
 	} else {
 		r.details.shutdownErr = err.Error()
+		r.ScheduledShutdownError = err.Error()
 	}
 	if cfgErr != nil {
 		r.ConfigErr = cfgErr.Error()

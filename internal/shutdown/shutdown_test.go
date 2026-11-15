@@ -80,9 +80,12 @@ func TestParseAtWindow(t *testing.T) {
 }
 
 func TestParseNoticesSkipsPastMomentsAndSorts(t *testing.T) {
-	notices, err := ParseNotices("5m,24h,15m", testAt, testNow)
+	notices, missed, err := ParseNotices("5m,24h,15m", testAt, testNow)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if missed {
+		t.Fatal("no lead had passed, so none was missed")
 	}
 	// 24h before 2026-11-21T09:00Z is exactly now, so it is still kept.
 	want := []struct {
@@ -105,12 +108,17 @@ func TestParseNoticesSkipsPastMomentsAndSorts(t *testing.T) {
 
 func TestParseNoticesDropsPassedAndKeepsDefault(t *testing.T) {
 	soon := testNow.Add(20 * time.Minute)
-	notices, err := ParseNotices("", soon, testNow)
+	notices, missed, err := ParseNotices("", soon, testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(notices) != 2 || notices[0].Lead != "15m" || notices[1].Lead != "5m" {
 		t.Fatalf("default notices near a 20m instant = %#v, want the 15m and 5m pair", notices)
+	}
+	// 24h and 1h before such an instant had already passed: users were promised
+	// those warnings, so the caller owes them one now.
+	if !missed {
+		t.Fatal("a schedule inside its own lead times did not report the missed notice")
 	}
 }
 
@@ -121,7 +129,7 @@ func TestParseNoticesRefusals(t *testing.T) {
 		{"-5m", "positive durations"},
 		{"5m,5m", "lists 5m twice"},
 	} {
-		_, err := ParseNotices(tc.value, testAt, testNow)
+		_, _, err := ParseNotices(tc.value, testAt, testNow)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Fatalf("--notice %q: got %v, want a refusal naming %q", tc.value, err, tc.want)
 		}

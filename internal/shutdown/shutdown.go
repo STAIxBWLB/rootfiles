@@ -128,13 +128,16 @@ func ValidateAt(at, now time.Time) error {
 }
 
 // ParseNotices turns the operator's lead times into absolute notice instants,
-// dropping the ones whose moment has already passed.
-func ParseNotices(value string, at, now time.Time) ([]Notice, error) {
+// dropping the ones whose moment has already passed. It also reports whether
+// any lead was dropped: a schedule written inside a lead time has already
+// missed a warning users were promised, so the caller owes them one now.
+func ParseNotices(value string, at, now time.Time) ([]Notice, bool, error) {
 	if strings.TrimSpace(value) == "" {
 		value = DefaultNotices
 	}
 	seen := make(map[string]bool)
 	out := make([]Notice, 0, 4)
+	missed := false
 	for _, token := range strings.Split(value, ",") {
 		lead := strings.TrimSpace(token)
 		if lead == "" {
@@ -142,20 +145,21 @@ func ParseNotices(value string, at, now time.Time) ([]Notice, error) {
 		}
 		d, err := time.ParseDuration(lead)
 		if err != nil || d <= 0 {
-			return nil, fmt.Errorf("--notice %q: use positive durations such as %s", lead, DefaultNotices)
+			return nil, false, fmt.Errorf("--notice %q: use positive durations such as %s", lead, DefaultNotices)
 		}
 		if seen[lead] {
-			return nil, fmt.Errorf("--notice lists %s twice: each lead time appears once", lead)
+			return nil, false, fmt.Errorf("--notice lists %s twice: each lead time appears once", lead)
 		}
 		seen[lead] = true
 		moment := at.Add(-d)
 		if moment.Before(now) {
-			continue // already passed: skipped
+			missed = true
+			continue
 		}
 		out = append(out, Notice{Lead: lead, At: moment})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].At.Before(out[j].At) })
-	return out, nil
+	return out, missed, nil
 }
 
 // SanitizeMessage reduces the operator's reason to one line of printable text.
@@ -202,6 +206,25 @@ func Load() (*Schedule, error) {
 	}
 	s.Action = actionOrDefault(s.Action)
 	return &s, nil
+}
+
+// Expired reports whether a stored schedule's instant has passed. The record
+// and its units can outlive the moment (a host that booted afterwards keeps
+// both, and Persistent=false stops them from firing), so an expired record is
+// leftovers, not a schedule.
+func Expired(s *Schedule, now time.Time) bool {
+	return s != nil && !s.At.After(now)
+}
+
+// LoadForReport reads the stored schedule for a report: an expired record is
+// not a schedule, so it reads as none. Scheduling and cancelling still see it
+// through Load, so the next run cleans up what it left behind.
+func LoadForReport(now time.Time) (*Schedule, error) {
+	s, err := Load()
+	if err != nil || Expired(s, now) {
+		return nil, err
+	}
+	return s, nil
 }
 
 func save(r *exec.Runner, s Schedule) error {

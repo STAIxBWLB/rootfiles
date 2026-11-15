@@ -12,9 +12,10 @@ type Unit struct {
 	Content string
 }
 
-// TimerNames lists the timers a schedule installs, in firing order.
+// TimerNames lists the timers a schedule installs, in the order a cancel stops
+// them: the poweroff first, because it is the one that must not fire.
 func TimerNames(s *Schedule) []string {
-	names := []string{UnitName + ".timer"}
+	names := []string{UnitName + ".timer", blockUnit() + ".timer"}
 	if s == nil {
 		return names
 	}
@@ -24,9 +25,29 @@ func TimerNames(s *Schedule) []string {
 	return names
 }
 
+// enableOrder is TimerNames reversed: the harmless timers are enabled first, so
+// a failure before the last step leaves no poweroff armed.
+func enableOrder(s *Schedule) []string {
+	names := TimerNames(s)
+	for i, j := 0, len(names)-1; i < j; i, j = i+1, j-1 {
+		names[i], names[j] = names[j], names[i]
+	}
+	return names
+}
+
 func noticeUnit(index int) string {
 	return fmt.Sprintf("%s-notice-%d", UnitName, index+1)
 }
+
+func blockUnit() string {
+	return UnitName + "-block"
+}
+
+// accuracy keeps a timer to the second. systemd's one-minute default lets each
+// host pick its own moment inside that window, which is exactly the drift the
+// shared instant exists to prevent; the five-minute login block would be late
+// by the same amount.
+const accuracy = "AccuracySec=1s"
 
 // calendar renders the absolute instant in the form systemd accepts with an
 // explicit zone, so the host's own time zone cannot move the moment.
@@ -55,12 +76,33 @@ Description=rootfiles scheduled %[1]s at %[2]s
 
 [Timer]
 OnCalendar=%[3]s
+%[4]s
 # A late boot must not act on an instant that has already passed.
 Persistent=false
 
 [Install]
 WantedBy=timers.target
-`, verb, s.At.UTC().Format(time.RFC3339), calendar(s.At))},
+`, verb, s.At.UTC().Format(time.RFC3339), calendar(s.At), accuracy)},
+		{Name: blockUnit() + ".service", Content: fmt.Sprintf(`# Managed by rootfiles
+[Unit]
+Description=rootfiles shutdown login block
+
+[Service]
+Type=oneshot
+ExecStart=%[1]s shutdown block
+`, bin)},
+		{Name: blockUnit() + ".timer", Content: fmt.Sprintf(`# Managed by rootfiles
+[Unit]
+Description=rootfiles shutdown login block at %[1]s
+
+[Timer]
+OnCalendar=%[2]s
+%[3]s
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+`, s.At.Add(-NologinLead).UTC().Format(time.RFC3339), calendar(s.At.Add(-NologinLead)), accuracy)},
 	}
 	for i, n := range s.Notices {
 		name := noticeUnit(i)
@@ -79,11 +121,12 @@ Description=rootfiles shutdown notice (%[1]s before) at %[2]s
 
 [Timer]
 OnCalendar=%[3]s
+%[4]s
 Persistent=false
 
 [Install]
 WantedBy=timers.target
-`, n.Lead, n.At.UTC().Format(time.RFC3339), calendar(n.At))},
+`, n.Lead, n.At.UTC().Format(time.RFC3339), calendar(n.At), accuracy)},
 		)
 	}
 	return units

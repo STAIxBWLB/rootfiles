@@ -53,6 +53,14 @@ The instant must carry an explicit offset; a host's own time zone never moves it
 	}
 	notify.Flags().String("notice", "", "Lead time this notice belongs to, as recorded in the schedule")
 
+	block := &cobra.Command{
+		Use:    "block",
+		Short:  "Stop new logins (run by the login-block timer)",
+		Args:   cobra.NoArgs,
+		Hidden: true,
+		RunE:   runShutdownBlock,
+	}
+
 	cancel := &cobra.Command{
 		Use:   "cancel",
 		Short: "Remove the schedule, the units and any login block",
@@ -69,7 +77,7 @@ The instant must carry an explicit offset; a host's own time zone never moves it
 	}
 	addOutputFlag(status)
 
-	cmd.AddCommand(schedule, notify, cancel, status)
+	cmd.AddCommand(schedule, notify, block, cancel, status)
 	return cmd
 }
 
@@ -148,6 +156,22 @@ func runShutdownNotify(cmd *cobra.Command, _ []string) error {
 	return nil
 }
 
+func runShutdownBlock(cmd *cobra.Command, _ []string) error {
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
+	s, warnings, err := shutdown.BlockRun(cmd.Context(), shutdown.Env{Runner: newRunner(cmd, dryRun)})
+	reportShutdownWarnings(cmd.ErrOrStderr(), warnings)
+	if err != nil {
+		return err
+	}
+	if s == nil {
+		ui.WriteText(cmd.OutOrStdout(), "%s no scheduled shutdown; logins stay open\n", ui.MarkOK)
+		return nil
+	}
+	ui.WriteText(cmd.OutOrStdout(), "%s new logins are blocked until the %s at %s\n", ui.MarkOK,
+		shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339))
+	return nil
+}
+
 func runShutdownCancel(cmd *cobra.Command, _ []string) error {
 	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	s, warnings, err := shutdown.CancelRun(cmd.Context(), shutdown.Env{Runner: newRunner(cmd, dryRun)})
@@ -156,6 +180,10 @@ func runShutdownCancel(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if s == nil {
+		if len(warnings) > 0 {
+			ui.WriteText(cmd.OutOrStdout(), "%s nothing scheduled; leftover units and any login block were removed\n", ui.MarkOK)
+			return nil
+		}
 		ui.WriteText(cmd.OutOrStdout(), "%s nothing scheduled; nothing to cancel\n", ui.MarkOK)
 		return nil
 	}
@@ -173,6 +201,10 @@ type shutdownStatusReport struct {
 	NextNotice     *shutdown.Notice   `json:"next_notice,omitempty"`
 	LoginsBlocked  bool               `json:"logins_blocked"`
 	UnitsInstalled bool               `json:"units_installed"`
+	// ScheduledError reports a state file that cannot be read, so a fleet
+	// pre-flight refuses to schedule over a timer it cannot inspect instead of
+	// reading the silence as "nothing scheduled".
+	ScheduledError string `json:"scheduled_shutdown_error,omitempty"`
 }
 
 func runShutdownStatus(cmd *cobra.Command, _ []string) error {
@@ -180,11 +212,11 @@ func runShutdownStatus(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	s, err := shutdown.Load()
-	if err != nil {
-		return err
-	}
 	report := shutdownStatusReport{}
+	s, err := shutdown.LoadForReport(time.Now())
+	if err != nil {
+		report.ScheduledError = firstLineOf(err)
+	}
 	if s != nil {
 		report.Scheduled = s
 		report.NextNotice = nextShutdownNotice(*s, time.Now())
@@ -217,6 +249,10 @@ func renderShutdownStatusText(out io.Writer, report shutdownStatusReport) {
 	if s == nil {
 		ui.WriteSection(out, "Scheduled shutdown")
 		ui.WriteHint(out, "nothing scheduled")
+		if report.ScheduledError != "" {
+			ui.WriteHint(out, fmt.Sprintf("%s %s", ui.WarnMark(), report.ScheduledError))
+			ui.WriteHint(out, "run 'rootfiles shutdown cancel' to remove the units it cannot name")
+		}
 		return
 	}
 	ui.WriteSection(out, "Scheduled shutdown")
@@ -278,6 +314,15 @@ func noticeLeads(notices []shutdown.Notice) string {
 		leads = append(leads, n.Lead)
 	}
 	return strings.Join(leads, ", ")
+}
+
+// firstLineOf keeps a JSON report field to the line that explains the failure.
+func firstLineOf(err error) string {
+	line := strings.TrimSpace(strings.SplitN(err.Error(), "\n", 2)[0])
+	if line == "" {
+		return "failed"
+	}
+	return line
 }
 
 // reportShutdownWarnings keeps a delivery problem visible without failing a

@@ -30,6 +30,7 @@ Description=rootfiles scheduled power off at 2026-11-21T09:00:00Z
 
 [Timer]
 OnCalendar=2026-11-21 09:00:00 UTC
+AccuracySec=1s
 # A late boot must not act on an instant that has already passed.
 Persistent=false
 
@@ -51,9 +52,28 @@ ExecStart=/usr/local/bin/rootfiles shutdown notify --notice '15m'
 		t.Fatalf("notice service:\n%s\nwant:\n%s", got, wantNoticeService)
 	}
 	noticeTimer := byName["rootfiles-shutdown-notice-2.timer"]
-	for _, want := range []string{"OnCalendar=2026-11-21 08:55:00 UTC", "Persistent=false", "(5m before)"} {
+	for _, want := range []string{"OnCalendar=2026-11-21 08:55:00 UTC", "AccuracySec=1s", "Persistent=false", "(5m before)"} {
 		if !strings.Contains(noticeTimer, want) {
 			t.Fatalf("second notice timer lacks %q:\n%s", want, noticeTimer)
+		}
+	}
+	wantBlockService := `# Managed by rootfiles
+[Unit]
+Description=rootfiles shutdown login block
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/rootfiles shutdown block
+`
+	if got := byName["rootfiles-shutdown-block.service"]; got != wantBlockService {
+		t.Fatalf("login-block service:\n%s\nwant:\n%s", got, wantBlockService)
+	}
+	// The block is its own timer at NologinLead, so a notice list that never
+	// reaches the five-minute mark still closes logins on time.
+	blockTimer := byName["rootfiles-shutdown-block.timer"]
+	for _, want := range []string{"OnCalendar=2026-11-21 08:55:00 UTC", "AccuracySec=1s", "Persistent=false"} {
+		if !strings.Contains(blockTimer, want) {
+			t.Fatalf("login-block timer lacks %q:\n%s", want, blockTimer)
 		}
 	}
 }
@@ -92,12 +112,21 @@ func TestUnitsDropPersistenceIfEitherUnitChanges(t *testing.T) {
 
 func TestTimerNamesFollowTheNoticeOrder(t *testing.T) {
 	names := TimerNames(&Schedule{Notices: []Notice{{Lead: "15m"}, {Lead: "5m"}}})
-	want := []string{"rootfiles-shutdown.timer", "rootfiles-shutdown-notice-1.timer", "rootfiles-shutdown-notice-2.timer"}
+	// The poweroff comes first because a cancel stops in this order, and the
+	// login block sits between it and the notices.
+	want := []string{"rootfiles-shutdown.timer", "rootfiles-shutdown-block.timer", "rootfiles-shutdown-notice-1.timer", "rootfiles-shutdown-notice-2.timer"}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Fatalf("timers = %v, want %v", names, want)
 	}
-	if got := TimerNames(nil); len(got) != 1 || got[0] != "rootfiles-shutdown.timer" {
+	if got := TimerNames(nil); len(got) != 2 || got[0] != "rootfiles-shutdown.timer" || got[1] != "rootfiles-shutdown-block.timer" {
 		t.Fatalf("timers without a schedule = %v", got)
+	}
+}
+
+func TestEnableOrderPutsThePoweroffLast(t *testing.T) {
+	names := enableOrder(&Schedule{Notices: []Notice{{Lead: "15m"}}})
+	if last := names[len(names)-1]; last != "rootfiles-shutdown.timer" {
+		t.Fatalf("enable order = %v, want the poweroff timer last so a failure before it leaves nothing armed", names)
 	}
 }
 

@@ -104,8 +104,8 @@ func TestScheduleRunWritesUnitsStateAndTimers(t *testing.T) {
 	if len(warnings) != 0 {
 		t.Fatalf("unexpected warnings: %v", warnings)
 	}
-	if got, want := len(unitNames(t)), 6; got != want {
-		t.Fatalf("units = %v, want the timer/service pair plus two notice pairs", unitNames(t))
+	if got, want := len(unitNames(t)), 8; got != want {
+		t.Fatalf("units = %v, want the timer/service pair, the login-block pair and two notice pairs", unitNames(t))
 	}
 	if !s.At.Equal(testNow.Add(2 * time.Hour)) {
 		t.Fatalf("schedule instant = %s", s.At)
@@ -130,7 +130,7 @@ func TestScheduleRunWritesUnitsStateAndTimers(t *testing.T) {
 	}
 
 	calls := readLog(t, filepath.Join(dir, "systemctl.log"))
-	for _, want := range []string{"daemon-reload", "enable --now rootfiles-shutdown.timer", "enable --now rootfiles-shutdown-notice-1.timer", "enable --now rootfiles-shutdown-notice-2.timer"} {
+	for _, want := range []string{"daemon-reload", "enable --now rootfiles-shutdown.timer", "enable --now rootfiles-shutdown-block.timer", "enable --now rootfiles-shutdown-notice-1.timer", "enable --now rootfiles-shutdown-notice-2.timer"} {
 		if !strings.Contains(calls, want) {
 			t.Fatalf("systemd was not asked to %q:\n%s", want, calls)
 		}
@@ -165,8 +165,8 @@ func TestScheduleRunRefusesASecondScheduleUnlessReplaced(t *testing.T) {
 		t.Fatalf("--replace failed: %v", err)
 	}
 	names := unitNames(t)
-	if len(names) != 4 {
-		t.Fatalf("replace left %v, want the pair plus one notice pair", names)
+	if len(names) != 6 {
+		t.Fatalf("replace left %v, want the pair, the login-block pair and one notice pair", names)
 	}
 	for _, gone := range []string{"rootfiles-shutdown-notice-2.service", "rootfiles-shutdown-notice-2.timer"} {
 		if _, err := os.Stat(filepath.Join(UnitDir, gone)); !os.IsNotExist(err) {
@@ -385,5 +385,233 @@ func TestNotifyAfterTheMomentOrWithoutAScheduleDoesNothing(t *testing.T) {
 	}
 	if wall := readLog(t, filepath.Join(dir, "host.wall")); wall != "" {
 		t.Fatalf("a passed moment still announced itself: %q", wall)
+	}
+}
+
+// AC3: logins close on the block timer's own instant, so a notice list that
+// never reaches the five-minute mark still closes them on time.
+func TestBlockRunClosesLoginsWhateverTheNoticeList(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "containers"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "1h")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(NologinPath); !os.IsNotExist(err) {
+		t.Fatal("a two-hour schedule blocked logins at once")
+	}
+	if _, err := os.Stat(filepath.Join(UnitDir, "rootfiles-shutdown-block.timer")); err != nil {
+		t.Fatalf("no login-block timer was written: %v", err)
+	}
+	// The block timer runs `shutdown block` five minutes out, with no notice due.
+	later := Env{Runner: env.Runner, Now: func() time.Time { return testNow.Add(115 * time.Minute) }}
+	s, warnings, err := BlockRun(context.Background(), later)
+	if err != nil || s == nil {
+		t.Fatalf("block = %v, %v", s, err)
+	}
+	if len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %v", warnings)
+	}
+	data, err := os.ReadFile(NologinPath)
+	if err != nil || !WroteNologin(string(data), s.ID) {
+		t.Fatalf("the block did not write its own /run/nologin: %q err=%v", data, err)
+	}
+}
+
+// AC3: a lead time that has already passed still owes users one warning.
+func TestScheduleRunAnnouncesWhenALeadTimeWasMissed(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(20*time.Minute), "")); err != nil {
+		t.Fatal(err)
+	}
+	if wall := readLog(t, filepath.Join(dir, "host.wall")); !strings.Contains(wall, "will power off") {
+		t.Fatalf("a schedule inside its longer lead times sent nothing:\n%q", wall)
+	}
+	s, err := Load()
+	if err != nil || s == nil || len(s.Notices) != 2 {
+		t.Fatalf("the leads that are still ahead were not kept: %+v err=%v", s, err)
+	}
+}
+
+// A schedule whose moment has passed is leftovers: reports omit it, and the
+// next schedule cleans it up without --replace and without a cancellation.
+func TestScheduleRunCleansAnExpiredLeftoverWithoutReplace(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	expired := testSchedule()
+	expired.At = testNow.Add(-time.Hour)
+	expired.Notices = []Notice{{Lead: "15m", At: expired.At.Add(-15 * time.Minute)}, {Lead: "5m", At: expired.At.Add(-5 * time.Minute)}}
+	if err := save(env.Runner, expired); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installUnits(context.Background(), env.Runner, Units("/usr/local/bin/rootfiles", expired)); err != nil {
+		t.Fatal(err)
+	}
+	if s, err := LoadForReport(testNow); err != nil || s != nil {
+		t.Fatalf("an expired record still reports as a schedule: %+v err=%v", s, err)
+	}
+	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "15m")); err != nil {
+		t.Fatalf("scheduling over an expired record needed --replace: %v", err)
+	}
+	loaded, err := Load()
+	if err != nil || loaded == nil || !loaded.At.Equal(testNow.Add(2*time.Hour)) || len(loaded.Notices) != 1 {
+		t.Fatalf("the new schedule was not stored: %+v err=%v", loaded, err)
+	}
+	if _, err := os.Stat(filepath.Join(UnitDir, "rootfiles-shutdown-notice-2.timer")); !os.IsNotExist(err) {
+		t.Fatal("the expired schedule's second notice unit survived")
+	}
+	if wall := readLog(t, filepath.Join(dir, "host.wall")); strings.Contains(wall, "Cancelled") {
+		t.Fatalf("cleaning an expired record told sessions a live stop was cancelled:\n%q", wall)
+	}
+}
+
+// AC4/AC6: a cancel that cannot stop a timer fails, keeps the record and keeps
+// the units, so the schedule is still on record and can be cancelled again.
+func TestCancelRunFailsWhenATimerCannotBeStopped(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	fail := filepath.Join(dir, "failbin")
+	if err := os.MkdirAll(fail, 0755); err != nil {
+		t.Fatal(err)
+	}
+	body := "#!/bin/sh\ncase \"$1\" in\nis-active) echo active ;;\ndisable) exit 1 ;;\nesac\nexit 0\n"
+	if err := os.WriteFile(filepath.Join(fail, "systemctl"), []byte(body), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", fail+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "15m")); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := CancelRun(context.Background(), env)
+	if err == nil {
+		t.Fatal("a cancel whose timer is still active reported success")
+	}
+	for _, want := range []string{"cannot stop rootfiles-shutdown.timer", "still in force", "rootfiles shutdown cancel"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("cancel error %q does not name %q", err, want)
+		}
+	}
+	if s, loadErr := Load(); loadErr != nil || s == nil {
+		t.Fatalf("cancel dropped the record of a schedule it could not stop: %+v err=%v", s, loadErr)
+	}
+	if names := unitNames(t); len(names) == 0 {
+		t.Fatal("cancel removed the units of a schedule it could not stop")
+	}
+}
+
+// AC4: a unit that cannot be removed leaves the schedule on record.
+func TestCancelRunFailsWhenAUnitCannotBeRemoved(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "15m")); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(UnitDir, "rootfiles-shutdown.timer")
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(path, "busy"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := CancelRun(context.Background(), env)
+	if err == nil || !strings.Contains(err.Error(), "cannot remove shutdown unit") {
+		t.Fatalf("cancel = %v, want a refusal naming the unit it could not remove", err)
+	}
+	if s, loadErr := Load(); loadErr != nil || s == nil {
+		t.Fatalf("the record was dropped: %+v err=%v", s, loadErr)
+	}
+}
+
+// AC3: a /run/nologin another tool wrote is a maintenance lock of its own; it
+// is reported and left in place, on the host and inside a tenant.
+func TestBlockLoginsKeepsAForeignFileOnHostAndTenants(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "containers"), []byte("tenant-a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.pam"), nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "tenant-a.nologin"), []byte("Maintenance by hand\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(NologinPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(NologinPath, []byte("Maintenance by hand\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	req := request(testNow.Add(3*time.Minute), "5m")
+	req.NotifyNow = true
+	_, warnings, err := ScheduleRun(context.Background(), env, req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(warnings, "\n")
+	for _, want := range []string{NologinPath, "tenant-a", "was not written by rootfiles"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("warnings do not name %q:\n%s", want, joined)
+		}
+	}
+	if data, err := os.ReadFile(NologinPath); err != nil || string(data) != "Maintenance by hand\n" {
+		t.Fatalf("a foreign host /run/nologin was overwritten: %q err=%v", data, err)
+	}
+	if text := readLog(t, filepath.Join(dir, "tenant-a.nologin")); text != "Maintenance by hand\n" {
+		t.Fatalf("a foreign container /run/nologin was overwritten: %q", text)
+	}
+
+	// The cancel must not lift someone else's lock either.
+	if _, _, err := CancelRun(context.Background(), env); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(NologinPath); err != nil || string(data) != "Maintenance by hand\n" {
+		t.Fatalf("cancel touched a foreign host /run/nologin: %q err=%v", data, err)
+	}
+	if text := readLog(t, filepath.Join(dir, "tenant-a.nologin")); text != "Maintenance by hand\n" {
+		t.Fatalf("cancel touched a foreign container /run/nologin: %q", text)
+	}
+}
+
+// AC4: an unreadable state file cannot block the recovery the error names, so
+// cancel removes the units by name and the record with them.
+func TestCancelRunRecoversFromAnUnreadableState(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "15m")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(StatePath, []byte("{not json"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(NologinPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(NologinPath, []byte(NologinText(testSchedule())), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	gone, warnings, err := CancelRun(context.Background(), env)
+	if err != nil {
+		t.Fatalf("cancel could not recover an unreadable state file: %v", err)
+	}
+	if gone != nil {
+		t.Fatalf("cancel reported a schedule it could not read: %+v", gone)
+	}
+	if names := unitNames(t); len(names) != 0 {
+		t.Fatalf("recovery cancel left units: %v", names)
+	}
+	for _, path := range []string{StatePath, NologinPath} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("recovery cancel left %s", path)
+		}
+	}
+	if joined := strings.Join(warnings, "\n"); !strings.Contains(joined, "could not be read") {
+		t.Fatalf("no warning named the unreadable state: %v", warnings)
 	}
 }
