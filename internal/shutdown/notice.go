@@ -175,13 +175,13 @@ func CancelRun(ctx context.Context, env Env) (*Schedule, []string, error) {
 // carrying this feature's marker is removed.
 func cancelUnknown(ctx context.Context, env Env, loadErr error) (*Schedule, []string, error) {
 	r := env.Runner
-	warnings := removeNologin(ctx, r, nil)
 	if err := removeUnits(ctx, r, nil); err != nil {
-		return nil, warnings, fmt.Errorf("%s; the units could not be removed either: %w", firstLine(loadErr), err)
+		return nil, nil, fmt.Errorf("%s; the units could not be removed either: %w", firstLine(loadErr), err)
 	}
 	if err := clearState(r); err != nil {
-		return nil, warnings, fmt.Errorf("%s; %w", firstLine(loadErr), err)
+		return nil, nil, fmt.Errorf("%s; %w", firstLine(loadErr), err)
 	}
+	warnings := removeNologin(ctx, r, nil)
 	return nil, append(warnings, fmt.Sprintf("the stored schedule could not be read (%s), so the units, any login block and the state file were removed by name", firstLine(loadErr))), nil
 }
 
@@ -191,15 +191,15 @@ func cancelUnknown(ctx context.Context, env Env, loadErr error) (*Schedule, []st
 // record and can be cancelled again.
 func removeSchedule(ctx context.Context, env Env, s *Schedule, tellSessions bool) ([]string, error) {
 	r := env.Runner
+	if err := removeUnits(ctx, r, s); err != nil {
+		return nil, err
+	}
+	if err := clearState(r); err != nil {
+		return nil, err
+	}
 	warnings := removeNologin(ctx, r, s)
 	if tellSessions {
 		warnings = append(warnings, broadcast(ctx, r, CancelText(*s))...)
-	}
-	if err := removeUnits(ctx, r, s); err != nil {
-		return warnings, err
-	}
-	if err := clearState(r); err != nil {
-		return warnings, err
 	}
 	return warnings, nil
 }
@@ -364,7 +364,12 @@ func blockLogins(ctx context.Context, r *exec.Runner, s *Schedule) []string {
 		return append(warnings, firstLine(err))
 	}
 	for _, c := range containers {
-		if !pamNologinActive(ctx, r, c) {
+		active, err := pamNologinActive(ctx, r, c)
+		if err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s: cannot inspect pam_nologin: %s", c, firstLine(err)))
+			continue
+		}
+		if !active {
 			continue
 		}
 		state, detail := inspectContainerNologin(ctx, r, c)
@@ -457,9 +462,15 @@ func inspectContainerNologin(ctx context.Context, r *exec.Runner, container stri
 
 // pamNologinActive reports whether the container's sshd PAM stack loads
 // pam_nologin, so an unwritable container is left alone rather than reported.
-func pamNologinActive(ctx context.Context, r *exec.Runner, container string) bool {
-	_, err := r.Query(ctx, "docker", "exec", container, "grep", "-qs", "pam_nologin", "/etc/pam.d/sshd")
-	return err == nil
+func pamNologinActive(ctx context.Context, r *exec.Runner, container string) (bool, error) {
+	res, err := r.Query(ctx, "docker", "exec", container, "grep", "-qs", "pam_nologin", "/etc/pam.d/sshd")
+	if err == nil {
+		return true, nil
+	}
+	if res != nil && res.ExitCode == 1 && strings.TrimSpace(res.Stderr) == "" {
+		return false, nil
+	}
+	return false, err
 }
 
 // tenantContainers lists running tenant containers by name.

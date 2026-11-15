@@ -487,7 +487,7 @@ Remove the units, the state file and any `/run/nologin` this schedule wrote, the
 
 ### rootfiles shutdown status
 
-Show the schedule, the instant in UTC and host local time, the time left, the notice instants and whether logins are blocked. Read-only; exit 0, including when nothing is scheduled. An instant that has already passed is not a schedule, so it is not reported. `-o`/`--output` takes `text` or `json`, and `--json` is its alias; the JSON report holds `scheduled_shutdown`, `next_notice`, `logins_blocked` (true or false when tenant state is known, null when unknown), `tenant_logins` (checked, blocked and unknown counts), `legacy_host_block`, `units_installed` and, when the state file cannot be read, `scheduled_shutdown_error`.
+Show the schedule, the instant in UTC and host local time, the time left, the notice instants and whether logins are blocked. Read-only; exit 0, including when nothing is scheduled. An instant that has already passed is not a schedule, so it is not reported. `-o`/`--output` takes `text` or `json`, and `--json` is its alias; the JSON report holds `scheduled_shutdown`, `next_notice`, `logins_blocked` (true if any checked tenant is blocked, false if none are blocked, null when inspection is incomplete), `tenant_logins` (checked, blocked and unknown counts), `legacy_host_block`, `units_installed` and, when the state file cannot be read, `scheduled_shutdown_error`.
 
 `rootfiles status -o json` also carries a `scheduled_shutdown` object, but only when a schedule exists; an unreadable state file appears as `scheduled_shutdown_error` so a fleet pre-flight never reads silence as "nothing scheduled".
 

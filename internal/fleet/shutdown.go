@@ -121,7 +121,7 @@ func ShutdownSchedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, 
 			// The host says so when it refused before writing anything, which is
 			// what tells a rollback that a schedule already recorded there was
 			// never replaced and must not be cancelled.
-			untouched[i] = strings.Contains(r.Reason, shutdown.ErrUntouched.Error())
+			untouched[i] = strings.HasPrefix(r.Reason, "rootfiles: "+shutdown.ErrUntouched.Error()+": ")
 		}
 		out = append(out, r)
 	}

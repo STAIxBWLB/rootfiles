@@ -488,10 +488,18 @@ func TestCancelRunFailsWhenATimerCannotBeStopped(t *testing.T) {
 	}
 	t.Setenv("PATH", fail+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	if _, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "15m")); err != nil {
+	s, _, err := ScheduleRun(context.Background(), env, request(testNow.Add(2*time.Hour), "15m"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	_, _, err := CancelRun(context.Background(), env)
+	if err := os.WriteFile(filepath.Join(dir, "containers"), []byte("tenant-a\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	block := filepath.Join(dir, "tenant-a.nologin")
+	if err := os.WriteFile(block, []byte(NologinText(*s)), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = CancelRun(context.Background(), env)
 	if err == nil {
 		t.Fatal("a cancel whose timer is still active reported success")
 	}
@@ -504,7 +512,13 @@ func TestCancelRunFailsWhenATimerCannotBeStopped(t *testing.T) {
 		t.Fatalf("cancel dropped the record of a schedule it could not stop: %+v err=%v", s, loadErr)
 	}
 	if names := unitNames(t); len(names) == 0 {
-		t.Fatal("cancel removed the units of a schedule it could not stop")
+		t.Fatal("cancel removed units")
+	}
+	if got := readLog(t, block); got != NologinText(*s) {
+		t.Fatalf("cancel changed tenant block: %q", got)
+	}
+	if wall := readLog(t, filepath.Join(dir, "host.wall")); strings.Contains(wall, "Cancelled") {
+		t.Fatalf("cancel announced despite armed timer: %q", wall)
 	}
 }
 
@@ -862,3 +876,29 @@ func TestInspectTenantLoginsReportsBlockedAndUnknown(t *testing.T) {
 		t.Fatalf("unknown: %+v", got)
 	}
 }
+
+func TestBlockLoginsWarnsWhenPAMProbeFails(t *testing.T) {
+	env, dir := testEnv(t)
+	installFakes(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, "containers"), []byte("tenant-a\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	fake := filepath.Join(dir, "fake", "docker")
+	body, err := os.ReadFile(fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = []byte(strings.Replace(string(body), "grep) [ -e", "grep) exit 2; [ -e", 1))
+	if err := os.WriteFile(fake, body, 0700); err != nil {
+		t.Fatal(err)
+	}
+	warnings := blockLogins(context.Background(), env.Runner, ptrSchedule(testSchedule()))
+	if !strings.Contains(strings.Join(warnings, "\n"), "tenant-a: cannot inspect pam_nologin") {
+		t.Fatalf("warnings: %v", warnings)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "tenant-a.nologin")); !os.IsNotExist(err) {
+		t.Fatalf("block written after failed probe: %v", err)
+	}
+}
+
+func ptrSchedule(s Schedule) *Schedule { return &s }

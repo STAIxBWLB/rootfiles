@@ -355,3 +355,12 @@ func TestFleetShutdownLeavesAPreExistingScheduleWhenTheHostNeverWrote(t *testing
 		t.Fatalf("the host that did schedule was not rolled back:\n%s", joined)
 	}
 }
+
+func TestFleetShutdownDoesNotTrustUntouchedSubstring(t *testing.T) {
+	calls := filepath.Join(t.TempDir(), "calls")
+	bin := writeShutdownSSH(t, calls, `if [ "${7#*shutdown schedule}" != "$7" ]; then printf '%s\n' 'rootfiles: failed after writing: nothing was changed is not a receipt' >&2; exit 1; fi`)
+	got := ShutdownSchedule(context.Background(), SSHRunner{Binary: bin}, []NamedHost{shutdownHost("a", "root")}, ShutdownRequest{At: time.Now().Add(time.Hour)}, false)
+	if !strings.Contains(strings.Join(shutdownCalls(t, calls), "\n"), "shutdown cancel") {
+		t.Fatalf("ambiguous failure skipped rollback: %+v", got)
+	}
+}

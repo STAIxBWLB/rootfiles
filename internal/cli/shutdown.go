@@ -71,9 +71,10 @@ The instant must carry an explicit offset; a host's own time zone never moves it
 	status := &cobra.Command{
 		Use:   "status",
 		Short: "Show the schedule, the next notice and the tenant login block",
-		Long:  "Read-only: reads the state file and the units it wrote. Nothing is changed, so a host with no schedule reports that.",
-		Args:  cobra.NoArgs,
-		RunE:  runShutdownStatus,
+		Long: "Read-only: reads the state and units, and inspects running tenant containers\n" +
+			"through Docker. An unavailable inspection is reported as unknown.",
+		Args: cobra.NoArgs,
+		RunE: runShutdownStatus,
 	}
 	addOutputFlag(status)
 
