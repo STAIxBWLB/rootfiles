@@ -1,0 +1,97 @@
+# agent-hub routing: who takes which kind of task (L1), and which model route the local worker asks for (L2).
+# Hub routes run in-process and name gateway aliases directly.
+
+# Top-level keys, before any table. Pi's hub/auto and the hub stage routes keep a session's model through a tool loop and
+# switch only where it pays (#197): "off", "shadow" (record in events.jsonl what the planner would do, routing unchanged)
+# or "enforce". A switch back to the efficient tier that would make it prefill more tokens than the bound stays.
+stay_switch = "shadow"
+max_switch_prefill_tokens = 32000
+
+[local]
+route = "hub/stage"             # hub-owned model routing
+fixed_model = "coding"          # direct gateway fallback when the route is unavailable
+
+# L1: task assignment. `peers` is the preference order among attached, unpaused peers (idle before busy).
+# `route` / `fixed_model` apply when the task lands on the local worker. `tasks.escalate_after` consecutive
+# changes_requested (default 3, in .agenthub/config.json) move the task to the next attached peer in `escalate_to`.
+
+[signals]
+pii_patterns = ["\\b\\d{6}-\\d{7}\\b"]   # Korean resident registration numbers; add your own, e.g. "@your-org\\.example" for staff mail addresses
+long_context_tokens = 120000
+pii_screen = "off"            # "local": a model on this machine (MLX/Ollama), or the gateway only on campus, screens new tasks and free text too; no verdict counts as PII
+
+[constraints]
+pii = "local_only"            # hard: a PII task is owned by `local` or nobody, and nothing about it leaves the hub
+long_context = "skip_local"
+budget_paused = "skip_peer"
+
+[pi]
+dgx_max_context_tokens = 262144
+mlx_max_context_tokens = 16000
+# efficient_wait_ms = 500     # opt-in (#199): hub/auto moves to dgx/fast once a busy MLX slot is still busy after this; unmeasured, so off by default
+
+[classes.plan]
+peers = ["claude", "codex"]
+local_allowed = false
+
+[classes.implement]
+peers = ["pi", "local", "codex", "kimi"]
+route = "hub/stage"
+pi_backend = "dgx"
+escalate_to = ["codex", "kimi", "claude"]
+
+[classes.bulk_edit]
+peers = ["pi", "local", "kimi"]
+fixed_model = "fast"
+pi_backend = "dgx"
+escalate_to = ["codex", "kimi"]
+
+[classes.test]
+peers = ["pi", "local", "kimi", "codex"]
+fixed_model = "fast"
+pi_backend = "dgx"
+escalate_to = ["codex", "kimi"]
+
+[classes.review]
+peers = ["claude", "codex"]
+local_allowed = false         # judgment classes never go to local
+
+[classes.summarize]
+peers = ["pi", "local", "kimi"]
+fixed_model = "fast"
+pi_backend = "dgx"
+escalate_to = ["codex", "kimi"]
+
+[classes.triage]
+peers = ["pi", "local", "kimi"]
+fixed_model = "fast"
+pi_backend = "dgx"
+escalate_to = ["codex", "kimi"]
+
+# In-process L2 routes: set local.route or a class route to hub/<id>.
+# A class with fixed_model and no route calls that alias directly. Defaults are efficient fast, capable coding.
+[hub_routes."hub/stage"]
+type = "stage"
+efficient = "fast"
+capable = "coding"
+confidence_threshold = 0.5
+hold_turns = 2
+
+[hub_routes."hub/plan"]
+type = "plan_execute"
+efficient = "fast"
+capable = "coding"
+
+[hub_routes."hub/advisor"]
+type = "advisor"
+efficient = "fast"
+capable = "coding"
+max_reviews = 1
+trigger = "no_tool_call"
+gate_min_tool_results = 1
+
+[hub_routes."hub/escalation"]
+type = "escalation"
+efficient = "fast"
+capable = "coding"
+confirmations = 2
