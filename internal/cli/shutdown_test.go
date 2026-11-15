@@ -429,3 +429,39 @@ func TestShutdownStatusTenantStateAndUnknown(t *testing.T) {
 		t.Fatalf("unknown status: %s %v", out, err)
 	}
 }
+
+func TestStatusJSONDoesNotInspectDocker(t *testing.T) {
+	fixture, site, _ := statusContractFixture(t, "populated")
+	marker := filepath.Join(fixture, "docker-called")
+	bin := filepath.Join(fixture, "bin")
+	stub := "#!/bin/sh\nprintf called > '" + marker + "'\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(stub), 0700); err != nil {
+		t.Fatal(err)
+	}
+	previous := shutdown.StatePath
+	shutdown.StatePath = filepath.Join(fixture, "shutdown.json")
+	t.Cleanup(func() { shutdown.StatePath = previous })
+	for _, scheduled := range []bool{false, true} {
+		if scheduled {
+			s := shutdown.Schedule{ID: "fixture", At: time.Now().Add(time.Hour), Action: shutdown.ActionPoweroff}
+			data, err := json.Marshal(s)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(shutdown.StatePath, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		var out bytes.Buffer
+		cmd := NewRootCmd("test", "fixture")
+		cmd.SetOut(&out)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs([]string{"status", "--config", site, "-o", "json"})
+		if err := cmd.Execute(); err != nil {
+			t.Fatalf("scheduled=%t: %v", scheduled, err)
+		}
+		if _, err := os.Stat(marker); !os.IsNotExist(err) {
+			t.Fatalf("scheduled=%t: status invoked docker: %v", scheduled, err)
+		}
+	}
+}
