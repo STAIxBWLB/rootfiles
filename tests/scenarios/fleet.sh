@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Host-run acceptance scenario: two disposable SSH containers exercise the
-# controller's reporting and serial stop-on-first-failure behavior.
+# controller's reporting, its serial stop-on-first-failure behavior and the
+# coordinated shutdown schedule.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -339,6 +340,119 @@ if [[ "$GOOD_SITE_FILES_AFTER" == "$GOOD_SITE_FILES_BEFORE" ]] && docker exec "$
     pass "dry-run did not persist another remote site config"
 else
     fail "dry-run changed persisted fleet config files (before: $GOOD_SITE_FILES_BEFORE, after: $GOOD_SITE_FILES_AFTER)"
+fi
+
+# AC10: coordinated fleet shutdown. Both containers get one absolute instant,
+# the units carry it identically, and cancel leaves nothing behind. The
+# poweroff is never reachable here: there is no systemd in the containers, and
+# a stub systemctl stands in for it, so even `systemctl poweroff` is a no-op.
+cat > "$TMP/systemctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> /run/rootfiles-systemctl-calls
+exit 0
+EOF
+chmod 0755 "$TMP/systemctl"
+for container in "$GOOD" "$BAD"; do
+    docker cp "$TMP/systemctl" "$container:/usr/local/bin/systemctl" >/dev/null
+    docker exec "$container" chown root:root /usr/local/bin/systemctl
+    docker exec "$container" chmod 0755 /usr/local/bin/systemctl
+    docker exec "$container" sh -c ': > /run/rootfiles-systemctl-calls'
+done
+
+SHUTDOWN_AT="$(python3 -c 'import datetime;print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"))')"
+SHUTDOWN_CALENDAR="$(python3 -c 'import datetime,sys;d=datetime.datetime.strptime(sys.argv[1],"%Y-%m-%dT%H:%M:%SZ");print(d.strftime("%Y-%m-%d %H:%M:%S")+" UTC")' "$SHUTDOWN_AT")"
+
+set +e
+run_rootfiles fleet shutdown schedule --inventory "$TMP/status.yaml" --all --yes \
+    --at "$SHUTDOWN_AT" --message 'Scenario power work' -o json >"$TMP/shutdown-schedule.json" 2>&1
+SHUTDOWN_SCHEDULE_CODE=$?
+set -e
+SCHEDULED_OK=no
+if [[ "$SHUTDOWN_SCHEDULE_CODE" -eq 0 ]] && python3 - "$TMP/shutdown-schedule.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as f:
+    report = json.load(f)
+states = {row.get("host"): row.get("state") for row in report.get("hosts", [])}
+if states != {"ssh-good": "ok", "ssh-bad": "ok"}:
+    raise SystemExit(f"expected both hosts scheduled, got {states}")
+PY
+then
+    SCHEDULED_OK=yes
+fi
+if [[ "$SCHEDULED_OK" == yes ]]; then
+    pass "fleet shutdown schedule armed a shutdown on both hosts"
+else
+    fail "fleet shutdown schedule exited $SHUTDOWN_SCHEDULE_CODE: $(cat "$TMP/shutdown-schedule.json")"
+fi
+
+GOOD_TIMER="$(docker exec "$GOOD" cat /etc/systemd/system/rootfiles-shutdown.timer 2>/dev/null || true)"
+BAD_TIMER="$(docker exec "$BAD" cat /etc/systemd/system/rootfiles-shutdown.timer 2>/dev/null || true)"
+if [[ -n "$GOOD_TIMER" && "$GOOD_TIMER" == "$BAD_TIMER" ]] &&
+    grep -qxF "OnCalendar=$SHUTDOWN_CALENDAR" <<<"$GOOD_TIMER" &&
+    grep -qxF 'Persistent=false' <<<"$GOOD_TIMER"; then
+    pass "both hosts carry the same absolute OnCalendar instant with Persistent=false"
+else
+    fail "shutdown timers do not share the instant: good=$GOOD_TIMER bad=$BAD_TIMER"
+fi
+
+SCHEDULE_FILES_OK=yes
+for container in "$GOOD" "$BAD"; do
+    if ! docker exec "$container" sh -c 'test -s /var/lib/rootfiles/shutdown.json && test -f /etc/systemd/system/rootfiles-shutdown-notice-1.timer'; then
+        SCHEDULE_FILES_OK=no
+    fi
+done
+if [[ "$SCHEDULE_FILES_OK" == yes ]]; then
+    pass "both hosts recorded the state file and their notice timers"
+else
+    fail "a host recorded neither the state file nor its notice timers"
+fi
+
+if docker exec "$GOOD" grep -qF 'enable --now rootfiles-shutdown.timer' /run/rootfiles-systemctl-calls; then
+    pass "the schedule enabled the main timer through systemd"
+else
+    fail "the schedule did not enable the main timer: $(docker exec "$GOOD" cat /run/rootfiles-systemctl-calls)"
+fi
+
+set +e
+run_rootfiles fleet shutdown status --inventory "$TMP/status.yaml" --all >"$TMP/shutdown-status.txt" 2>&1
+SHUTDOWN_STATUS_CODE=$?
+set -e
+if [[ "$SHUTDOWN_STATUS_CODE" -eq 0 ]] && grep -q 'SHUTDOWN' "$TMP/shutdown-status.txt" &&
+    grep -q "$SHUTDOWN_CALENDAR" "$TMP/shutdown-status.txt"; then
+    pass "fleet shutdown status shows the scheduled instant"
+else
+    fail "fleet shutdown status did not show the instant (exit $SHUTDOWN_STATUS_CODE): $(cat "$TMP/shutdown-status.txt")"
+fi
+
+set +e
+run_rootfiles fleet shutdown cancel --inventory "$TMP/status.yaml" --all --yes -o json >"$TMP/shutdown-cancel.json" 2>&1
+SHUTDOWN_CANCEL_CODE=$?
+set -e
+if [[ "$SHUTDOWN_CANCEL_CODE" -eq 0 ]]; then
+    pass "fleet shutdown cancel reached both hosts"
+else
+    fail "fleet shutdown cancel exited $SHUTDOWN_CANCEL_CODE: $(cat "$TMP/shutdown-cancel.json")"
+fi
+
+LEFTOVER=""
+for container in "$GOOD" "$BAD"; do
+    remaining="$(docker exec "$container" sh -c 'ls -1 /etc/systemd/system/rootfiles-shutdown* /var/lib/rootfiles/shutdown.json 2>/dev/null || true')"
+    if [[ -n "$remaining" ]]; then
+        LEFTOVER="$LEFTOVER $container"
+    fi
+done
+if [[ -z "$LEFTOVER" ]]; then
+    pass "cancel left no unit or state file on either host"
+else
+    fail "cancel left files behind on:$LEFTOVER"
+fi
+
+if docker exec "$GOOD" sh -c 'grep -qx poweroff /run/rootfiles-systemctl-calls'; then
+    fail "the scenario ran a real poweroff"
+else
+    pass "no poweroff or reboot was executed during the scenario"
 fi
 
 # Leave the good host running and make the bad endpoint unreachable only after

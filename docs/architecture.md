@@ -7,12 +7,13 @@ How the code is laid out and how a run flows through it. The contracts behind th
 | Path | Role |
 |---|---|
 | `cmd/rootfiles/` | Entry point. Cancels the run on SIGINT/SIGTERM and maps errors to exit codes. |
-| `internal/cli/` | Cobra commands ([commands.md](commands.md)): `apply`, `backup`, `check`, `config`, `doctor`, `fleet`, `gpu`, `rollback`, `schedule`, `status`, `tenant`, `tunnel`, `update` (alias `upgrade`), `user`. `runtime.go` holds the root and lock preflight for native mutating commands, the audit logger and the runner factory. |
+| `internal/cli/` | Cobra commands ([commands.md](commands.md)): `apply`, `backup`, `check`, `config`, `doctor`, `fleet`, `gpu`, `rollback`, `schedule`, `shutdown`, `status`, `tenant`, `tunnel`, `update` (alias `upgrade`), `user`. `runtime.go` holds the root and lock preflight for native mutating commands, the audit logger and the runner factory. |
 | `internal/config/` | Config structs, the module order and toggles (`modules.go`), embedded profiles (`profiles/*.yaml`, merged as YAML trees through `extends`), validation, config fingerprints and host detection. |
 | `internal/module/` | The `Module` interface, the 14 modules, the registry and execution order, and the `doctor` checks. |
 | `internal/exec/` | Shell runner (dry-run aware, saves files before it changes them) and the APT and DNF/RPM package backends. |
 | `internal/state/` | State file, run history, applied-config copy and the global lock. |
 | `internal/fleet/` | Operator-side SSH controller: inventory loading, host selection, rollouts and scrape targets. |
+| `internal/shutdown/` | Scheduled poweroff or reboot at one absolute UTC instant: unit rendering, the state file, notices to host sessions and tenant containers, and the login block. |
 | `internal/tenant/` | Tenant container specs, volumes, passwords, import and audit. It does not import `internal/module`; the `tenant` module imports it. |
 | `internal/ui/` | Interactive prompts and the shared output styling for status-style reports. |
 

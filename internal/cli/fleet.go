@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -36,7 +37,7 @@ func newFleetCmd() *cobra.Command {
 	for _, op := range []string{"status", "check", "doctor"} {
 		c.AddCommand(newFleetReadCmd(op))
 	}
-	c.AddCommand(newFleetPingCmd(), newFleetInitCmd(), newFleetHostsCmd(), newFleetLogCmd(), newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetTargetsCmd())
+	c.AddCommand(newFleetPingCmd(), newFleetInitCmd(), newFleetHostsCmd(), newFleetLogCmd(), newFleetApplyCmd(), newFleetUpdateCmd(), newFleetBootstrapCmd(), newFleetScheduleCmd(), newFleetShutdownCmd(), newFleetTargetsCmd())
 	return c
 }
 
@@ -118,25 +119,25 @@ func newFleetReadCmd(op string) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		parallel, _ := c.Flags().GetInt("parallel")
-		if parallel < 0 || parallel > 128 || (c.Flags().Lookup("parallel").Changed && parallel == 0) {
-			return fmt.Errorf("--parallel must be between 1 and 128")
+		results, err := fleetReadPool(c, inv, hosts, op)
+		if err != nil {
+			return err
 		}
-		if !c.Flags().Lookup("parallel").Changed {
-			parallel = inv.Defaults.Parallel
-		}
-		if parallel > len(hosts) {
-			parallel = len(hosts)
-		}
-		runner := fleet.SSHRunner{Binary: "ssh"}
-		results := runReadPool(c.Context(), runner, hosts, op, parallel)
 		format, _ := outputFormat(c)
-		if view, _ := c.Flags().GetString("view"); view != "" {
+		switch view, _ := c.Flags().GetString("view"); {
+		case view != "":
 			if err := writeFleetView(c.OutOrStdout(), results, view, format); err != nil {
 				return err
 			}
-		} else if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
-			return err
+		case op == "status":
+			// Only status carries a schedule worth a column.
+			if err := writeFleetStatusResults(c.OutOrStdout(), results, format); err != nil {
+				return err
+			}
+		default:
+			if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
+				return err
+			}
 		}
 		if !allOK(results) {
 			return &ExitError{Code: exitDrift}
@@ -174,6 +175,54 @@ func runReadPool(ctx context.Context, r fleet.SSHRunner, hosts []fleet.NamedHost
 	close(jobs)
 	wg.Wait()
 	return out
+}
+
+// fleetReadPool runs one read-only command over the selection with the
+// inventory's concurrency, clamped to the flags.
+func fleetReadPool(c *cobra.Command, inv *fleet.Inventory, hosts []fleet.NamedHost, op string) ([]fleet.Result, error) {
+	parallel, _ := c.Flags().GetInt("parallel")
+	if parallel < 0 || parallel > 128 || (c.Flags().Lookup("parallel").Changed && parallel == 0) {
+		return nil, fmt.Errorf("--parallel must be between 1 and 128")
+	}
+	if !c.Flags().Lookup("parallel").Changed {
+		parallel = inv.Defaults.Parallel
+	}
+	if parallel > len(hosts) {
+		parallel = len(hosts)
+	}
+	return runReadPool(c.Context(), fleet.SSHRunner{Binary: "ssh"}, hosts, op, parallel), nil
+}
+
+// writeFleetStatusResults adds the SHUTDOWN column to the status report. A
+// fleet with nothing scheduled renders exactly the shared report: the column
+// has no value anywhere, so the table drops it. (The JSON is the shared report
+// unchanged: each host's schedule already sits in its own payload.)
+func writeFleetStatusResults(w io.Writer, results []fleet.Result, format string) error {
+	if format != "text" {
+		return writeFleetResults(w, results, format)
+	}
+	rows := make([][]string, 0, len(results))
+	for _, r := range results {
+		rows = append(rows, []string{r.Host, r.State, shutdownCell(r.Remote), strings.ReplaceAll(r.Reason, "\n", " ")})
+	}
+	return ui.WriteTable(w, []string{"HOST", "STATE", "SHUTDOWN", "REASON"}, rows, 3)
+}
+
+// shutdownCell summarizes a host's scheduled_shutdown in one cell.
+func shutdownCell(remote json.RawMessage) string {
+	if len(remote) == 0 {
+		return "-"
+	}
+	var report struct {
+		Scheduled *struct {
+			At     time.Time `json:"at"`
+			Action string    `json:"action"`
+		} `json:"scheduled_shutdown"`
+	}
+	if json.Unmarshal(remote, &report) != nil || report.Scheduled == nil {
+		return "-"
+	}
+	return report.Scheduled.At.UTC().Format("2006-01-02T15:04Z") + " " + shutdownActionWord(report.Scheduled.Action)
 }
 
 func writeFleetResults(w io.Writer, results []fleet.Result, format string) error {

@@ -11,11 +11,13 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/shutdown"
 	"github.com/STAIxBWLB/rootfiles/internal/state"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
@@ -99,6 +101,7 @@ func renderStatusText(out io.Writer, report statusReport, profileFlag string, la
 	}
 	renderProfileSection(out, report.Profile, profileFlag, report.System, report.ConfigPath, cfgErr)
 	renderLastApplySection(out, report.LastApply, lastErr)
+	renderStatusShutdownSection(out, report)
 	renderModulesSection(out, report)
 	if report.details.gpuSelected {
 		renderGPUSection(out, report)
@@ -175,6 +178,9 @@ type statusDetails struct {
 	gpu                                        *module.GPUAllocationsDB
 	tunnelBinary, tunnelInterface              string
 	systemUsersKnown                           bool
+	// shutdownErr records an unreadable schedule; the report shows it as a
+	// hint and omits the field rather than claiming nothing is scheduled.
+	shutdownErr string
 }
 
 type statusReport struct {
@@ -187,14 +193,16 @@ type statusReport struct {
 	ConfigErr  string             `json:"config_error,omitempty"`
 	// HomeBaseAmbiguous marks a config error that only an explicit
 	// home_base settles; fleet rollouts carry one in every site config.
-	HomeBaseAmbiguous   bool                     `json:"home_base_ambiguous,omitempty"`
-	ModuleCheckError    string                   `json:"module_check_error,omitempty"`
-	AppliedConfigSHA256 string                   `json:"applied_config_sha256,omitempty"`
-	LastApply           *state.Run               `json:"last_apply"`
-	Modules             []checkModule            `json:"modules"`
-	GPU                 *module.GPUAllocationsDB `json:"gpu,omitempty"`
-	Tunnel              statusTunnel             `json:"tunnel"`
-	Users               statusUsers              `json:"users"`
+	HomeBaseAmbiguous   bool       `json:"home_base_ambiguous,omitempty"`
+	ModuleCheckError    string     `json:"module_check_error,omitempty"`
+	AppliedConfigSHA256 string     `json:"applied_config_sha256,omitempty"`
+	LastApply           *state.Run `json:"last_apply"`
+	// ScheduledShutdown is additive: absent unless this host has a schedule.
+	ScheduledShutdown *shutdown.Schedule       `json:"scheduled_shutdown,omitempty"`
+	Modules           []checkModule            `json:"modules"`
+	GPU               *module.GPUAllocationsDB `json:"gpu,omitempty"`
+	Tunnel            statusTunnel             `json:"tunnel"`
+	Users             statusUsers              `json:"users"`
 }
 
 type statusTunnel struct {
@@ -220,6 +228,11 @@ func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.Syste
 	}
 	r.Version = buildVersion
 	r.Hostname, _ = os.Hostname()
+	if scheduled, err := shutdown.Load(); err == nil {
+		r.ScheduledShutdown = scheduled
+	} else {
+		r.details.shutdownErr = err.Error()
+	}
 	if cfgErr != nil {
 		r.ConfigErr = cfgErr.Error()
 		r.HomeBaseAmbiguous = errors.Is(cfgErr, config.ErrAmbiguousHomeBase)
@@ -320,6 +333,27 @@ func renderLastApplySection(out io.Writer, last *state.Run, err error) {
 	if last.BackupID != "" {
 		ui.WriteKV(out, "Backup", last.BackupID+" (rootfiles rollback "+last.BackupID+")")
 	}
+}
+
+// renderStatusShutdownSection reports the schedule this host keeps, or the one
+// fact that matters when the record cannot be read.
+func renderStatusShutdownSection(out io.Writer, report statusReport) {
+	if report.ScheduledShutdown == nil && report.details.shutdownErr == "" {
+		return
+	}
+	ui.WriteSection(out, "Scheduled shutdown")
+	if report.ScheduledShutdown == nil {
+		ui.WriteHint(out, fmt.Sprintf("%s %s", ui.WarnMark(), report.details.shutdownErr))
+		return
+	}
+	s := report.ScheduledShutdown
+	ui.WriteKV(out, "Action", shutdownActionWord(s.Action))
+	ui.WriteKV(out, "At", fmt.Sprintf("%s (%s)", s.At.UTC().Format(time.RFC3339), s.At.Local().Format("2006-01-02 15:04 MST")))
+	ui.WriteKV(out, "Time left", timeLeftWords(time.Until(s.At)))
+	if s.Message != "" {
+		ui.WriteKV(out, "Message", s.Message)
+	}
+	ui.WriteHint(out, "run 'rootfiles shutdown status' for the notices and login state")
 }
 
 func renderModulesSection(out io.Writer, report statusReport) {

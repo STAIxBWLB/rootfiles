@@ -322,6 +322,58 @@ Check connectivity, version and privilege without writing to hosts. Select using
 | `-o`, `--output` | `text` | `text` or `json`. |
 | `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 
+### rootfiles fleet shutdown
+
+Schedule, cancel or inspect a poweroff across the fleet ([fleet.md](fleet.md#shutdown), [specs/shutdown.md](specs/shutdown.md)). Every selected host receives the same absolute UTC instant; scheduling stays serial, and only the timers fire together.
+
+### rootfiles fleet shutdown schedule
+
+```bash
+rootfiles fleet shutdown schedule --group gpu --at 2026-11-21T18:00:00+09:00 --message 'Building power work' --yes
+```
+
+Pre-flights every host before writing anything: the host clock must be within 30 seconds of the controller's, rootfiles there must have `shutdown`, and no schedule may exist unless `--replace` is given. If a host fails while being scheduled, the hosts this run already scheduled are cancelled and reported `cancelled`, or `cancel-failed` with the exact rerun command.
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--at` | required | Shared instant, RFC 3339 with an explicit offset, 1 minute to 30 days ahead. |
+| `--reboot` | `false` | Reboot instead of powering off. |
+| `--message` | unset | Reason shown in every notice (printable, at most 300 characters). |
+| `--notice` | `24h,1h,15m,5m` | Lead times per host. |
+| `--replace` | `false` | Replace a schedule a host already has. |
+| `--include-self` | `false` | Allow scheduling this controller's own host; without it such a selection is refused. |
+| `--inventory`, `--host`, `--group`, `--all` | | Selection. |
+| `--timeout`, `--skip-unreachable` | `15m`, `false` | Rollout limits. |
+| `-o`, `--output` | `text` | `text` or `json`; `--json` is its alias. |
+
+### rootfiles fleet shutdown now
+
+The same schedule with `--in` instead of `--at`, and one notice sent immediately.
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--in` | `2m` | Lead time before the poweroff; at least 1 minute, at most 30 days. |
+| `--reboot` | `false` | Reboot instead of powering off. |
+| `--message` | unset | Reason shown in every notice. |
+| `--notice` | `24h,1h,15m,5m` | Lead times that still fire if `--in` is far enough away. |
+| `--replace` | `false` | Replace a schedule a host already has. |
+| `--include-self` | `false` | Allow scheduling this controller's own host. |
+| `--inventory`, `--host`, `--group`, `--all` | | Selection. |
+| `--timeout`, `--skip-unreachable` | `15m`, `false` | Rollout limits. |
+| `-o`, `--output` | `text` | `text` or `json`; `--json` is its alias. |
+
+### rootfiles fleet shutdown cancel
+
+Cancel any schedule on every selected host. This is the one mutating fleet command that continues past failures, so cancel reaches every host it can; the run exits 2 when any host failed.
+
+Flags: `--inventory`, `--host`, `--group`, `--all` for the selection, `--timeout` and `--skip-unreachable` for the rollout limits, and `-o`/`--output` (`--json` is its alias) for the report. It takes no instant, message or notice flag.
+
+### rootfiles fleet shutdown status
+
+Read-only, parallel, from `scheduled_shutdown` in each host's `status -o json`. Prints the same table as `rootfiles fleet status`, whose `SHUTDOWN` column carries the instant and the action.
+
+Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
+
 ### rootfiles fleet status
 
 Run `rootfiles status -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
@@ -409,6 +461,35 @@ Install and start the timer; when no report exists yet, also run the first repor
 ### rootfiles schedule status
 
 Show whether the units are installed, the timer's enabled and active state, its OnCalendar expression and the age of `check.json` and `doctor.json`. A report older than 48 hours is marked stale. Read-only; exit 0.
+
+### rootfiles shutdown
+
+Schedule one poweroff or reboot at an absolute UTC instant, with advance notice to host sessions and tenant containers ([specs/shutdown.md](specs/shutdown.md)). `schedule`, `cancel` and the internal `notify` are mutating: they need root and the lock. Only one schedule exists per host.
+
+### rootfiles shutdown schedule
+
+`sudo rootfiles shutdown schedule --at 2026-11-21T18:00:00+09:00`. Writes `rootfiles-shutdown.service`, `rootfiles-shutdown.timer`, one notice timer pair per future lead time and `/var/lib/rootfiles/shutdown.json`.
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--at` | required | RFC 3339 instant **with an explicit offset** (`Z` or `+09:00`). A time without one is refused, and the accepted window is 1 minute to 30 days ahead. |
+| `--reboot` | `false` | Reboot instead of powering off. |
+| `--message` | unset | Reason shown in every notice; printable text, at most 300 characters. |
+| `--notice` | `24h,1h,15m,5m` | Lead times before the instant. A lead whose moment has passed is skipped; when none is left, one notice is sent immediately. |
+| `--replace` | `false` | Replace a schedule that already exists; without it a second schedule is refused and names the existing one. |
+| `--notify-now` | `false` | Also announce immediately. `rootfiles fleet shutdown now` uses it. |
+
+The timer sets `OnCalendar` to the UTC instant and `Persistent=false`, so a host that boots late never acts on a moment that has passed. `--dry-run` writes nothing.
+
+### rootfiles shutdown cancel
+
+Remove the units, the state file and any `/run/nologin` this schedule wrote, then announce the cancellation to host sessions and tenant containers. Running it again is a no-op. Mutating.
+
+### rootfiles shutdown status
+
+Show the schedule, the instant in UTC and host local time, the time left, the notice instants and whether logins are blocked. Read-only; exit 0, including when nothing is scheduled. `-o`/`--output` takes `text` or `json`, and `--json` is its alias; the JSON report holds `scheduled_shutdown`, `next_notice`, `logins_blocked` and `units_installed`.
+
+`rootfiles status -o json` also carries a `scheduled_shutdown` object, but only when a schedule exists.
 
 ### rootfiles status
 
