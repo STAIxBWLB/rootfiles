@@ -37,10 +37,10 @@ func controllerFixture(t *testing.T) (string, string) {
 	if err := os.WriteFile(inventory, []byte("hosts:\n  host1:\n    ssh: host1\n    groups: [gpu]\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	oldOS, oldTransport := nativeHostOS, http.DefaultTransport
+	oldOS, oldClient := nativeHostOS, http.DefaultClient
 	nativeHostOS = "darwin"
-	http.DefaultTransport = offlineTransport{}
-	t.Cleanup(func() { nativeHostOS = oldOS; http.DefaultTransport = oldTransport })
+	http.DefaultClient = &http.Client{Transport: offlineTransport{}}
+	t.Cleanup(func() { nativeHostOS = oldOS; http.DefaultClient = oldClient })
 	return home, inventory
 }
 
