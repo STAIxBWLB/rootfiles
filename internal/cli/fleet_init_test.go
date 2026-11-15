@@ -111,3 +111,28 @@ func TestFleetHostsNeverCallsSSH(t *testing.T) {
 		t.Fatal("invalid inventory accepted")
 	}
 }
+
+func TestFleetReadNoSelectionHintsSameInventory(t *testing.T) {
+	inventory, calls := fleetFlagFixture(t)
+	_, _, err := runFleetOnboarding(t, "status", "--inventory", inventory)
+	if err == nil || !strings.Contains(err.Error(), "rootfiles fleet hosts --inventory "+fleet.ShellQuote(inventory)) {
+		t.Fatalf("hint: %v", err)
+	}
+	if _, err := os.Stat(calls); !os.IsNotExist(err) {
+		t.Fatalf("ssh invoked: %v", err)
+	}
+}
+
+func TestFleetOnboardingHelpWidth(t *testing.T) {
+	for _, name := range []string{"init", "hosts"} {
+		out, _, err := runFleetOnboarding(t, name, "--help")
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(out, "\n") {
+			if len(line) > 80 {
+				t.Errorf("%s help exceeds 80 columns (%d): %s", name, len(line), line)
+			}
+		}
+	}
+}
