@@ -1,4 +1,4 @@
-.PHONY: build test lint clean install
+.PHONY: build test lint clean install cli-inventory
 
 VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
@@ -13,6 +13,11 @@ test:
 
 lint:
 	golangci-lint run ./...
+
+# cli-inventory rewrites docs/cli-inventory.md from the command tree; the test of
+# the same name fails when the committed page and the tree disagree.
+cli-inventory:
+	ROOTFILES_UPDATE=1 go test ./internal/cli -run TestDocsCommandInventory -count=1
 
 clean:
 	rm -rf bin/
