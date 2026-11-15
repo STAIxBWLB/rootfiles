@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
+	"github.com/STAIxBWLB/rootfiles/internal/shutdown"
 )
 
 // fleetShutdownFixture writes an inventory and points the run log and PATH at
@@ -256,5 +258,139 @@ func TestFleetShutdownCancelDryRunReachesEveryHost(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(os.Getenv("XDG_STATE_HOME"), "rootfiles", "fleet.jsonl"))
 	if err != nil || !strings.Contains(string(data), `"command":"shutdown cancel"`) {
 		t.Fatalf("cancel was not logged: %q err=%v", data, err)
+	}
+}
+
+// AC9: self-detection follows what ssh would actually connect to, so an alias
+// or a loopback address cannot carry the rollout onto this machine.
+func TestFleetShutdownResolvesAliasesAndLoopbackToThisController(t *testing.T) {
+	previousHost := sshEffectiveHost
+	previousLocal := localHostIdentities
+	t.Cleanup(func() { sshEffectiveHost, localHostIdentities = previousHost, previousLocal })
+	sshEffectiveHost = func(destination string) string {
+		if destination == "buildbox" {
+			return "127.0.0.1"
+		}
+		return destination
+	}
+	localHostIdentities = func() map[string]bool {
+		names := []string{"localhost", "127.0.0.1", "::1", "controller.example.org", "192.0.2.10"}
+		out := map[string]bool{}
+		for _, name := range names {
+			out[hostIdentity(name)] = true
+			out[hostShort(name)] = true
+		}
+		return out
+	}
+
+	for _, tc := range []struct {
+		name    string
+		ssh     string
+		address string
+	}{
+		{"alias resolving to loopback", "buildbox", ""},
+		{"loopback address", "root@localhost", ""},
+		{"localhost name", "localhost", ""},
+		{"controller interface address", "gpu-1", "192.0.2.10"},
+		{"controller hostname", "controller.example.org", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hosts := []fleet.NamedHost{{Name: "gpu-1", Host: fleet.Host{SSH: tc.ssh, Address: tc.address}}}
+			if got := controllerHostsIn(hosts); len(got) != 1 || got[0] != "gpu-1" {
+				t.Fatalf("%s was not recognised as this controller: %v", tc.name, got)
+			}
+		})
+	}
+	// A genuinely remote host stays selectable.
+	remote := []fleet.NamedHost{{Name: "web1", Host: fleet.Host{SSH: "web1.example.org", Address: "192.0.2.55"}}}
+	if got := controllerHostsIn(remote); len(got) != 0 {
+		t.Fatalf("a remote host was refused as the controller: %v", got)
+	}
+	// Two hosts in the same subnet do not collapse to one identity.
+	neighbours := []fleet.NamedHost{
+		{Name: "a", Host: fleet.Host{SSH: "10.0.0.5"}},
+		{Name: "b", Host: fleet.Host{SSH: "10.0.0.6"}},
+	}
+	if got := controllerHostsIn(neighbours); len(got) != 0 {
+		t.Fatalf("addresses in one subnet were treated as the controller: %v", got)
+	}
+}
+
+// AC7: --in 1m survives the truncation and the host's own clock, so the first
+// host does not refuse the instant the controller just accepted.
+func TestFleetShutdownNowClearsTheHostMinimumLead(t *testing.T) {
+	inventory := fleetShutdownFixture(t, "hosts:\n  web1:\n    ssh: web1\n")
+	before := time.Now()
+	out, _, err := runFleetCmd(t, "fleet", "shutdown", "now", "--in", "1m",
+		"--inventory", inventory, "--all", "--dry-run")
+	if err != nil {
+		t.Fatalf("dry-run now: %v\n%s", err, out)
+	}
+	at, err := time.Parse(time.RFC3339, scheduledInstant(t, out, "web1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lead := at.Sub(before); lead < shutdown.MinLead+fleet.MaxClockSkew {
+		t.Fatalf("--in 1m produced a %s lead; the margin is missing", lead)
+	}
+	// The host validates against its own clock, which may be the full skew ahead.
+	if err := shutdown.ValidateAt(at, before.Add(fleet.MaxClockSkew)); err != nil {
+		t.Fatalf("a host %s ahead would refuse the instant: %v", fleet.MaxClockSkew, err)
+	}
+	if err := shutdown.ValidateAt(at, before.Add(-fleet.MaxClockSkew)); err != nil {
+		t.Fatalf("a host %s behind would refuse the instant: %v", fleet.MaxClockSkew, err)
+	}
+}
+
+// AC6: the rerun command a failed rollback prints is one that actually runs.
+func TestFleetShutdownRollbackHintCarriesYes(t *testing.T) {
+	var errOut bytes.Buffer
+	root := NewRootCmd("test", "test")
+	root.SetErr(&errOut)
+	root.SetOut(io.Discard)
+	sub, _, err := root.Find([]string{"fleet", "shutdown", "schedule"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	reportShutdownRollback(sub, []fleet.Result{
+		{Host: "web1", State: "cancel-failed", Reason: "cancel failed"},
+		{Host: "web2", State: "cancelled"},
+	})
+	printed := errOut.String()
+	for _, want := range []string{"web1", "fleet shutdown cancel", "--host 'web1'", "--yes"} {
+		if !strings.Contains(printed, want) {
+			t.Fatalf("the rerun hint %q does not name %q", printed, want)
+		}
+	}
+	if strings.Contains(printed, "web2") {
+		t.Fatalf("the hint names a host that was cancelled cleanly: %q", printed)
+	}
+}
+
+// AC5: a host whose state file cannot be read shows up as unknown in the
+// SHUTDOWN column, never as an empty cell.
+func TestFleetStatusShowsAnUnknownSchedule(t *testing.T) {
+	previous := readFleetHost
+	t.Cleanup(func() { readFleetHost = previous })
+	readFleetHost = func(_ fleet.SSHRunner, _ context.Context, h fleet.NamedHost, op string) fleet.Result {
+		payload := json.RawMessage(plainStatusPayload)
+		if h.Name == "web1" {
+			payload = json.RawMessage(`{"hostname":"web1","scheduled_shutdown_error":"not valid JSON"}`)
+		}
+		return fleet.Result{Host: h.Name, Command: op, State: "ok", Remote: payload}
+	}
+	inventory := filepath.Join(t.TempDir(), "fleet.yaml")
+	if err := os.WriteFile(inventory, []byte("hosts:\n  web1:\n    ssh: web1\n  web2:\n    ssh: web2\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := runFleetCmd(t, "fleet", "status", "--inventory", inventory, "--all")
+	if err != nil {
+		t.Fatalf("fleet status: %v\n%s", err, out)
+	}
+	if row := hostRow(t, out, "web1"); !strings.Contains(row, "unknown") {
+		t.Fatalf("an unreadable host schedule read as nothing scheduled: %q", row)
+	}
+	if row := hostRow(t, out, "web2"); !strings.Contains(row, "-") {
+		t.Fatalf("web2 lost its empty cell: %q", row)
 	}
 }

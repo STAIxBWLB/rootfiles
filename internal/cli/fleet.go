@@ -208,7 +208,8 @@ func writeFleetStatusResults(w io.Writer, results []fleet.Result, format string)
 	return ui.WriteTable(w, []string{"HOST", "STATE", "SHUTDOWN", "REASON"}, rows, 3)
 }
 
-// shutdownCell summarizes a host's scheduled_shutdown in one cell.
+// shutdownCell summarizes a host's scheduled_shutdown in one cell. A state file
+// the host could not read reads as "unknown", never as "nothing scheduled".
 func shutdownCell(remote json.RawMessage) string {
 	if len(remote) == 0 {
 		return "-"
@@ -218,8 +219,15 @@ func shutdownCell(remote json.RawMessage) string {
 			At     time.Time `json:"at"`
 			Action string    `json:"action"`
 		} `json:"scheduled_shutdown"`
+		Error string `json:"scheduled_shutdown_error"`
 	}
-	if json.Unmarshal(remote, &report) != nil || report.Scheduled == nil {
+	if json.Unmarshal(remote, &report) != nil {
+		return "-"
+	}
+	if report.Scheduled == nil {
+		if report.Error != "" {
+			return "unknown"
+		}
 		return "-"
 	}
 	return report.Scheduled.At.UTC().Format("2006-01-02T15:04Z") + " " + shutdownActionWord(report.Scheduled.Action)

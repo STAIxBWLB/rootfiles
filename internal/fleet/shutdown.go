@@ -21,6 +21,12 @@ import (
 // stops the host at the wrong moment.
 const MaxClockSkew = 30 * time.Second
 
+// ShutdownMargin is added to a `fleet shutdown now` lead. The instant is
+// truncated to whole seconds, the host's clock may be MaxClockSkew ahead of the
+// controller's, and the schedule command takes time to arrive, so a bare
+// --in 1m would read as under a minute on the host and be refused there.
+const ShutdownMargin = MaxClockSkew + 5*time.Second
+
 // ShutdownRequest is what a fleet run hands to every selected host.
 type ShutdownRequest struct {
 	At        time.Time // identical for every host
@@ -78,40 +84,49 @@ func ShutdownSchedule(ctx context.Context, runner SSHRunner, hosts []NamedHost, 
 	}
 
 	command := shutdownScheduleCommand(req)
-	scheduled := make([]bool, len(hosts))
+	attempted := make([]bool, len(hosts))
 	out := make([]Result, 0, len(hosts))
-	stopped := ""
+	stopped := -1
 	for i, h := range hosts {
 		switch {
-		case stopped != "":
+		case stopped >= 0:
 			out = append(out, Result{Host: h.Name, Command: op, State: "skipped", Reason: "an earlier host failed", ExitCode: -1})
 			continue
 		case preflight[i].State == "skipped-unreachable":
 			out = append(out, preflight[i])
 			continue
 		}
+		attempted[i] = true
 		r := runner.runMutation(ctx, h, op, privileged(h.Sudo, command), nil)
-		if r.State == "ok" {
-			scheduled[i] = true
-		} else {
-			stopped = h.Name
+		if r.State != "ok" {
+			stopped = i
 		}
 		out = append(out, r)
 	}
-	if stopped == "" {
+	if stopped < 0 {
 		return out
 	}
+	// The failing host counts as uncertain: its schedule can have enabled the
+	// poweroff timer before a later notice timer failed, or lost the answer on
+	// the way back. Cancelling it is idempotent, so it is cancelled too and
+	// only a failed cancel leaves it reported as possibly armed.
 	for i, h := range hosts {
-		if !scheduled[i] {
+		if !attempted[i] {
 			continue
 		}
 		cancel := runner.runMutation(ctx, h, "shutdown cancel", privileged(h.Sudo, remoteBinary+" shutdown cancel"), nil)
-		if cancel.State == "ok" {
+		switch {
+		case cancel.State == "ok" && i == stopped:
+			out[i].Reason = "failed while scheduling (" + out[i].Reason + "); its units were cancelled again, so it will not stop on its own"
+		case cancel.State == "ok":
 			out[i].State = "cancelled"
-			out[i].Reason = "scheduled, then cancelled because " + stopped + " failed"
-		} else {
+			out[i].Reason = "scheduled, then cancelled because " + hosts[stopped].Name + " failed"
+		case i == stopped:
 			out[i].State = "cancel-failed"
-			out[i].Reason = "cancel failed after " + stopped + " failed: " + cancel.Reason
+			out[i].Reason = "failed while scheduling (" + out[i].Reason + ") and the follow-up cancel also failed (" + cancel.Reason + "): it may still stop at the instant"
+		default:
+			out[i].State = "cancel-failed"
+			out[i].Reason = "cancel failed after " + hosts[stopped].Name + " failed: " + cancel.Reason
 		}
 		out[i].ExitCode = 1
 	}
@@ -166,14 +181,20 @@ func shutdownPreflight(ctx context.Context, runner SSHRunner, h NamedHost, req S
 			At     time.Time `json:"at"`
 			Action string    `json:"action"`
 		} `json:"scheduled_shutdown"`
+		Error string `json:"scheduled_shutdown_error"`
 	}
 	if json.Unmarshal(remote.Remote, &report) != nil {
 		return Result{Host: h.Name, Command: op, State: "error", ExitCode: 1,
 			Reason: "cannot read the host's schedule: rootfiles there answered without a status document; update it if it predates `rootfiles shutdown`"}
 	}
+	if report.Error != "" {
+		return Result{Host: h.Name, Command: op, State: "error", ExitCode: 1,
+			Reason: fmt.Sprintf("%s: the stored schedule cannot be read (%s), so a timer there may still be armed: run 'rootfiles fleet shutdown cancel --host %s --yes' to clear it before scheduling",
+				h.Name, report.Error, h.Name)}
+	}
 	if s := report.Scheduled; s != nil && !req.Replace {
 		return Result{Host: h.Name, Command: op, State: "error", ExitCode: 1,
-			Reason: fmt.Sprintf("a %s is already scheduled for %s: pass --replace to replace it, or run 'rootfiles fleet shutdown cancel --host %s' first",
+			Reason: fmt.Sprintf("a %s is already scheduled for %s: pass --replace to replace it, or run 'rootfiles fleet shutdown cancel --host %s --yes' first",
 				shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339), h.Name)}
 	}
 	return Result{Host: h.Name, Command: op, State: "ok"}

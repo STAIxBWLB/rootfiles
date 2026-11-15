@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"net"
 	"os"
+	osexec "os/exec"
 	"strings"
 	"time"
 
@@ -109,7 +111,11 @@ func shutdownInstant(c *cobra.Command, mode string, now time.Time) (time.Time, e
 		case lead > shutdown.MaxLead:
 			return time.Time{}, fmt.Errorf("--in %s: must be at most 30 days ahead", lead)
 		}
-		return now.Add(lead).UTC().Truncate(time.Second), nil
+		// The host checks the lead again against its own clock, which may be
+		// MaxClockSkew ahead of this one, and the instant loses its sub-second
+		// part on the way: the margin is what keeps --in 1m above the host's
+		// one-minute minimum.
+		return now.Add(lead + fleet.ShutdownMargin).UTC().Truncate(time.Second), nil
 	}
 	value, _ := c.Flags().GetString("at")
 	if strings.TrimSpace(value) == "" {
@@ -123,19 +129,14 @@ func shutdownInstant(c *cobra.Command, mode string, now time.Time) (time.Time, e
 // controllerHostsIn names the selected hosts that are this controller, so an
 // operator machine never powers off in the middle of its own rollout.
 func controllerHostsIn(hosts []fleet.NamedHost) []string {
-	names := controllerHostnames()
-	match := make(map[string]bool, len(names))
-	for _, name := range names {
-		match[strings.ToLower(name)] = true
-	}
+	local := localHostIdentities()
 	var out []string
 	for _, h := range hosts {
-		for _, candidate := range []string{h.Name, sshDestinationHost(h.Host.SSH), h.Host.Address} {
+		for _, candidate := range hostCandidates(h) {
 			if candidate == "" {
 				continue
 			}
-			candidate = strings.ToLower(candidate)
-			if match[candidate] || match[strings.SplitN(candidate, ".", 2)[0]] {
+			if local[hostIdentity(candidate)] || local[hostShort(candidate)] {
 				out = append(out, h.Name)
 				break
 			}
@@ -144,18 +145,72 @@ func controllerHostsIn(hosts []fleet.NamedHost) []string {
 	return out
 }
 
-// controllerHostnames is this machine's name and its short form, so an
-// inventory entry that names either is recognised as the controller.
-func controllerHostnames() []string {
-	name, err := os.Hostname()
-	if err != nil || name == "" {
-		return nil
+// hostCandidates is every name a host can be reached by: the inventory name,
+// the address, the ssh destination as written, and the hostname the local ssh
+// client resolves that destination to, so an alias pointing back here is not a
+// way around --include-self.
+func hostCandidates(h fleet.NamedHost) []string {
+	destination := sshDestinationHost(h.Host.SSH)
+	return []string{h.Name, destination, h.Host.Address, sshEffectiveHost(destination)}
+}
+
+// sshEffectiveHost asks the local ssh client what a destination resolves to.
+// -G prints the configuration ssh would use and opens no connection.
+var sshEffectiveHost = func(destination string) string {
+	if destination == "" || strings.HasPrefix(destination, "-") {
+		return ""
 	}
-	names := []string{name}
-	if short := strings.SplitN(name, ".", 2)[0]; short != name {
-		names = append(names, short)
+	out, err := osexec.Command("ssh", "-G", destination).Output()
+	if err != nil {
+		return ""
 	}
-	return names
+	for _, line := range strings.Split(string(out), "\n") {
+		if rest, ok := strings.CutPrefix(line, "hostname "); ok {
+			return strings.TrimSpace(rest)
+		}
+	}
+	return ""
+}
+
+// localHostIdentities is every name or address that means this machine: its
+// hostname and short form, the loopback names, and its own interface addresses.
+var localHostIdentities = func() map[string]bool {
+	names := []string{"localhost", "localhost.localdomain", "127.0.0.1", "::1", "0.0.0.0", "::"}
+	if name, err := os.Hostname(); err == nil && name != "" {
+		names = append(names, name)
+	}
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, addr := range addrs {
+			if ipnet, ok := addr.(*net.IPNet); ok {
+				names = append(names, ipnet.IP.String())
+			}
+		}
+	}
+	out := make(map[string]bool, len(names)*2)
+	for _, name := range names {
+		out[hostIdentity(name)] = true
+		out[hostShort(name)] = true
+	}
+	return out
+}
+
+// hostIdentity normalises a name for comparison: lowercase, no trailing dot and
+// no IPv6 brackets.
+func hostIdentity(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	name = strings.TrimSuffix(name, ".")
+	return strings.Trim(name, "[]")
+}
+
+// hostShort is the identity without its domain part, and the identity itself
+// for an address: splitting 10.0.0.5 on its dots would make every host in that
+// subnet look the same.
+func hostShort(name string) string {
+	id := hostIdentity(name)
+	if net.ParseIP(id) != nil {
+		return id
+	}
+	return strings.SplitN(id, ".", 2)[0]
 }
 
 func sshDestinationHost(destination string) string {
@@ -192,6 +247,9 @@ func reportShutdownRollback(c *cobra.Command, results []fleet.Result) {
 		len(failed), fleetCancelRerun(c, failed))
 }
 
+// fleetCancelRerun is the command an operator can paste to clean up hosts whose
+// rollback failed. It carries --yes because a real cancel is confirmed by
+// --yes, so the printed command must not be the one that is refused.
 func fleetCancelRerun(c *cobra.Command, hosts []string) string {
 	parts := []string{c.Root().Name(), "fleet", "shutdown", "cancel"}
 	if c.Flags().Changed("inventory") {
@@ -199,9 +257,9 @@ func fleetCancelRerun(c *cobra.Command, hosts []string) string {
 		parts = append(parts, "--inventory", fleet.ShellQuote(path))
 	}
 	for _, h := range hosts {
-		parts = append(parts, "--host", h)
+		parts = append(parts, "--host", fleet.ShellQuote(h))
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(append(parts, "--yes"), " ")
 }
 
 func newFleetShutdownCancelCmd() *cobra.Command {

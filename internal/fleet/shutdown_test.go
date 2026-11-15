@@ -181,17 +181,70 @@ func TestFleetShutdownRollsBackWhatItScheduled(t *testing.T) {
 	if got[2].State != "skipped" {
 		t.Fatalf("the third host ran after a failure: %#v", got[2])
 	}
-	cancelled := 0
+	// The failing host counts as uncertain: it can have enabled the poweroff
+	// timer before a later step failed, so it is cancelled too.
+	touched := map[string]bool{}
 	for _, line := range shutdownCalls(t, calls) {
 		if strings.Contains(line, "shutdown cancel") {
-			cancelled++
-			if !strings.HasPrefix(line, "first|") {
-				t.Fatalf("rollback cancelled the wrong host: %q", line)
+			name, _, _ := strings.Cut(line, "|")
+			if name != "first" && name != "bad" {
+				t.Fatalf("rollback cancelled a host that was never attempted: %q", line)
 			}
+			touched[name] = true
 		}
 	}
-	if cancelled != 1 {
-		t.Fatalf("rollback sent %d cancellations, want 1", cancelled)
+	if len(touched) != 2 || !touched["first"] || !touched["bad"] {
+		t.Fatalf("rollback cancellations = %v, want the scheduled host and the failing one", touched)
+	}
+	for _, line := range shutdownCalls(t, calls) {
+		if strings.HasPrefix(line, "later|") && strings.Contains(line, "shutdown cancel") {
+			t.Fatalf("a host the run never reached was cancelled: %q", line)
+		}
+	}
+}
+
+// AC6: a host that failed after it may have armed its poweroff timer is
+// reported as cancelled again, never as safe-by-silence.
+func TestFleetShutdownCancelsTheHostThatFailedMidway(t *testing.T) {
+	calls := filepath.Join(t.TempDir(), "calls")
+	bin := writeShutdownSSH(t, calls, `if [ "${7#*shutdown schedule}" != "$7" ] && [ "$6" = "bad" ]; then printf '%s\n' 'rootfiles: cannot enable rootfiles-shutdown-notice-1.timer' >&2; exit 1; fi`)
+	hosts := []NamedHost{shutdownHost("bad", "root")}
+	got := ShutdownSchedule(context.Background(), SSHRunner{Binary: bin}, hosts,
+		ShutdownRequest{At: time.Now().Add(time.Hour)}, false)
+	if got[0].State != "error" {
+		t.Fatalf("a failed schedule was reported as %q", got[0].State)
+	}
+	for _, want := range []string{"cannot enable", "cancelled again", "will not stop on its own"} {
+		if !strings.Contains(got[0].Reason, want) {
+			t.Fatalf("the failing host's reason %q does not name %q", got[0].Reason, want)
+		}
+	}
+	if !strings.Contains(strings.Join(shutdownCalls(t, calls), "\n"), "bad|/usr/local/bin/rootfiles shutdown cancel") {
+		t.Fatalf("the failing host was never cancelled:\n%s", strings.Join(shutdownCalls(t, calls), "\n"))
+	}
+}
+
+// AC6: an unreadable state file on a host stops the run with the recovery
+// command, not with a silent "nothing scheduled".
+func TestFleetShutdownRefusesAnUnreadableHostSchedule(t *testing.T) {
+	calls := filepath.Join(t.TempDir(), "calls")
+	stored := `{"scheduled_shutdown_error":"scheduled shutdown /var/lib/rootfiles/shutdown.json is not valid JSON"}`
+	bin := writeShutdownSSH(t, calls, `if [ "$7" = "/usr/local/bin/rootfiles shutdown status -o json" ]; then printf '%s\n' '`+stored+`'; exit 0; fi`)
+	hosts := []NamedHost{shutdownHost("a", "root")}
+	got := ShutdownSchedule(context.Background(), SSHRunner{Binary: bin}, hosts,
+		ShutdownRequest{At: time.Now().Add(time.Hour)}, false)
+	if got[0].State != "error" {
+		t.Fatalf("an unreadable schedule was accepted: %#v", got[0])
+	}
+	for _, want := range []string{"cannot be read", "may still be armed", "fleet shutdown cancel --host a --yes"} {
+		if !strings.Contains(got[0].Reason, want) {
+			t.Fatalf("refusal %q does not name %q", got[0].Reason, want)
+		}
+	}
+	for _, line := range shutdownCalls(t, calls) {
+		if strings.Contains(line, "shutdown schedule") {
+			t.Fatalf("the host was scheduled over a schedule it could not read: %q", line)
+		}
 	}
 }
 
@@ -206,6 +259,10 @@ if [ "${7#*shutdown cancel}" != "$7" ]; then printf '%s\n' 'rootfiles: cannot re
 		ShutdownRequest{At: time.Now().Add(time.Hour)}, false)
 	if got[0].State != "cancel-failed" || !strings.Contains(got[0].Reason, "cannot remove shutdown unit") {
 		t.Fatalf("a failed rollback cancellation was not reported: %#v", got[0])
+	}
+	// The failing host's own cancel failed too, so it is named as possibly armed.
+	if got[1].State != "cancel-failed" || !strings.Contains(got[1].Reason, "may still stop at the instant") {
+		t.Fatalf("the failing host was not reported as possibly armed: %#v", got[1])
 	}
 }
 
