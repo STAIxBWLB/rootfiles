@@ -25,12 +25,19 @@ func newDoctorCmd() *cobra.Command {
 			"the profile). Exit code: 0 = no failures, 2 = at least one failure (or warning with --strict).",
 		RunE: runDoctor,
 	}
+	cmd.Flags().String("inventory", "", "Controller inventory file")
 	addOutputFlagWithMetrics(cmd)
 	cmd.Flags().Bool("strict", false, "Treat warnings as failures for the exit code")
 	return usesConfigTarget(cmd)
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
+	if nativeHostOS != "linux" {
+		return runControllerDoctor(cmd)
+	}
+	if cmd.Flags().Changed("inventory") {
+		return fmt.Errorf("--inventory is only used on a controller; omit it on Linux")
+	}
 	format, err := outputFormat(cmd)
 	if err != nil {
 		return err

@@ -207,6 +207,8 @@ Load and validate the same target as `config show`: unknown keys, paths, ports, 
 
 ### rootfiles doctor
 
+On non-Linux controllers, `--inventory` selects the local fleet inventory; `--json` includes `mode: "controller"`. Controller checks do not connect to hosts.
+
 Read-only health checks of the live host, as opposed to `check`, which compares against the config. Checks: SSH access (keys against `sshd -T`, password-only and no-login accounts, the effective config), firewall state and the SSH port, exporter exposure and the exporter firewall guard, reboot required, disk use, time sync, GPU driver and persistence mode, failed systemd units, the config and its capabilities, and the last apply.
 
 | Flag | Default | Purpose |
@@ -409,6 +411,8 @@ Install and start the timer; when no report exists yet, also run the first repor
 Show whether the units are installed, the timer's enabled and active state, its OnCalendar expression and the age of `check.json` and `doctor.json`. A report older than 48 hours is marked stale. Read-only; exit 0.
 
 ### rootfiles status
+
+On non-Linux controllers, `--inventory` selects the local fleet inventory; `--json` includes `mode: "controller"`, inventory counts and latest fleet run per host.
 
 Read-only overview: system, profile, last apply, module satisfaction, GPU allocations, tunnel and users.
 

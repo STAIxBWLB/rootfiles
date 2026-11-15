@@ -12,6 +12,9 @@ import (
 // home-base detection against the host, and clears the other config
 // overrides so a developer's shell cannot fail a load.
 func TestMain(m *testing.M) {
+	// Existing native report fixtures describe Linux; controller tests override
+	// this explicitly and restore it so they remain host-independent.
+	nativeHostOS = "linux"
 	// Reused configs must be root-owned and below a root-only walk; let the
 	// test user stand in for root under a private TMPDIR.
 	syscall.Umask(0o022)
