@@ -10,7 +10,7 @@
   "queue_cap": 200,
   "memory": { "enabled": true, "inject_tokens": 2000, "brief_items": 8 },
   "roles": {
-    "claude": ["planner", "reviewer"],
+    "claude": ["planner", "reviewer", "conductor"],
     "codex": ["implementer"],
     "kimi": ["implementer", "verifier"],
     "local": ["implementer", "verifier"],
