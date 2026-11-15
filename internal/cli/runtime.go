@@ -64,7 +64,7 @@ var heldLock *state.Lock
 var geteuid = os.Geteuid
 
 // preflight enforces root and the global lock for mutating commands.
-// Dry runs and annotated read-only flags are exempt.
+// Dry runs, annotated read-only flags and a non-Linux self-update are exempt.
 func preflight(cmd *cobra.Command, _ []string) error {
 	if err := rejectUnusedNativeFlags(cmd); err != nil {
 		return err
@@ -75,7 +75,21 @@ func preflight(cmd *cobra.Command, _ []string) error {
 	if readOnlyFlagSet(cmd) {
 		return nil
 	}
+	if selfUpdateWithoutRoot(cmd) {
+		return nil
+	}
 	return requireRootAndLock(cmd)
+}
+
+// selfUpdateWithoutRoot reports the one native mutation a non-Linux host runs
+// as an ordinary user: `rootfiles update` on a fleet controller. The binary it
+// replaces belongs to that user, and there is no native host state for the
+// global lock to protect; upgrade.go refuses a binary the user does not own.
+func selfUpdateWithoutRoot(cmd *cobra.Command) bool {
+	if nativeHostOS == "linux" {
+		return false
+	}
+	return cmd.CommandPath() == cmd.Root().Name()+" update"
 }
 
 const annotReadsRootFlag = "rootfiles/reads-root-flag/"

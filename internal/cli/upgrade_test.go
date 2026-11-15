@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -352,5 +353,210 @@ func TestFinishUpdateWarnsWhenCheckCannotStart(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "Apply pending:") || !strings.Contains(stderr.String(), "post-update check could not run") || !strings.Contains(stderr.String(), "no such file") {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+// TestUpdateCommandHint pins AC3: the next step names the command that works
+// on this platform and install location.
+func TestUpdateCommandHint(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "rootfiles")
+	if err := os.WriteFile(binary, []byte("old"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	oldOS, oldEUID, oldExec := nativeHostOS, geteuid, selfExecutable
+	t.Cleanup(func() { nativeHostOS, geteuid, selfExecutable = oldOS, oldEUID, oldExec })
+	selfExecutable = func() (string, error) { return binary, nil }
+
+	nativeHostOS = "linux"
+	if got := updateCommandHint(); got != "sudo rootfiles update" {
+		t.Fatalf("linux hint=%q", got)
+	}
+
+	nativeHostOS = "darwin"
+	geteuid = os.Geteuid
+	if got := updateCommandHint(); got != "rootfiles update" {
+		t.Fatalf("owned darwin hint=%q", got)
+	}
+
+	geteuid = func() int { return os.Geteuid() + 1 }
+	got := updateCommandHint()
+	if !strings.Contains(got, "scripts/install.sh") || !strings.HasSuffix(got, `--prefix "$HOME/.local"`) {
+		t.Fatalf("unowned darwin hint=%q", got)
+	}
+}
+
+// TestUpdateCheckPrintsDarwinNextStep runs the real command: a Mac controller
+// must be told to run `rootfiles update`, never `sudo rootfiles update`.
+func TestUpdateCheckPrintsDarwinNextStep(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "rootfiles")
+	if err := os.WriteFile(binary, []byte("old"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	oldOS, oldEUID, oldExec := nativeHostOS, geteuid, selfExecutable
+	t.Cleanup(func() { nativeHostOS, geteuid, selfExecutable = oldOS, oldEUID, oldExec })
+	nativeHostOS = "darwin"
+	geteuid = os.Geteuid
+	selfExecutable = func() (string, error) { return binary, nil }
+
+	root := NewRootCmd("v0.1.0", "test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"update", "--check", "--version", "v9.9.9"})
+	err := root.Execute()
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != exitDrift {
+		t.Fatalf("err=%v", err)
+	}
+	if !strings.Contains(out.String(), "Run `rootfiles update` to install") {
+		t.Fatalf("missing darwin next step: %q", out.String())
+	}
+	if strings.Contains(out.String(), "sudo rootfiles update") {
+		t.Fatalf("darwin next step asks for sudo: %q", out.String())
+	}
+}
+
+func TestUserOwnsBinary(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "rootfiles")
+	if err := os.WriteFile(binary, []byte("x"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	oldEUID := geteuid
+	t.Cleanup(func() { geteuid = oldEUID })
+
+	geteuid = os.Geteuid
+	if !userOwnsBinary(binary) {
+		t.Fatal("own binary in an own directory should be replaceable")
+	}
+
+	geteuid = func() int { return os.Geteuid() + 1 }
+	if userOwnsBinary(binary) {
+		t.Fatal("a binary owned by another uid must be refused")
+	}
+
+	geteuid = os.Geteuid
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+	if userOwnsBinary(binary) {
+		t.Fatal("a directory the user cannot write must be refused")
+	}
+}
+
+// TestUpdateRefusesUnownedBinary pins AC2's refusal arm: no root, no
+// download, and the file is left byte-identical.
+func TestUpdateRefusesUnownedBinary(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "rootfiles")
+	original := "#!/bin/sh\nexit 0\n"
+	if err := os.WriteFile(binary, []byte(original), 0755); err != nil {
+		t.Fatal(err)
+	}
+	oldOS, oldEUID, oldExec, oldTransport := nativeHostOS, geteuid, selfExecutable, http.DefaultTransport
+	t.Cleanup(func() {
+		nativeHostOS, geteuid, selfExecutable, http.DefaultTransport = oldOS, oldEUID, oldExec, oldTransport
+	})
+	nativeHostOS = "darwin"
+	geteuid = func() int { return os.Geteuid() + 1 }
+	selfExecutable = func() (string, error) { return binary, nil }
+	http.DefaultTransport = updateCheckTransport(func(req *http.Request) (*http.Response, error) {
+		t.Fatalf("refused update downloaded %s", req.URL)
+		return nil, errors.New("unexpected request")
+	})
+
+	root := NewRootCmd("v0.1.0", "test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"update", "--version", "v9.9.9"})
+	err := root.Execute()
+	var exit *ExitError
+	if !errors.As(err, &exit) {
+		t.Fatalf("err=%v", err)
+	}
+	if !strings.Contains(exit.Msg, "not owned by the running user") {
+		t.Fatalf("refusal lost its cause: %q", exit.Msg)
+	}
+	if !strings.Contains(exit.Next, "--prefix") {
+		t.Fatalf("refusal carries no next step: %q", exit.Next)
+	}
+	got, readErr := os.ReadFile(binary)
+	if readErr != nil || string(got) != original {
+		t.Fatalf("refused update touched the binary: %q %v", got, readErr)
+	}
+}
+
+// TestUpdateReplacesOwnedBinary pins AC2's success arm end to end: a darwin
+// controller with no root replaces its own binary and leaves no staging file.
+func TestUpdateReplacesOwnedBinary(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "rootfiles")
+	if err := os.WriteFile(binary, []byte("old binary"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	replacement := "#!/bin/sh\nexit 0\n"
+	archiveName := fmt.Sprintf("rootfiles_9.9.9_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	archive := testTarball(t, "rootfiles", []byte(replacement))
+	sum := sha256.Sum256(archive)
+	checksums := []byte(hex.EncodeToString(sum[:]) + "  " + archiveName + "\n")
+
+	oldOS, oldEUID, oldExec, oldTransport := nativeHostOS, geteuid, selfExecutable, http.DefaultTransport
+	t.Cleanup(func() {
+		nativeHostOS, geteuid, selfExecutable, http.DefaultTransport = oldOS, oldEUID, oldExec, oldTransport
+	})
+	nativeHostOS = "darwin"
+	geteuid = os.Geteuid
+	selfExecutable = func() (string, error) { return binary, nil }
+	http.DefaultTransport = updateCheckTransport(func(req *http.Request) (*http.Response, error) {
+		var body []byte
+		switch {
+		case strings.HasSuffix(req.URL.Path, "/"+archiveName):
+			body = archive
+		case strings.HasSuffix(req.URL.Path, "/checksums.txt"):
+			body = checksums
+		default:
+			return nil, fmt.Errorf("unexpected request: %s", req.URL)
+		}
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewReader(body)), Header: make(http.Header)}, nil
+	})
+
+	root := NewRootCmd("v0.1.0", "test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"update", "--version", "v9.9.9"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("update failed: %v (%s)", err, out.String())
+	}
+	if !strings.Contains(out.String(), "Updated to v9.9.9") {
+		t.Fatalf("success line absent: %q", out.String())
+	}
+
+	got, err := os.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != replacement {
+		t.Fatalf("binary not replaced: %q", got)
+	}
+	info, err := os.Stat(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0755 {
+		t.Fatalf("mode=%v, want 0755", info.Mode().Perm())
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".rootfiles.") {
+			t.Fatalf("staging file %q left behind", e.Name())
+		}
 	}
 }
