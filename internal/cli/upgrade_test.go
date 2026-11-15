@@ -285,6 +285,11 @@ func TestUpdateCheck(t *testing.T) {
 }
 
 func TestFinishUpdateRequiresJSONBeforeApplyPending(t *testing.T) {
+	// The post-update check runs only on Linux; pin it so this case exercises
+	// the check rather than the non-Linux skip on a darwin test host.
+	previousOS := nativeHostOS
+	nativeHostOS = "linux"
+	t.Cleanup(func() { nativeHostOS = previousOS })
 	for _, tc := range []struct {
 		name, stdout, stderr string
 		code                 int
@@ -342,6 +347,9 @@ func TestFinishUpdateRequiresJSONBeforeApplyPending(t *testing.T) {
 }
 
 func TestFinishUpdateWarnsWhenCheckCannotStart(t *testing.T) {
+	previousOS := nativeHostOS
+	nativeHostOS = "linux"
+	t.Cleanup(func() { nativeHostOS = previousOS })
 	cmd := newUpgradeCmd("v0.1.0")
 	cmd.SetContext(context.Background())
 	var stdout, stderr bytes.Buffer
@@ -353,6 +361,42 @@ func TestFinishUpdateWarnsWhenCheckCannotStart(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "Apply pending:") || !strings.Contains(stderr.String(), "post-update check could not run") || !strings.Contains(stderr.String(), "no such file") {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+// TestFinishUpdateSkipsCheckOffLinux pins the controller case: a macOS update
+// replaces the binary and reports it, without spawning a check that cannot run
+// there and without the Linux-only apply hint or warning.
+func TestFinishUpdateSkipsCheckOffLinux(t *testing.T) {
+	previousOS := nativeHostOS
+	nativeHostOS = "darwin"
+	t.Cleanup(func() { nativeHostOS = previousOS })
+
+	dir := t.TempDir()
+	sentinel := filepath.Join(dir, "spawned")
+	binary := filepath.Join(dir, "rootfiles")
+	script := "#!/bin/sh\nprintf 'ran\\n' > \"$SENTINEL\"\nexit 2\n"
+	if err := os.WriteFile(binary, []byte(script), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SENTINEL", sentinel)
+
+	cmd := newUpgradeCmd("v0.1.0")
+	cmd.SetContext(context.Background())
+	var stdout, stderr bytes.Buffer
+	cmd.SetOut(&stdout)
+	cmd.SetErr(&stderr)
+	if err := finishUpdate(cmd, binary, "v0.2.0"); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := stdout.String(), "Updated to v0.2.0\n"; got != want {
+		t.Fatalf("stdout=%q want=%q", got, want)
+	}
+	if stderr.String() != "" {
+		t.Fatalf("controller update warned: %q", stderr.String())
+	}
+	if _, err := os.Stat(sentinel); !os.IsNotExist(err) {
+		t.Fatalf("post-update check ran on a controller: %v", err)
 	}
 }
 

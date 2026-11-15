@@ -158,6 +158,13 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 // exit-2 JSON report proves apply is pending; an invocation failure is warned.
 func finishUpdate(cmd *cobra.Command, binary, version string) error {
 	ui.WriteText(cmd.OutOrStdout(), "Updated to %s\n", version)
+	// The post-update check reads native host state, which only exists on
+	// Linux: on a controller `check` fails before it can report anything, so
+	// running it would turn every successful update into a warning (or into an
+	// "apply pending" hint whose sudo commands a controller cannot run).
+	if nativeHostOS != "linux" {
+		return nil
+	}
 	ctx, cancel := context.WithTimeout(cmd.Context(), 2*time.Minute)
 	defer cancel()
 	check := osexec.CommandContext(ctx, binary, "check", "-o", "json")
