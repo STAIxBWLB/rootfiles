@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,5 +38,27 @@ func TestFleetPingReadOnlySelectionAndOutput(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "/usr/local/bin/rootfiles --version") {
 		t.Fatalf("calls: %s", data)
+	}
+}
+
+func TestFleetPingFindingsExitTwo(t *testing.T) {
+	dir := t.TempDir()
+	inventory := filepath.Join(dir, "fleet.yaml")
+	if err := os.WriteFile(inventory, []byte("hosts:\n  host1:\n    ssh: host1\n    sudo: none\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte("#!/bin/sh\necho 'Permission denied (publickey)' >&2\nexit 255\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	var out bytes.Buffer
+	cmd := NewRootCmd("test", "test")
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"fleet", "ping", "--inventory", inventory, "--all", "--json"})
+	err := cmd.Execute()
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != 2 || !strings.Contains(out.String(), "auth-failed") {
+		t.Fatalf("output %s, error %v", out.String(), err)
 	}
 }
