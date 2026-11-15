@@ -4,13 +4,15 @@
 #   curl -fsSL https://raw.githubusercontent.com/STAIxBWLB/rootfiles/main/scripts/install.sh | sudo bash
 #   curl -fsSL ... | sudo bash -s -- --version v0.1.0
 #   curl -fsSL ... | sudo bash -s -- --channel dev
+#   curl -fsSL ... | bash                 # macOS fleet controller, no sudo
+#   curl -fsSL ... | bash -s -- --prefix "$HOME/.local"
 set -euo pipefail
 
 REPO="STAIxBWLB/rootfiles"
-INSTALL_DIR="/usr/local/bin"
 BINARY="rootfiles"
 VERSION=""
 CHANNEL="stable"  # stable or dev
+PREFIX=""
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -23,12 +25,18 @@ while [[ $# -gt 0 ]]; do
             CHANNEL="$2"
             shift 2
             ;;
+        --prefix)
+            PREFIX="$2"
+            shift 2
+            ;;
         --help|-h)
-            echo "Usage: install.sh [--version v0.1.0] [--channel stable|dev]"
+            echo "Usage: install.sh [--version v0.1.0] [--channel stable|dev] [--prefix DIR]"
             echo ""
             echo "Options:"
             echo "  --version, -v    Install a specific version (e.g., v0.1.0)"
             echo "  --channel, -c    Release channel: stable (default) or dev"
+            echo "  --prefix         Install under DIR/bin. Default: /usr/local/bin"
+            echo "                   when run as root or on Linux, else \$HOME/.local"
             echo ""
             echo "Channels:"
             echo "  stable    Latest tagged release (recommended)"
@@ -62,6 +70,20 @@ fi
 echo "rootfiles installer"
 echo "  OS:   $OS"
 echo "  Arch: $ARCH"
+
+# Destination. The fleet sudoers rule names /usr/local/bin exactly, so root
+# and Linux installs stay there. A macOS controller installs into its own home
+# with no sudo; a user-owned binary is also what lets `rootfiles update`
+# replace it later without root.
+if [ -n "$PREFIX" ]; then
+    INSTALL_DIR="$PREFIX/bin"
+elif [ "$OS" = "darwin" ] && [ "$(id -u)" -ne 0 ]; then
+    INSTALL_DIR="$HOME/.local/bin"
+else
+    INSTALL_DIR="/usr/local/bin"
+fi
+
+echo "  Dest: $INSTALL_DIR"
 
 # Resolve regular paths and symlink chains using portable readlink plus the
 # physical parent directory. This works on macOS/BSD where readlink -f is not
@@ -118,8 +140,12 @@ ensure_compat_symlink() {
 # On Linux, sudo's secure_path may omit /usr/local/bin (notably on Rocky).
 # Verify command resolution as the invoking account; if it does not find this
 # installation, add only a previously absent /usr/bin/rootfiles link.
+# Only a root install on Linux is checked: that account is what the fleet
+# sudoers rule and sudo's secure_path apply to. A user's own install has no
+# sudo path to verify.
 verify_linux_sudo_path() {
     [ "$OS" = "linux" ] || return 0
+    [ "$(id -u)" -eq 0 ] || return 0
     command -v sudo >/dev/null 2>&1 || return 0
 
     local verify_user resolved expected actual
@@ -155,12 +181,30 @@ verify_linux_sudo_path() {
     echo "Verified privileged command path: sudo rootfiles"
 }
 
+# Create the destination directory, or explain how to pick one the account
+# owns. A prefix install is the fix for a directory only root can write.
+prepare_install_dir() {
+    if ! mkdir -p "$INSTALL_DIR" 2>/dev/null; then
+        echo "Error: cannot create $INSTALL_DIR" >&2
+        echo "Re-run as root, or install where you can write:" >&2
+        echo "  ... | bash -s -- --prefix \"\$HOME/.local\"" >&2
+        exit 1
+    fi
+}
+
 finish_install() {
-    if [ "$OS" = "linux" ]; then
+    if [ "$OS" = "linux" ] && [ "$(id -u)" -eq 0 ]; then
         ensure_compat_symlink "$INSTALL_DIR/$BINARY" "$INSTALL_DIR/root"
         verify_linux_sudo_path
         echo "Symlinked: $INSTALL_DIR/root -> $BINARY"
     fi
+    case ":${PATH:-}:" in
+        *":$INSTALL_DIR:"*) ;;
+        *)
+            echo "Warning: $INSTALL_DIR is not on PATH; add it to use rootfiles:"
+            echo "  export PATH=\"$INSTALL_DIR:\$PATH\""
+            ;;
+    esac
     echo "Installed: $INSTALL_DIR/$BINARY"
     "$INSTALL_DIR/$BINARY" --version
 }
@@ -184,6 +228,7 @@ if [ "$CHANNEL" = "dev" ]; then
     echo "Building..."
     cd "$TMPDIR/rootfiles"
     COMMIT=$(git rev-parse --short HEAD)
+    prepare_install_dir
     go build -ldflags "-s -w -X main.version=dev-${COMMIT} -X main.commit=${COMMIT}" \
         -o "$INSTALL_DIR/$BINARY" ./cmd/rootfiles/
 
@@ -227,21 +272,43 @@ if ! curl -fsSL -o "$TMPDIR/$ARCHIVE" "$URL"; then
     exit 1
 fi
 
-# Verify checksum
+# Verify the archive against the release's checksums.txt. Verification is
+# mandatory when a checksum tool exists, and a mismatch is fatal.
+#
+# macOS ships /sbin/sha256sum, which takes files but has no GNU --check form;
+# picking it on the name alone aborted every macOS install. So each tool is
+# tried in its check form and the next one is used only when that form is
+# unusable — a real mismatch is still reported and still stops the install.
+verify_checksum() {
+    local detail
+    if command -v sha256sum &>/dev/null; then
+        if detail=$(grep "$ARCHIVE" checksums.txt | sha256sum -c --quiet 2>&1); then
+            return 0
+        fi
+        if ! command -v shasum &>/dev/null; then
+            echo "Error: checksum verification failed: $detail" >&2
+            exit 1
+        fi
+    fi
+    if command -v shasum &>/dev/null; then
+        if detail=$(grep "$ARCHIVE" checksums.txt | shasum -a 256 -c --quiet 2>&1); then
+            return 0
+        fi
+        echo "Error: checksum verification failed: $detail" >&2
+        exit 1
+    fi
+    echo "Warning: no checksum tool found, skipping verification"
+}
+
 echo "Verifying checksum..."
 curl -fsSL -o "$TMPDIR/checksums.txt" "$CHECKSUM_URL"
 cd "$TMPDIR"
-if command -v sha256sum &>/dev/null; then
-    grep "$ARCHIVE" checksums.txt | sha256sum -c --quiet
-elif command -v shasum &>/dev/null; then
-    grep "$ARCHIVE" checksums.txt | shasum -a 256 -c --quiet
-else
-    echo "Warning: no checksum tool found, skipping verification"
-fi
+verify_checksum
 
 # Extract and install
 echo "Installing to $INSTALL_DIR/$BINARY..."
 tar xzf "$ARCHIVE"
+prepare_install_dir
 install -m 755 "$BINARY" "$INSTALL_DIR/$BINARY"
 
 finish_install
