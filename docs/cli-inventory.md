@@ -10,7 +10,7 @@ The platform is pinned to `linux`, the host this binary configures: help that di
 between a Linux server and a controller (which flags exist, which report is read) is
 recorded here as the server sees it.
 
-## Commands (86)
+## Commands (97)
 
 | command | kind | usage | summary | chars | example | widest | issues |
 |---|---|---|---|---|---|---|---|
@@ -33,6 +33,11 @@ recorded here as the server sees it.
 | `rootfiles fleet log` | runnable | - | Show recorded fleet rollouts, newest first | 42 | yes | 79 | - |
 | `rootfiles fleet ping` | runnable | - | Check fleet connectivity and privilege | 38 | yes | 79 | - |
 | `rootfiles fleet schedule` | runnable | <enable\|disable> | Enable or disable scheduled reports serially | 44 | yes | 79 | - |
+| `rootfiles fleet shutdown` | runnable | - | Schedule, cancel or inspect fleet poweroffs | 43 | yes | 79 | - |
+| `rootfiles fleet shutdown cancel` | runnable | - | Cancel any scheduled shutdown on every selected host | 52 | yes | 79 | - |
+| `rootfiles fleet shutdown now` | runnable | - | Schedule every selected host within --in and announce it now | 60 | yes | 79 | - |
+| `rootfiles fleet shutdown schedule` | runnable | - | Schedule every selected host for one absolute instant | 53 | yes | 79 | - |
+| `rootfiles fleet shutdown status` | runnable | - | Show each selected host's scheduled shutdown | 44 | yes | 79 | - |
 | `rootfiles fleet status` | runnable | - | Run a read-only fleet status report | 35 | yes | 79 | - |
 | `rootfiles fleet targets` | runnable | - | Render scrape targets or push them to a hub | 43 | yes | 79 | - |
 | `rootfiles fleet update` | runnable | - | Update selected hosts serially | 30 | yes | 79 | - |
@@ -48,6 +53,12 @@ recorded here as the server sees it.
 | `rootfiles schedule disable` | runnable | - | Stop and remove the report timer | 32 | yes | 79 | - |
 | `rootfiles schedule enable` | runnable | - | Install and start the report timer | 34 | yes | 79 | - |
 | `rootfiles schedule status` | runnable | - | Show the report timer state and the age of its reports | 54 | yes | 79 | - |
+| `rootfiles shutdown` | runnable | - | Schedule a poweroff or reboot with advance notice | 49 | yes | 79 | - |
+| `rootfiles shutdown block` | runnable, hidden | - | Stop new tenant logins (run by the login-block timer) | 53 | yes | 79 | - |
+| `rootfiles shutdown cancel` | runnable | - | Remove the schedule, the units and any tenant login block | 57 | yes | 79 | - |
+| `rootfiles shutdown notify` | runnable, hidden | - | Send one notice (run by the notice timers) | 42 | yes | 79 | - |
+| `rootfiles shutdown schedule` | runnable | - | Schedule the poweroff or reboot | 31 | yes | 79 | - |
+| `rootfiles shutdown status` | runnable | - | Show the schedule, next notice and tenant login block | 53 | yes | 79 | - |
 | `rootfiles status` | runnable | - | Show full system status at a glance | 35 | yes | 79 | - |
 | `rootfiles tenant` | runnable | - | Manage long-lived tenant containers | 35 | yes | 79 | - |
 | `rootfiles tenant apply` | runnable | [TENANT] | Converge a tenant to its spec | 29 | yes | 79 | - |
@@ -113,6 +124,7 @@ The audit has to settle one form for every summary, so the first word of each is
 - `Backup`: rootfiles user backup
 - `Block`: rootfiles user lock
 - `Bootstrap`: rootfiles
+- `Cancel`: rootfiles fleet shutdown cancel
 - `Change`: rootfiles tenant gpu, rootfiles tenant image, rootfiles tenant port
 - `Check`: rootfiles check, rootfiles doctor, rootfiles fleet ping
 - `Compare`: rootfiles user audit
@@ -132,16 +144,18 @@ The audit has to settle one form for every summary, so the first word of each is
 - `Print`: rootfiles config show
 - `Re-enable`: rootfiles user unlock
 - `Refresh`: rootfiles tenant sync
-- `Remove`: rootfiles tunnel uninstall, rootfiles user group-del, rootfiles user key rm, rootfiles user quota rm
+- `Remove`: rootfiles shutdown cancel, rootfiles tunnel uninstall, rootfiles user group-del, rootfiles user key rm, rootfiles user quota rm
 - `Render`: rootfiles fleet targets
 - `Restart`: rootfiles tenant restart, rootfiles tunnel restart
 - `Restore`: rootfiles rollback, rootfiles user restore
 - `Revoke`: rootfiles gpu revoke
 - `Run`: rootfiles fleet check, rootfiles fleet doctor, rootfiles fleet status, rootfiles tenant ops
 - `Scaffold`: rootfiles config init
+- `Schedule`: rootfiles fleet shutdown, rootfiles fleet shutdown now, rootfiles fleet shutdown schedule, rootfiles shutdown, rootfiles shutdown schedule
+- `Send`: rootfiles shutdown notify
 - `Set`: rootfiles tunnel setup, rootfiles user expire, rootfiles user passwd, rootfiles user quota set
-- `Show`: rootfiles fleet log, rootfiles gpu mig, rootfiles gpu mig status, rootfiles gpu status, rootfiles schedule status, rootfiles status, rootfiles tenant logs, rootfiles tenant status, rootfiles tunnel status, rootfiles user du, rootfiles user id, rootfiles user quota show
-- `Stop`: rootfiles schedule disable
+- `Show`: rootfiles fleet log, rootfiles fleet shutdown status, rootfiles gpu mig, rootfiles gpu mig status, rootfiles gpu status, rootfiles schedule status, rootfiles shutdown status, rootfiles status, rootfiles tenant logs, rootfiles tenant status, rootfiles tunnel status, rootfiles user du, rootfiles user id, rootfiles user quota show
+- `Stop`: rootfiles schedule disable, rootfiles shutdown block
 - `Update`: rootfiles fleet update, rootfiles update
 - `Upgrade`: rootfiles tunnel update
 - `Validate`: rootfiles config validate
@@ -256,6 +270,49 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet schedule` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet schedule` | `--skip-unreachable` | bool | false | - | no |
 | `rootfiles fleet schedule` | `--timeout` | duration | 15m0s | - | no |
+| `rootfiles fleet shutdown cancel` | `--all` | bool | false | - | no |
+| `rootfiles fleet shutdown cancel` | `--group` | stringSlice | [] | - | no |
+| `rootfiles fleet shutdown cancel` | `--host` | stringSlice | [] | - | no |
+| `rootfiles fleet shutdown cancel` | `--inventory` | string | - | - | no |
+| `rootfiles fleet shutdown cancel` | `--json` | bool | false | - | no |
+| `rootfiles fleet shutdown cancel` | `-o, --output` | string | text | o | no |
+| `rootfiles fleet shutdown cancel` | `--skip-unreachable` | bool | false | - | no |
+| `rootfiles fleet shutdown cancel` | `--timeout` | duration | 15m0s | - | no |
+| `rootfiles fleet shutdown now` | `--all` | bool | false | - | no |
+| `rootfiles fleet shutdown now` | `--group` | stringSlice | [] | - | no |
+| `rootfiles fleet shutdown now` | `--host` | stringSlice | [] | - | no |
+| `rootfiles fleet shutdown now` | `--in` | duration | 2m0s | - | no |
+| `rootfiles fleet shutdown now` | `--include-self` | bool | false | - | no |
+| `rootfiles fleet shutdown now` | `--inventory` | string | - | - | no |
+| `rootfiles fleet shutdown now` | `--json` | bool | false | - | no |
+| `rootfiles fleet shutdown now` | `--message` | string | - | - | no |
+| `rootfiles fleet shutdown now` | `--notice` | string | 24h,1h,15m,5m | - | no |
+| `rootfiles fleet shutdown now` | `-o, --output` | string | text | o | no |
+| `rootfiles fleet shutdown now` | `--reboot` | bool | false | - | no |
+| `rootfiles fleet shutdown now` | `--replace` | bool | false | - | no |
+| `rootfiles fleet shutdown now` | `--skip-unreachable` | bool | false | - | no |
+| `rootfiles fleet shutdown now` | `--timeout` | duration | 15m0s | - | no |
+| `rootfiles fleet shutdown schedule` | `--all` | bool | false | - | no |
+| `rootfiles fleet shutdown schedule` | `--at` | string | - | - | no |
+| `rootfiles fleet shutdown schedule` | `--group` | stringSlice | [] | - | no |
+| `rootfiles fleet shutdown schedule` | `--host` | stringSlice | [] | - | no |
+| `rootfiles fleet shutdown schedule` | `--include-self` | bool | false | - | no |
+| `rootfiles fleet shutdown schedule` | `--inventory` | string | - | - | no |
+| `rootfiles fleet shutdown schedule` | `--json` | bool | false | - | no |
+| `rootfiles fleet shutdown schedule` | `--message` | string | - | - | no |
+| `rootfiles fleet shutdown schedule` | `--notice` | string | 24h,1h,15m,5m | - | no |
+| `rootfiles fleet shutdown schedule` | `-o, --output` | string | text | o | no |
+| `rootfiles fleet shutdown schedule` | `--reboot` | bool | false | - | no |
+| `rootfiles fleet shutdown schedule` | `--replace` | bool | false | - | no |
+| `rootfiles fleet shutdown schedule` | `--skip-unreachable` | bool | false | - | no |
+| `rootfiles fleet shutdown schedule` | `--timeout` | duration | 15m0s | - | no |
+| `rootfiles fleet shutdown status` | `--all` | bool | false | - | no |
+| `rootfiles fleet shutdown status` | `--group` | stringSlice | [] | - | no |
+| `rootfiles fleet shutdown status` | `--host` | stringSlice | [] | - | no |
+| `rootfiles fleet shutdown status` | `--inventory` | string | - | - | no |
+| `rootfiles fleet shutdown status` | `--json` | bool | false | - | no |
+| `rootfiles fleet shutdown status` | `-o, --output` | string | text | o | no |
+| `rootfiles fleet shutdown status` | `--parallel` | int | 0 | - | no |
 | `rootfiles fleet status` | `--all` | bool | false | - | no |
 | `rootfiles fleet status` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet status` | `--host` | stringSlice | [] | - | no |
@@ -282,6 +339,15 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles gpu assign` | `--gpus` | string | - | - | no |
 | `rootfiles gpu assign` | `--method` | string | - | - | no |
 | `rootfiles schedule enable` | `--on-calendar` | string | daily | - | no |
+| `rootfiles shutdown notify` | `--notice` | string | - | - | no |
+| `rootfiles shutdown schedule` | `--at` | string | - | - | no |
+| `rootfiles shutdown schedule` | `--message` | string | - | - | no |
+| `rootfiles shutdown schedule` | `--notice` | string | 24h,1h,15m,5m | - | no |
+| `rootfiles shutdown schedule` | `--notify-now` | bool | false | - | no |
+| `rootfiles shutdown schedule` | `--reboot` | bool | false | - | no |
+| `rootfiles shutdown schedule` | `--replace` | bool | false | - | no |
+| `rootfiles shutdown status` | `--json` | bool | false | - | no |
+| `rootfiles shutdown status` | `-o, --output` | string | text | o | no |
 | `rootfiles status` | `--inventory` | string | - | - | yes |
 | `rootfiles status` | `--json` | bool | false | - | no |
 | `rootfiles status` | `--module` | stringSlice | [] | - | no |

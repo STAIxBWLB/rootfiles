@@ -46,10 +46,10 @@ type CommandFacts struct {
 	Usage          string
 	// UsageTerms is the argument notation after the command name: `<required>`
 	// and `[optional]`, with `a|b` inside either.
-	UsageTerms     []string
-	UsageASCII     bool
-	WidestLine     int
-	Flags          []FlagFacts
+	UsageTerms []string
+	UsageASCII bool
+	WidestLine int
+	Flags      []FlagFacts
 }
 
 // FlagFacts is one flag a command declares itself. Inherited root flags are
