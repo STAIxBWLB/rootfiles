@@ -172,10 +172,12 @@ func newFleetHostsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			out := c.OutOrStdout()
 			if format == "json" {
-				return writeJSON(c.OutOrStdout(), rows)
+				return writeJSON(out, rows)
 			}
-			return ui.WriteTable(c.OutOrStdout(), []string{"host", "groups", "ssh", "sudo", "config"}, table, -1)
+			ui.WriteHeader(out, c.CommandPath())
+			return ui.WriteTable(out, []string{"HOST", "GROUPS", "SSH", "SUDO", "CONFIG"}, table, -1)
 		}}
 	fleetCommonFlags(c)
 	addOutputFlag(c)

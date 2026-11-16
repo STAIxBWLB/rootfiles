@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -149,20 +150,30 @@ func newFleetReadCmd(op string) *cobra.Command {
 			return err
 		}
 		format, _ := outputFormat(c)
-		switch view, _ := c.Flags().GetString("view"); {
+		view, _ := c.Flags().GetString("view")
+		out := c.OutOrStdout()
+		if format == "text" {
+			ui.WriteHeader(out, c.CommandPath())
+		}
+		switch {
 		case view != "":
-			if err := writeFleetView(c.OutOrStdout(), results, view, format); err != nil {
+			if err := writeFleetView(out, results, view, format); err != nil {
 				return err
 			}
 		case op == "status":
 			// Only status carries a schedule worth a column.
-			if err := writeFleetStatusResults(c.OutOrStdout(), results, format); err != nil {
+			if err := writeFleetStatusResults(out, results, format); err != nil {
 				return err
 			}
 		default:
-			if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
+			if err := writeFleetResults(out, results, format); err != nil {
 				return err
 			}
+		}
+		// A check report ends on its summary line; a view report ends on its
+		// last row.
+		if format == "text" && view == "" && op != "status" {
+			ui.WriteSummary(out, fleetStateCounts(results))
 		}
 		if !allOK(results) {
 			return &ExitError{Code: exitDrift}
@@ -278,6 +289,34 @@ func allOK(rs []fleet.Result) bool {
 		}
 	}
 	return true
+}
+
+// fleetStateCounts is a read report's summary: failed first, then every other
+// state under its own word, then ok, as the standard orders a check report's
+// last line.
+func fleetStateCounts(results []fleet.Result) []ui.SummaryCount {
+	ok, failed := 0, 0
+	others := map[string]int{}
+	for _, r := range results {
+		switch r.State {
+		case "ok":
+			ok++
+		case "error":
+			failed++
+		default:
+			others[r.State]++
+		}
+	}
+	states := make([]string, 0, len(others))
+	for state := range others {
+		states = append(states, state)
+	}
+	sort.Strings(states)
+	counts := []ui.SummaryCount{{Marker: ui.FailMark(), Count: failed, Label: "failed"}}
+	for _, state := range states {
+		counts = append(counts, ui.SummaryCount{Marker: ui.WarnMark(), Count: others[state], Label: state})
+	}
+	return append(counts, ui.SummaryCount{Marker: ui.OKMark(), Count: ok, Label: "ok"})
 }
 
 func authorizeFleetMutation(c *cobra.Command) (*fleet.Inventory, []fleet.NamedHost, bool, error) {

@@ -45,6 +45,9 @@ var ReportInventory = []ReportFacts{
 	{Command: "rootfiles user list", File: "user.go", Seam: "statusContractFixture users DB", State: ReportMeasured},
 	{Command: "rootfiles user du", File: "userlife.go", Seam: "statusContractFixture home base", State: ReportMeasured},
 	{Command: "rootfiles config show", File: "configcmd.go", Seam: "config.LoadWithHomeBase", State: ReportRaw},
+	// A scrape-targets file is consumed by a monitoring hub, so its bytes are a
+	// contract rather than a layout this standard may reflow.
+	{Command: "rootfiles fleet targets", File: "fleet.go", Seam: "fleet.RenderTargets", State: ReportRaw},
 
 	{Command: "rootfiles gpu status", File: "gpu.go", Seam: "-", State: ReportOwed},
 	{Command: "rootfiles gpu mig status", File: "gpu.go", Seam: "-", State: ReportOwed},
@@ -59,14 +62,13 @@ var ReportInventory = []ReportFacts{
 	{Command: "rootfiles tenant list", File: "tenant.go", Seam: "-", State: ReportOwed},
 	{Command: "rootfiles tenant status", File: "tenant.go", Seam: "-", State: ReportOwed},
 	{Command: "rootfiles tenant logs", File: "tenant.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet status", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet check", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet doctor", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet hosts", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet log", File: "fleet_history.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet ping", File: "fleet_ping.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet targets", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet shutdown status", File: "fleet_shutdown.go", Seam: "-", State: ReportOwed},
+	{Command: "rootfiles fleet status", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet check", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet doctor", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet hosts", File: "fleet_init.go", Seam: "inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet log", File: "fleet_history.go", Seam: "run log fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet ping", File: "fleet_ping.go", Seam: "pingFleetFn + inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet shutdown status", File: "fleet_shutdown.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
 }
 
 // LayoutIssues names what a captured report shows against the layout grammar.

@@ -161,14 +161,15 @@ func newUserDuCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return renderHomeUsage(cmd.OutOrStdout(), rows)
+			return renderHomeUsage(cmd.OutOrStdout(), cmd.CommandPath(), rows)
 		},
 	}
 }
 
 // renderHomeUsage prints the measured home sizes without running du, so a
 // fixture golden pins the layout.
-func renderHomeUsage(out io.Writer, rows []module.HomeUsage) error {
+func renderHomeUsage(out io.Writer, title string, rows []module.HomeUsage) error {
+	ui.WriteHeader(out, title)
 	ui.WriteSection(out, "Home usage")
 	table := make([][]string, 0, len(rows))
 	var total int64

@@ -203,6 +203,7 @@ func writeScheduleUnits(runner *exec.Runner, bin, onCalendar string) (bool, erro
 // anything, so an uninstalled timer is a report, not an error.
 func reportScheduleStatus(cmd *cobra.Command, runner *exec.Runner) {
 	ctx, out := cmd.Context(), cmd.OutOrStdout()
+	ui.WriteHeader(out, cmd.CommandPath())
 	ui.WriteSection(out, "Scheduled reports")
 
 	timer := filepath.Join(scheduleUnitDir, scheduleName+".timer")

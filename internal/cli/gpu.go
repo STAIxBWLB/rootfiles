@@ -75,6 +75,7 @@ func newGPUCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			ui.WriteHeader(cmd.OutOrStdout(), cmd.CommandPath())
 			return module.ListGPUAllocations(rc)
 		},
 	})

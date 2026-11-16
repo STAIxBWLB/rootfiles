@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,17 +20,34 @@ import (
 
 // TestHumanLayoutGolden pins the layout grammar of the human report families
 // the CLI renders host-free: one colour-off golden at 80 columns, and one
-// colour-on golden naming the roles every row carries.
+// colour-on golden naming the roles every row carries. Run it with -update to
+// rewrite the goldens after a reviewed wording change.
 func TestHumanLayoutGolden(t *testing.T) {
 	for _, tc := range layoutCases() {
 		t.Run(tc.name, func(t *testing.T) {
 			layoutPinWidth(t)
+			// Resolved before the render: a captured report chdirs into its
+			// fixture, and the golden still belongs to the package directory.
+			goldenDir, err := filepath.Abs(filepath.Join("testdata", "layout-t3"))
+			if err != nil {
+				t.Fatal(err)
+			}
 			for _, mode := range []struct{ suffix, color string }{
 				{"text", "never"},
 				{"color", "always"},
 			} {
 				out := tc.render(t, mode.color)
-				golden := filepath.Join("testdata", "layout-t3", tc.name+"."+mode.suffix+".golden")
+				golden := filepath.Join(goldenDir, tc.name+"."+mode.suffix+".golden")
+				layoutAssertGrammar(t, tc.name, mode.suffix, out)
+				if *layoutUpdate {
+					if err := os.MkdirAll(goldenDir, 0755); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(golden, []byte(out), 0644); err != nil {
+						t.Fatal(err)
+					}
+					continue
+				}
 				want, err := os.ReadFile(golden)
 				if err != nil {
 					t.Fatalf("read golden %s: %v", golden, err)
@@ -37,11 +55,14 @@ func TestHumanLayoutGolden(t *testing.T) {
 				if out != string(want) {
 					t.Errorf("%s %s layout changed\n--- golden\n%s\n--- current\n%s", tc.name, mode.suffix, want, out)
 				}
-				layoutAssertGrammar(t, tc.name, mode.suffix, out)
 			}
 		})
 	}
 }
+
+// layoutUpdate rewrites the goldens instead of comparing them:
+// `go test ./internal/cli -run TestHumanLayoutGolden -update`.
+var layoutUpdate = flag.Bool("update", false, "rewrite the layout goldens")
 
 // layoutPinWidth sets the stream environment every case is pinned in: 80
 // columns, UTF-8 markers, and colour left to the explicit mode.
@@ -100,7 +121,7 @@ func layoutCases() []layoutCase {
 		}},
 		{name: "rollback-list", render: func(t *testing.T, color string) string {
 			var buf bytes.Buffer
-			layoutMust(t, renderRollbackList(ui.ConfigureWriter(&buf, color, false, false), layoutBackups()))
+			layoutMust(t, renderRollbackList(ui.ConfigureWriter(&buf, color, false, false), "rootfiles rollback", layoutBackups()))
 			return buf.String()
 		}},
 		{name: "gpu-mig", render: func(t *testing.T, color string) string {
@@ -110,7 +131,7 @@ func layoutCases() []layoutCase {
 		}},
 		{name: "user-du", render: func(t *testing.T, color string) string {
 			var buf bytes.Buffer
-			layoutMust(t, renderHomeUsage(ui.ConfigureWriter(&buf, color, false, false), layoutUsage()))
+			layoutMust(t, renderHomeUsage(ui.ConfigureWriter(&buf, color, false, false), "rootfiles user du", layoutUsage()))
 			return buf.String()
 		}},
 		{name: "controller-status", render: func(t *testing.T, color string) string {
@@ -118,6 +139,30 @@ func layoutCases() []layoutCase {
 			layoutMust(t, renderControllerStatus(ui.ConfigureWriter(&buf, color, false, false), layoutSnapshot()))
 			return buf.String()
 		}},
+		// Every report the inventory captures through a host-free fixture gets
+		// its golden here, so the page and the golden measure one rendering.
+		{name: "fleet-status", render: layoutCaptured("rootfiles fleet status")},
+		{name: "fleet-check", render: layoutCaptured("rootfiles fleet check")},
+		{name: "fleet-doctor", render: layoutCaptured("rootfiles fleet doctor")},
+		{name: "fleet-hosts", render: layoutCaptured("rootfiles fleet hosts")},
+		{name: "fleet-log", render: layoutCaptured("rootfiles fleet log")},
+		{name: "fleet-ping", render: layoutCaptured("rootfiles fleet ping")},
+		{name: "fleet-shutdown-status", render: layoutCaptured("rootfiles fleet shutdown status")},
+	}
+}
+
+// layoutCaptured renders a report through the fixture its inventory row names,
+// with colour forced by the golden's mode. The fixture root is normalized the
+// way the page normalizes it, so a golden carries no temporary path.
+func layoutCaptured(command string) func(t *testing.T, color string) string {
+	return func(t *testing.T, color string) string {
+		t.Helper()
+		layoutPinWidth(t)
+		root, _, _ := statusContractFixture(t, "populated")
+		pinReportClock(t)
+		t.Chdir(root)
+		out := reportText(t, root, command, "--color", color)
+		return strings.ReplaceAll(out, root, "<fixture>")
 	}
 }
 

@@ -1,0 +1,4 @@
+ rootfiles fleet log
+  TIME                  OP      HOST   STATE  EXIT  REASON
+  2026-11-15T04:30:00Z  apply   gpu01  ok     0     -
+  2026-11-14T22:05:00Z  update  web01  error  1     download failed

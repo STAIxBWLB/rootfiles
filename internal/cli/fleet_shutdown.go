@@ -455,7 +455,11 @@ func newFleetShutdownStatusCmd() *cobra.Command {
 				return err
 			}
 			format, _ := outputFormat(c)
-			if err := writeFleetStatusResults(c.OutOrStdout(), results, format); err != nil {
+			out := c.OutOrStdout()
+			if format == "text" {
+				ui.WriteHeader(out, c.CommandPath())
+			}
+			if err := writeFleetStatusResults(out, results, format); err != nil {
 				return err
 			}
 			if !allOK(results) {

@@ -328,7 +328,12 @@ func runControllerDoctor(cmd *cobra.Command) error {
 				ui.WriteText(out, "    %s\n", ui.StyleAccent.Render(ui.MarkNext+" "+f.Hint))
 			}
 		}
-		ui.WriteLine(out, fmt.Sprintf("%d failed  %d warnings  %d ok  %d skipped", counts[module.LevelFail], counts[module.LevelWarn], counts[module.LevelOK], counts[module.LevelSkip]))
+		ui.WriteSummary(out, []ui.SummaryCount{
+			{Marker: ui.FailMark(), Count: counts[module.LevelFail], Label: "failed"},
+			{Marker: ui.WarnMark(), Count: counts[module.LevelWarn], Label: "warnings"},
+			{Marker: ui.OKMark(), Count: counts[module.LevelOK], Label: "ok"},
+			{Marker: ui.StyleHint.Render(ui.MarkAbsent), Count: counts[module.LevelSkip], Label: "skipped"},
+		})
 	}
 	if failed > 0 {
 		return &ExitError{Code: exitDrift}

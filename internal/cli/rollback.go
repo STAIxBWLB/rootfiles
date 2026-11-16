@@ -30,7 +30,7 @@ func newRollbackCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return renderRollbackList(out, backups)
+				return renderRollbackList(out, cmd.CommandPath(), backups)
 			}
 
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -70,7 +70,8 @@ func newRollbackCmd() *cobra.Command {
 
 // renderRollbackList prints the recorded backups without querying the host, so
 // the layout is pinned by a fixture golden.
-func renderRollbackList(out io.Writer, backups []exec.BackupManifest) error {
+func renderRollbackList(out io.Writer, title string, backups []exec.BackupManifest) error {
+	ui.WriteHeader(out, title)
 	ui.WriteSection(out, "Backups")
 	if len(backups) == 0 {
 		ui.WriteHint(out, "no backups recorded")

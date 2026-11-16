@@ -176,12 +176,13 @@ its golden belong to the T3 output slice, so this page records the seam each one
 | `rootfiles status` | status.go | statusContractFixture | measured | - |
 | `rootfiles check` | check.go | statusContractFixture | measured | - |
 | `rootfiles doctor` | doctor.go | statusContractFixture + doctorChecks | measured | - |
-| `rootfiles rollback` | rollback.go | state.BackupsDir | measured | starts with a blank line, so no header line |
-| `rootfiles schedule status` | schedule.go | statusContractFixture PATH stubs | measured | starts with a blank line, so no header line |
-| `rootfiles gpu list` | gpu.go | statusContractFixture allocation DB | measured | starts with a blank line, so no header line |
-| `rootfiles user list` | user.go | statusContractFixture users DB | measured | no header line |
-| `rootfiles user du` | userlife.go | statusContractFixture home base | measured | starts with a blank line, so no header line |
+| `rootfiles rollback` | rollback.go | state.BackupsDir | measured | - |
+| `rootfiles schedule status` | schedule.go | statusContractFixture PATH stubs | measured | - |
+| `rootfiles gpu list` | gpu.go | statusContractFixture allocation DB | measured | - |
+| `rootfiles user list` | user.go | statusContractFixture users DB | measured | - |
+| `rootfiles user du` | userlife.go | statusContractFixture home base | measured | - |
 | `rootfiles config show` | configcmd.go | config.LoadWithHomeBase | raw | - |
+| `rootfiles fleet targets` | fleet.go | fleet.RenderTargets | raw | - |
 | `rootfiles gpu status` | gpu.go | - | owed | - |
 | `rootfiles gpu mig status` | gpu.go | - | owed | - |
 | `rootfiles user audit` | userlife.go | - | owed | - |
@@ -195,14 +196,13 @@ its golden belong to the T3 output slice, so this page records the seam each one
 | `rootfiles tenant list` | tenant.go | - | owed | - |
 | `rootfiles tenant status` | tenant.go | - | owed | - |
 | `rootfiles tenant logs` | tenant.go | - | owed | - |
-| `rootfiles fleet status` | fleet.go | - | owed | - |
-| `rootfiles fleet check` | fleet.go | - | owed | - |
-| `rootfiles fleet doctor` | fleet.go | - | owed | - |
-| `rootfiles fleet hosts` | fleet.go | - | owed | - |
-| `rootfiles fleet log` | fleet_history.go | - | owed | - |
-| `rootfiles fleet ping` | fleet_ping.go | - | owed | - |
-| `rootfiles fleet targets` | fleet.go | - | owed | - |
-| `rootfiles fleet shutdown status` | fleet_shutdown.go | - | owed | - |
+| `rootfiles fleet status` | fleet.go | readFleetHost + inventory fixture | measured | - |
+| `rootfiles fleet check` | fleet.go | readFleetHost + inventory fixture | measured | - |
+| `rootfiles fleet doctor` | fleet.go | readFleetHost + inventory fixture | measured | - |
+| `rootfiles fleet hosts` | fleet_init.go | inventory fixture | measured | - |
+| `rootfiles fleet log` | fleet_history.go | run log fixture | measured | - |
+| `rootfiles fleet ping` | fleet_ping.go | pingFleetFn + inventory fixture | measured | - |
+| `rootfiles fleet shutdown status` | fleet_shutdown.go | readFleetHost + inventory fixture | measured | - |
 
 ## Notes
 

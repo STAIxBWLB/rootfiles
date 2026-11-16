@@ -56,6 +56,36 @@ func WriteBullet(w io.Writer, marker, text string) {
 	fmt.Fprintln(displayWriter(w), hangingText(w, "  "+MarkerCell(marker, ascii)+" ", text))
 }
 
+// SummaryCount is one cell of a check command's summary line: the marker for a
+// state, how many rows carried it, and the word the standard pairs with it.
+type SummaryCount struct {
+	Marker string
+	Count  int
+	Label  string
+}
+
+// WriteSummary writes the last line of a check command, "✓ 18 ok" style. Zero
+// counts are omitted, cells are separated by two spaces, and nothing at all is
+// written when every count is zero, so a report with no rows ends on its last
+// section instead of an empty line.
+func WriteSummary(w io.Writer, counts []SummaryCount) {
+	ascii := ASCIIMarkers(false)
+	if out, ok := w.(*outputWriter); ok {
+		ascii = out.ascii
+	}
+	parts := make([]string, 0, len(counts))
+	for _, count := range counts {
+		if count.Count == 0 {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s %d %s", MarkerCell(count.Marker, ascii), count.Count, count.Label))
+	}
+	if len(parts) == 0 {
+		return
+	}
+	WriteLine(w, strings.Join(parts, "  "))
+}
+
 // FirstNonEmpty returns the first nonempty display value without trimming it.
 func FirstNonEmpty(values ...string) string {
 	for _, value := range values {

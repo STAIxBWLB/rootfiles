@@ -114,14 +114,17 @@ func newUserListCmd() *cobra.Command {
 			}
 			system, _ := cmd.Flags().GetBool("system")
 			namesOnly, _ := cmd.Flags().GetBool("names")
-			if system {
-				if namesOnly {
+			if namesOnly {
+				// The bare list is a script input, not a report: no header, one
+				// name per line.
+				if system {
 					return module.ListSystemUserNames(cmd.Context(), rc)
 				}
-				return module.ListSystemUsers(cmd.Context(), rc)
-			}
-			if namesOnly {
 				return module.ListUserNames(rc)
+			}
+			ui.WriteHeader(cmd.OutOrStdout(), cmd.CommandPath())
+			if system {
+				return module.ListSystemUsers(cmd.Context(), rc)
 			}
 			return module.ListUsers(rc)
 		},
