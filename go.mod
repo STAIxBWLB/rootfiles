@@ -3,7 +3,7 @@ module github.com/STAIxBWLB/rootfiles
 go 1.26.11
 
 require (
-	charm.land/lipgloss/v2 v2.0.6
+	charm.land/lipgloss/v2 v2.1.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/term v0.2.2
