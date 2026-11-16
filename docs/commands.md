@@ -58,7 +58,7 @@ Commands that change the host need root on Linux and take the global lock (`/run
 | `backup -o/--output DIR` | `backup --dir DIR` | Hidden, prints a deprecation notice. |
 | `user backup -o/--output FILE` | `user backup --file FILE` | Hidden, prints a deprecation notice. |
 | `user add --pubkey KEY` | `user add --ssh-pubkey KEY` | Hidden; `--ssh-pubkey` wins when both are set. |
-| `user passwd --suffix S` | `user passwd --password P` or `--file F` | Hidden; predictable passwords are removed in v0.21.0. |
+| `user passwd --suffix S` | `user passwd --password P` or `--file F` | Hidden; predictable passwords are removed in v0.22.0. |
 | `config init --force` | `config init --overwrite` | Hidden. |
 | `rootfiles upgrade` | `rootfiles update` | Command alias. |
 | `rootfiles tunnel install` | `rootfiles tunnel setup` | Command alias. |
@@ -887,7 +887,7 @@ Set passwords for users (batch).
 | `--all` | `false` | Every system user. |
 | `--expire` | `false` | Force a password change at the next login (`chage -d 0`). |
 
-`--suffix` (password = username + suffix) is deprecated and will be removed in v0.21.0.
+`--suffix` (password = username + suffix) is deprecated and will be removed in v0.22.0.
 
 ### rootfiles user quota
 

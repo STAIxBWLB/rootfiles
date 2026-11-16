@@ -70,7 +70,7 @@ sudo rootfiles user passwd --file users.txt            # usernames, or username,
 sudo rootfiles user passwd --all --dry-run
 ```
 
-Passwords reach `chpasswd` on stdin, never on a command line. `--expire` forces a change at the next login. `--password` values are redacted in the audit log ([operations.md](operations.md#lock-and-audit-log)). `--suffix` (password = username + suffix) is deprecated because it makes predictable passwords, and goes away in v0.21.0.
+Passwords reach `chpasswd` on stdin, never on a command line. `--expire` forces a change at the next login. `--password` values are redacted in the audit log ([operations.md](operations.md#lock-and-audit-log)). `--suffix` (password = username + suffix) is deprecated because it makes predictable passwords, and goes away in v0.22.0.
 
 ## Lifecycle
 
