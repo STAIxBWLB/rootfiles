@@ -42,7 +42,7 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 		Use:     "update",
 		Aliases: []string{"upgrade"},
 		Short:   "Update rootfiles to the latest release",
-		Example: "  sudo rootfiles update\n  rootfiles update --check",
+		Example: updateExample(),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 			checkOnly, _ := cmd.Flags().GetBool("check")
@@ -388,6 +388,16 @@ func updateCommandHint() string {
 		return "rootfiles update"
 	}
 	return reinstallCommand()
+}
+
+// updateExample leads with the form this host can run. A controller replaces a
+// binary it owns as an ordinary user, and upgrade.go refuses a root-owned
+// install, so `sudo rootfiles update` there names a command that cannot succeed.
+func updateExample() string {
+	if nativeHostOS != "linux" {
+		return "  rootfiles update\n  rootfiles update --check"
+	}
+	return "  sudo rootfiles update\n  rootfiles update --check"
 }
 
 // replaceBinary atomically swaps the current binary with the new one.

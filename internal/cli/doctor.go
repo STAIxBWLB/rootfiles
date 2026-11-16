@@ -36,7 +36,14 @@ func newDoctorCmd() *cobra.Command {
 	}
 	addOutputFlagWithMetrics(cmd)
 	cmd.Flags().Bool("strict", false, "Treat warnings as failures for the exit code")
-	return usesConfigTarget(cmd)
+	cmd = usesConfigTarget(cmd)
+	if nativeHostOS != "linux" {
+		// A controller report reads no profile, config file or home base. The
+		// inputs stay accepted and are ignored, as they were; the page stops
+		// offering what this context does not use.
+		hidesRootFlags(cmd, "profile", "config", "home-base")
+	}
+	return cmd
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {

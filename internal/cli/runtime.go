@@ -95,6 +95,10 @@ func selfUpdateWithoutRoot(cmd *cobra.Command) bool {
 
 const annotReadsRootFlag = "rootfiles/reads-root-flag/"
 
+// annotHidesRootFlag keeps a declared input off one command's page without
+// withdrawing the declaration, so help and refusal stay independent.
+const annotHidesRootFlag = "rootfiles/hides-root-flag/"
+
 // usesRootFlags declares inherited inputs beside the command's reader.
 func usesRootFlags(cmd *cobra.Command, names ...string) *cobra.Command {
 	if cmd.Annotations == nil {

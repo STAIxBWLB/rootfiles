@@ -41,6 +41,31 @@ func declaresRootFlag(cmd *cobra.Command, name string) bool {
 	return false
 }
 
+// hidesRootFlags keeps an inherited input off one command's page while the
+// command still declares a reader for it. A controller's `status` and `doctor`
+// accept --profile, --config and --home-base and ignore them, so the inputs stay
+// legal (refusal is unchanged) and only the page stops offering them.
+func hidesRootFlags(cmd *cobra.Command, names ...string) *cobra.Command {
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	for _, name := range names {
+		cmd.Annotations[annotHidesRootFlag+name] = "true"
+	}
+	return cmd
+}
+
+// hidesRootFlag reports whether cmd or a parent keeps an inherited input off
+// its page.
+func hidesRootFlag(cmd *cobra.Command, name string) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations[annotHidesRootFlag+name] == "true" {
+			return true
+		}
+	}
+	return false
+}
+
 // scopeInheritedHelpFlags hides the inherited config inputs cmd does not read
 // for the duration of one help render, and returns the restore.
 //
@@ -53,7 +78,12 @@ func scopeInheritedHelpFlags(cmd *cobra.Command) (restore func()) {
 	}
 	var scoped []*pflag.Flag
 	cmd.InheritedFlags().VisitAll(func(flag *pflag.Flag) {
-		if flag.Hidden || !isRootConfigInput(flag.Name) || declaresRootFlag(cmd, flag.Name) {
+		if flag.Hidden || !isRootConfigInput(flag.Name) {
+			return
+		}
+		// A declaration keeps the input on the page unless this context says
+		// it does not run there.
+		if declaresRootFlag(cmd, flag.Name) && !hidesRootFlag(cmd, flag.Name) {
 			return
 		}
 		flag.Hidden = true
