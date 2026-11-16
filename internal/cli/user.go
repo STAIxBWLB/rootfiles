@@ -49,9 +49,11 @@ func newUserCmd() *cobra.Command {
 
 func newUserAddCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "add <USERNAME>",
+		Use:   "add [USERNAME]",
 		Short: "Create a user with custom home directory",
-		Args:  cobra.MaximumNArgs(1),
+		Long: "The account name comes from the argument, then --user, then $ROOTFILES_USER,\n" +
+			"and it is asked for when all three are absent.",
+		Args: cobra.MaximumNArgs(1),
 		Example: `  sudo rootfiles user add alice --ssh-pubkey "$(cat ~/.ssh/id_ed25519.pub)"
   sudo rootfiles user add bob --groups docker,sudo`,
 		RunE: func(cmd *cobra.Command, args []string) error {

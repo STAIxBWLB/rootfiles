@@ -687,7 +687,7 @@ Accounts and the home base ([users.md](users.md)). Every subcommand reads `--pro
 
 ### rootfiles user add
 
-`sudo rootfiles user add <USERNAME>`. Create an account under the home base. Mutating.
+`sudo rootfiles user add [USERNAME]`. Create an account under the home base. Mutating.
 
 | Flag | Default | Purpose |
 |---|---|---|
