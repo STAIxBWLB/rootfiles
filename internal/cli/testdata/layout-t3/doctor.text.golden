@@ -1,0 +1,7 @@
+ rootfiles doctor
+  ✓  disk             / at 41% used
+  ⚠  clock            systemd-timesyncd is inactive
+    → systemctl enable --now systemd-timesyncd
+  ✗  gpu              nvidia-smi reported no devices
+  -  reboot           skipped: no reboot marker
+✗  1 failed  ⚠  1 warnings  ✓  1 ok  -  1 skipped

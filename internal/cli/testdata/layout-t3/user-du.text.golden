@@ -1,0 +1,7 @@
+
+▸ Home usage
+  SIZE      USER   HOME
+  45.0 GiB  alice  /home/alice
+  1.0 MiB   bob    /home/bob
+  0 B       carol  /home/carol
+  Total:          45.0 GiB

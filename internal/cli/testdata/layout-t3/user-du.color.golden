@@ -1,0 +1,7 @@
+
+[1;35m▸ Home usage[m
+  [34mSIZE[m      [34mUSER[m   [34mHOME[m
+  45.0 GiB  alice  /home/alice
+  1.0 MiB   bob    /home/bob
+  0 B       carol  /home/carol
+  [34mTotal:        [m  45.0 GiB

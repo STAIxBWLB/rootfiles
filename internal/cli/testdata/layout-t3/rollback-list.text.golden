@@ -1,0 +1,7 @@
+
+▸ Backups
+  BACKUP            PATHS  NOTE
+  20261101T090413Z  2      rootfiles apply --profile dgx
+  20261031T220001Z  1      sudo rootfiles user add alice with a much longer note
+                           that has to stay inside its column
+  20261030T101500Z  0      -

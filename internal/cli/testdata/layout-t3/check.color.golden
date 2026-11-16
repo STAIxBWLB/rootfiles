@@ -1,0 +1,9 @@
+[1;34m rootfiles check[m
+  [34mConfig:       [m  site.yaml
+
+[1;35m▸ Modules (1/2 satisfied)[m
+  [1;32m✓[m  system          [1;32mOK[m  0 change(s)
+  [90m~[m  packages        [1;33mPENDING[m  1 change(s)
+    [90m~[m  Install 1 packages: [fixture-package]
+
+  [90mrun 'rootfiles apply' to apply pending changes (exit code 2 = pending).[m
