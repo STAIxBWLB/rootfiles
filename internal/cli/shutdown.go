@@ -20,22 +20,25 @@ import (
 
 func newShutdownCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "shutdown",
-		Short: "Schedule a poweroff or reboot with advance notice",
+		Use:     "shutdown",
+		Short:   "Schedule a poweroff or reboot with advance notice",
+		Example: "  sudo rootfiles shutdown schedule --at 2026-11-21T18:00:00+09:00\n  rootfiles shutdown status",
 		Long: `schedule writes rootfiles-shutdown.timer, one notice timer per lead time and a
 state file, so the host stops at one absolute UTC instant whether or not anyone
 is logged in. cf. systemd's shutdown(8): this keeps the schedule in
 /var/lib/rootfiles/shutdown.json, so status reports it and fleet shutdown can
 read it.
 
-The instant must carry an explicit offset; a host's own time zone never moves it.`,
+The instant must carry an explicit offset; a host's own time zone never moves
+it.`,
 	}
 
 	schedule := &cobra.Command{
-		Use:   "schedule",
-		Short: "Schedule the poweroff or reboot",
-		Args:  cobra.NoArgs,
-		RunE:  runShutdownSchedule,
+		Use:     "schedule",
+		Short:   "Schedule the poweroff or reboot",
+		Example: "  sudo rootfiles shutdown schedule --at 2026-11-21T18:00:00+09:00\n  sudo rootfiles shutdown schedule --at 2026-11-21T06:00:00Z --reboot",
+		Args:    cobra.NoArgs,
+		RunE:    runShutdownSchedule,
 	}
 	schedule.Flags().String("at", "", "Absolute instant: RFC 3339 with an explicit offset (2026-11-21T18:00:00+09:00)")
 	schedule.Flags().Bool("reboot", false, "Reboot instead of powering off")
@@ -45,32 +48,36 @@ The instant must carry an explicit offset; a host's own time zone never moves it
 	schedule.Flags().Bool("notify-now", false, "Send one notice immediately as well (used by `fleet shutdown now`)")
 
 	notify := &cobra.Command{
-		Use:    "notify",
-		Short:  "Send one notice (run by the notice timers)",
-		Args:   cobra.NoArgs,
-		Hidden: true,
-		RunE:   runShutdownNotify,
+		Use:     "notify",
+		Short:   "Send one notice (run by the notice timers)",
+		Example: "  sudo rootfiles shutdown notify --notice 15m",
+		Args:    cobra.NoArgs,
+		Hidden:  true,
+		RunE:    runShutdownNotify,
 	}
 	notify.Flags().String("notice", "", "Lead time this notice belongs to, as recorded in the schedule")
 
 	block := &cobra.Command{
-		Use:    "block",
-		Short:  "Stop new tenant logins (run by the login-block timer)",
-		Args:   cobra.NoArgs,
-		Hidden: true,
-		RunE:   runShutdownBlock,
+		Use:     "block",
+		Short:   "Stop new tenant logins (run by the login-block timer)",
+		Example: "  sudo rootfiles shutdown block",
+		Args:    cobra.NoArgs,
+		Hidden:  true,
+		RunE:    runShutdownBlock,
 	}
 
 	cancel := &cobra.Command{
-		Use:   "cancel",
-		Short: "Remove the schedule, the units and any tenant login block",
-		Args:  cobra.NoArgs,
-		RunE:  runShutdownCancel,
+		Use:     "cancel",
+		Short:   "Remove the schedule, the units and any tenant login block",
+		Example: "  sudo rootfiles shutdown cancel",
+		Args:    cobra.NoArgs,
+		RunE:    runShutdownCancel,
 	}
 
 	status := &cobra.Command{
-		Use:   "status",
-		Short: "Show the schedule, the next notice and the tenant login block",
+		Use:     "status",
+		Short:   "Show the schedule, next notice and tenant login block",
+		Example: "  rootfiles shutdown status\n  rootfiles shutdown status --json",
 		Long: "Read-only: reads the state and units, and inspects running tenant containers\n" +
 			"through Docker. An unavailable inspection is reported as unknown.",
 		Args: cobra.NoArgs,

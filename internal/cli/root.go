@@ -1,10 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
-
+	"io"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -20,14 +21,22 @@ var buildVersion = "dev"
 func NewRootCmd(version, commit string) *cobra.Command {
 	buildVersion = version
 	root := &cobra.Command{
-		Use:               "rootfiles",
-		Short:             "Bootstrap Ubuntu, DGX OS and Rocky servers, on this host or across a fleet",
-		Long:              "rootfiles: Declarative server configuration management with modular profiles.",
+		Use:   "rootfiles",
+		Short: "Bootstrap Ubuntu, DGX OS and Rocky servers",
+		Long: "Declarative server configuration management with modular profiles, on one\n" +
+			"host or a fleet.\n\n" +
+			"Reading only, start with 'rootfiles status' on a host, or run 'rootfiles fleet\n" +
+			"hosts' for the hosts an inventory names. To change a host, 'rootfiles check'\n" +
+			"shows what would differ and 'rootfiles apply' converges it.\n\n" +
+			"Profiles: " + strings.Join(config.AvailableProfiles(), ", ") + ".",
+		Example: `  rootfiles status
+  sudo rootfiles apply --config /etc/rootfiles/site.yaml`,
 		PersistentPreRunE: preflight,
 		SilenceUsage:      true,
 		SilenceErrors:     true, // main prints the error once
 	}
 	root.Version = version + " (" + commit + ")"
+	root.SetUsageTemplate(usageTemplate)
 
 	root.PersistentFlags().AddFlagSet(newRootFlags())
 
@@ -66,10 +75,10 @@ func newRootFlags() *pflag.FlagSet {
 	flags.Bool("yes", false, "Unattended mode (skip all prompts)")
 	flags.Bool("dry-run", false, "Show what would be done without executing")
 	_ = flags.SetAnnotation("dry-run", annotReadOnly, []string{"true"})
-	flags.String("profile", "", fmt.Sprintf("Profile name (%s)", strings.Join(config.AvailableProfiles(), ", ")))
+	flags.String("profile", "", "Profile to apply (e.g. dgx)")
 	flags.String("config", "", "Path to custom config YAML")
 
-	flags.String("color", "auto", "Color mode: auto, always or never")
+	flags.String("color", "auto", "Color mode: auto, always, never")
 	flags.Bool("ascii", false, "Use ASCII markers")
 	flags.Bool("verbose", false, "Show diagnostic logs and command details")
 
@@ -78,7 +87,7 @@ func newRootFlags() *pflag.FlagSet {
 	flags.String("user", "", "Username to create")
 	flags.String("ssh-pubkey", "", "SSH public key for the user")
 	flags.String("tunnel-token", "", "Cloudflare tunnel token")
-	flags.String("vlan-address", "", "VLAN private network address (e.g., 203.0.113.10/32)")
+	flags.String("vlan-address", "", "VLAN address (e.g. 203.0.113.10/32)")
 
 	return flags
 }
@@ -155,8 +164,23 @@ func installOutputBoundary(cmd *cobra.Command) {
 		installOutputBoundary(child)
 	}
 	if cmd.Parent() == nil {
+		// Every help path (--help, `help <command>`, a group's own page) runs
+		// through this one function, so the inherited inputs are scoped and the
+		// bool value hint is dropped here rather than in each command's help.
 		help := cmd.HelpFunc()
-		cmd.SetHelpFunc(func(c *cobra.Command, args []string) { _ = configureOutput(c); help(c, args) })
+		cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+			_ = configureOutput(c)
+			restore := scopeInheritedHelpFlags(c)
+			defer restore()
+			var page bytes.Buffer
+			out, errOut := c.OutOrStdout(), c.ErrOrStderr()
+			c.SetOut(&page)
+			c.SetErr(&page)
+			help(c, args)
+			c.SetOut(out)
+			c.SetErr(errOut)
+			_, _ = io.WriteString(out, withoutBoolValueHint(page.String()))
+		})
 	}
 }
 

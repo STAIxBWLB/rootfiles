@@ -24,16 +24,31 @@ import (
 
 func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "status",
-		Short: "Show full system status at a glance",
-		Long: "Read-only overview of the system, profile, modules, GPU allocations, tunnel and users.\n" +
-			"Exit code: 0 for the overview, including reported findings; invalid inputs return an error.",
+		Use:     "status",
+		Short:   "Show full system status at a glance",
+		Example: "  rootfiles status\n  rootfiles status --json",
+		Long: "Read-only overview of the system, profile, modules, GPU allocations, tunnel\n" +
+			"and users.\n" +
+			"Exit code: 0 for the overview, including reported findings; invalid inputs\n" +
+			"return an error.",
 		RunE: runStatus,
 	}
 	cmd.Flags().StringSlice("module", nil, "Report specific modules only")
 	cmd.Flags().String("inventory", "", "Controller inventory file")
+	if nativeHostOS == "linux" {
+		// Only the controller report reads the inventory; hiding it keeps a
+		// Linux invocation refused with the reason, not an unknown flag.
+		_ = cmd.Flags().MarkHidden("inventory")
+	}
 	addOutputFlag(cmd)
-	return usesConfigTarget(cmd)
+	cmd = usesConfigTarget(cmd)
+	if nativeHostOS != "linux" {
+		// A controller report reads no profile, config file or home base. The
+		// inputs stay accepted and are ignored, as they were; the page stops
+		// offering what this context does not use.
+		hidesRootFlags(cmd, "profile", "config", "home-base")
+	}
+	return cmd
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {

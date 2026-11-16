@@ -54,15 +54,6 @@ func newFleetPingCmd() *cobra.Command {
 	fleetCommonFlags(c)
 	c.Flags().Int("parallel", 0, "Maximum concurrent SSH processes")
 	addOutputFlag(c)
-	setFleetOnboardingHelp(c, []string{
-		"  --inventory string     Inventory path (default: user config directory)",
-		"  --host strings         Select host names",
-		"  --group strings        Select groups",
-		"  --all                  Select every host",
-		"  --parallel int         Maximum concurrent SSH processes",
-		"  -o, --output string    Output format: text or json",
-		"  --json                 Output JSON",
-	})
 	return c
 }
 

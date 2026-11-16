@@ -20,13 +20,14 @@ func newFleetLogCmd() *cobra.Command {
 		Short: "Show recorded fleet rollouts, newest first",
 		Long: `Show the rollouts this controller has recorded.
 
-Every fleet mutation appends to ~/.local/state/rootfiles/fleet.jsonl. This reads
-that file back instead of asking the hosts, so it needs no SSH and no inventory.
-A missing log is an empty result, not an error; a corrupt line is reported with
-its line number and skipped.`,
+Every fleet mutation appends one line to rootfiles/fleet.jsonl in the state
+directory: $XDG_STATE_HOME/rootfiles/fleet.jsonl, else
+~/.local/state/rootfiles/fleet.jsonl. This reads that file back instead of
+asking the hosts, so it needs no SSH and no inventory. A missing log is an
+empty result, not an error; a corrupt line is reported with its line number
+and skipped.`,
 		Example: `  rootfiles fleet log --limit 20
-  rootfiles fleet log --host web1 --since 7d
-  rootfiles fleet log --json`,
+  rootfiles fleet log --host web1 --since 7d`,
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			filters, err := historyFiltersFromFlags(c)
@@ -50,8 +51,8 @@ its line number and skipped.`,
 			return writeHistoryTable(c.OutOrStdout(), entries, filters.Host)
 		},
 	}
-	c.Flags().String("host", "", "Only runs that touched this host")
-	c.Flags().String("op", "", "Only runs of this operation (apply, update, bootstrap, schedule, targets)")
+	c.Flags().String("host", "", "Only runs that touched this host (a filter, not a host selection)")
+	c.Flags().String("op", "", "Only runs of this operation (e.g. apply, update)")
 	c.Flags().String("since", "", "Only runs this recent: a duration (24h, 7d) or a date (2026-11-01, UTC)")
 	c.Flags().Int("limit", 0, "Print at most this many runs, newest first (0 = every run)")
 	addOutputFlag(c)

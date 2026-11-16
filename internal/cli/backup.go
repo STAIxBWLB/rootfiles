@@ -41,11 +41,13 @@ var (
 func newBackupCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "backup",
-		Short: "Full system backup for OS upgrade / restore",
-		Long:  "Captures system info, user metadata, config files, and a rootfiles-compatible config snapshot.",
+		Short: "Back up the system for an OS upgrade or restore",
+		Long:  "Captures system info, user metadata, config files, and a rootfiles-compatible\nconfig snapshot.",
+		Example: `  sudo rootfiles backup
+  sudo rootfiles backup --dir /data/backup --skip-docker`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
-			outputBase := stringFlagOrAlias(cmd, "dir", "output")
+			outputBase := backupDirFlag(cmd)
 			skipDocker, _ := cmd.Flags().GetBool("skip-docker")
 			skipEtc, _ := cmd.Flags().GetBool("skip-etc")
 
@@ -180,7 +182,10 @@ func newBackupCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().String("dir", defaultBackupDir(), "Backup directory (the archive goes in a rootfiles-backup-* subdirectory)")
+	// The flag carries no default: the default is the state directory, which is
+	// an absolute path each host resolves differently, and printing one host's
+	// path on the page costs more columns than help has.
+	cmd.Flags().String("dir", "", "Backup root (default <state dir>/system-backup; the archive goes in a rootfiles-backup-* subdirectory)")
 	cmd.Flags().StringP("output", "o", "", "Deprecated alias for --dir")
 	_ = cmd.Flags().MarkDeprecated("output", "use --dir instead")
 	_ = cmd.Flags().MarkShorthandDeprecated("output", "use --dir instead")
@@ -193,6 +198,16 @@ func newBackupCmd() *cobra.Command {
 // operator with a data disk passes --dir.
 func defaultBackupDir() string {
 	return filepath.Join(state.Dir(), "system-backup")
+}
+
+// backupDirFlag resolves --dir. Only an omitted flag falls back to the state
+// directory; an explicit empty value is passed through as the relative
+// directory it asked for, which the ownership walk then refuses.
+func backupDirFlag(cmd *cobra.Command) string {
+	if !cmd.Flags().Changed("dir") && !cmd.Flags().Changed("output") {
+		return defaultBackupDir()
+	}
+	return stringFlagOrAlias(cmd, "dir", "output")
 }
 
 // backupSystemInfo writes system detection results + hostname.

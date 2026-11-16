@@ -16,8 +16,9 @@ import (
 
 func newConfigCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "config",
-		Short: "Inspect, validate and scaffold configuration",
+		Use:     "config",
+		Short:   "Inspect, validate or scaffold configuration",
+		Example: "  rootfiles config show --config /etc/rootfiles/site.yaml\n  rootfiles config validate --profile dgx",
 	}
 	cmd.AddCommand(newConfigShowCmd(), newConfigValidateCmd(), newConfigInitCmd())
 	return cmd
@@ -58,8 +59,9 @@ func loadForInspection(cmd *cobra.Command) (*config.Config, string, error) {
 
 func newConfigShowCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "show",
-		Short: "Print the fully merged configuration (extends, env and flag overrides applied)",
+		Use:     "show",
+		Short:   "Print the fully merged configuration",
+		Example: "  rootfiles config show\n  rootfiles config show --reveal --config /etc/rootfiles/site.yaml",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, source, err := loadForInspection(cmd)
 			if cfg == nil {
@@ -77,14 +79,15 @@ func newConfigShowCmd() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().Bool("reveal", false, "Show secrets (tunnel token) instead of masking them")
+	cmd.Flags().Bool("reveal", false, "Show secrets (tunnel token) unmasked")
 	return usesConfigInputs(cmd)
 }
 
 func newConfigValidateCmd() *cobra.Command {
 	return usesConfigInputs(&cobra.Command{
-		Use:   "validate",
-		Short: "Validate a profile or config file (unknown keys, paths, ports, CIDRs, …)",
+		Use:     "validate",
+		Short:   "Validate a profile or config file",
+		Example: "  rootfiles config validate\n  rootfiles config validate --config /etc/rootfiles/site.yaml",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, source, err := loadForInspection(cmd)
 			if err != nil {
@@ -99,10 +102,14 @@ func newConfigValidateCmd() *cobra.Command {
 func newConfigInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Scaffold a site config (template, or captured from this system)",
+		Short: "Scaffold a site config",
+		Example: `  rootfiles config init --file /etc/rootfiles/site.yaml
+  rootfiles config init --from-system`,
 		Long: "Writes a config for use with `rootfiles apply --config FILE`.\n" +
-			"Default: a small file extending the suggested profile, with commented examples.\n" +
-			"--from-system: capture the current host's settings (works on hosts not set up by rootfiles).",
+			"Default: a small file extending the suggested profile, with commented\n" +
+			"examples.\n" +
+			"--from-system: capture the current host's settings (works on hosts not set up\n" +
+			"by rootfiles).",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			fromSystem, _ := cmd.Flags().GetBool("from-system")
 			extends, _ := cmd.Flags().GetString("extends")
@@ -147,7 +154,7 @@ func newConfigInitCmd() *cobra.Command {
 	cmd.Flags().Bool("force", false, "Deprecated alias for --overwrite")
 	_ = cmd.Flags().MarkDeprecated("force", "use --overwrite instead")
 	cmd.Flags().Bool("from-system", false, "Capture settings from the running system")
-	cmd.Flags().String("extends", "", "Base profile for the template (default: detected suggestion)")
+	cmd.Flags().String("extends", "", "Base profile for the template (default: detected)")
 	cmd.Flags().String("file", "", "Write to FILE instead of stdout")
 	return cmd
 }

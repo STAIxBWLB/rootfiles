@@ -19,16 +19,31 @@ var doctorChecks = module.Doctor
 
 func newDoctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "doctor",
-		Short: "Diagnose remote access, disks, reboot, time sync, GPU and systemd health",
-		Long: "Read-only health checks of the live system (as opposed to `check`, which compares against\n" +
-			"the profile). Exit code: 0 = no failures, 2 = at least one failure (or warning with --strict).",
+		Use:     "doctor",
+		Short:   "Check disks, reboot, time sync, GPU, systemd and access",
+		Example: "  rootfiles doctor\n  rootfiles doctor --json --strict",
+		Long: "Read-only health checks of the live system, as opposed to `check`,\n" +
+			"which compares against the profile.\n" +
+			"Exit code: 0 = no failures, 2 = at least one failure (or warning with --strict).",
 		RunE: runDoctor,
 	}
 	cmd.Flags().String("inventory", "", "Controller inventory file")
+	if nativeHostOS == "linux" {
+		// Only the controller report reads the inventory. The flag stays
+		// registered so a Linux invocation is refused with the reason rather
+		// than an unknown-flag error; it just is not advertised here.
+		_ = cmd.Flags().MarkHidden("inventory")
+	}
 	addOutputFlagWithMetrics(cmd)
 	cmd.Flags().Bool("strict", false, "Treat warnings as failures for the exit code")
-	return usesConfigTarget(cmd)
+	cmd = usesConfigTarget(cmd)
+	if nativeHostOS != "linux" {
+		// A controller report reads no profile, config file or home base. The
+		// inputs stay accepted and are ignored, as they were; the page stops
+		// offering what this context does not use.
+		hidesRootFlags(cmd, "profile", "config", "home-base")
+	}
+	return cmd
 }
 
 func runDoctor(cmd *cobra.Command, _ []string) error {
