@@ -72,7 +72,8 @@ func newScheduleCmd() *cobra.Command {
 		Short:   "Install check and doctor report timers",
 		Example: "  sudo rootfiles schedule enable\n  rootfiles schedule status",
 		Long: "enable installs rootfiles-check.timer, which writes check.json and doctor.json\n" +
-			"to " + state.Dir() + " (read-only: no changes are applied).",
+			"into the state directory: $ROOTFILES_STATE_DIR, or /var/lib/rootfiles when it\n" +
+			"is unset. The timer is read-only: no changes are applied.",
 	}
 
 	enable := &cobra.Command{

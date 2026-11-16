@@ -16,9 +16,10 @@ func newRollbackCmd() *cobra.Command {
 		Short:   "Restore files changed by an earlier run",
 		Example: "  rootfiles rollback\n  sudo rootfiles rollback 20261101T090413Z --dry-run",
 		Long: "Every mutating run saves the previous version of each file it overwrites or\n" +
-			"removes under " + state.BackupsDir() + "/<id>. rollback restores those files and\n" +
-			"deletes the files the run created; packages, users and services are not\n" +
-			"reverted. Without an id, lists available backups.",
+			"removes under one id in the state directory's backups folder\n" +
+			"($ROOTFILES_STATE_DIR/backups, or /var/lib/rootfiles/backups). rollback\n" +
+			"restores those files and deletes the files the run created; packages, users\n" +
+			"and services are not reverted. Without an id, it lists available backups.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
