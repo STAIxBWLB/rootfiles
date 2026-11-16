@@ -113,16 +113,16 @@ func newFleetInitCmd() *cobra.Command {
 					return fmt.Errorf("replace inventory after backup %q: %w", backup, err)
 				}
 				ui.WriteHint(c.ErrOrStderr(), "backup of the previous inventory: "+backup)
-				ui.WriteSuccess(c.OutOrStdout(), "created inventory "+path)
-				return nil
+				// The confirmation is the command's only stdout, so its write
+				// error is the exit code's: a closed pipe is not "created".
+				return ui.WriteSuccess(c.OutOrStdout(), "created inventory "+path)
 			} else if !os.IsNotExist(err) {
 				return fmt.Errorf("inspect inventory %q: %w", path, err)
 			}
 			if err := runner.WriteFileExclusive(path, data, 0600); err != nil {
 				return fmt.Errorf("create inventory %q: %w", path, err)
 			}
-			ui.WriteSuccess(c.OutOrStdout(), "created inventory "+path)
-			return nil
+			return ui.WriteSuccess(c.OutOrStdout(), "created inventory "+path)
 		}}
 	c.Flags().String("inventory", "", "Inventory file path")
 	c.Flags().Bool("from-ssh-config", false, "Import aliases from SSH config")

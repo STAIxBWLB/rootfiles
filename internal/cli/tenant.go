@@ -169,11 +169,13 @@ func newTenantStatusCmd() *cobra.Command {
 
 // The tenant reports read a root-owned data root and a container runtime, so a
 // test replaces these three seams with fixture data and pins the layout without
-// either.
+// either. tenantOpsEnv is the ops action's own seam: that path is audited rather
+// than rendered, and its test drives it without root or an applied config.
 var (
 	tenantReportEnv       = tenantEnv
 	tenantSpecLister      = tenant.ListSpecs
 	tenantStatusCollector = (*tenant.Manager).CollectStatus
+	tenantOpsEnv          = tenantEnv
 )
 
 // renderTenantStatus prints one row per tenant, the detail lines the report
@@ -206,11 +208,13 @@ func renderTenantStatus(out io.Writer, report *tenant.StatusReport) error {
 		}
 	}
 	if report.Commitment != "" {
-		marker := ui.OKMark()
+		marker, text := ui.OKMark(), report.Commitment
 		if report.Overcommitted {
-			marker = ui.WarnMark()
+			// The warn marker is a glyph a pipe drops, so the capacity risk has to
+			// be in the words: filling every volume would run out of free space.
+			marker, text = ui.WarnMark(), "overcommitted: "+report.Commitment
 		}
-		ui.WriteBullet(out, marker, strings.TrimPrefix(report.Commitment, ui.MarkWarn+" overcommitted: "))
+		ui.WriteBullet(out, marker, text)
 	}
 	return nil
 }
@@ -677,7 +681,7 @@ Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 					os.Unsetenv(k)
 				}
 			}
-			_, m, err := tenantEnv(cmd)
+			_, m, err := tenantOpsEnv(cmd)
 			if err != nil {
 				return refuse(err)
 			}
@@ -694,12 +698,10 @@ Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 			ctx := cmd.Context()
 			switch action {
 			case "status":
-				report, err := tenantStatusCollector(m, ctx, []string{t}, true)
+				var report *tenant.StatusReport
+				report, err = tenantStatusCollector(m, ctx, []string{t}, true)
 				if err == nil {
 					err = renderTenantStatus(cmd.OutOrStdout(), report)
-				}
-				if err != nil {
-					return err
 				}
 			case "logs":
 				err = m.Logs(ctx, s, 200)

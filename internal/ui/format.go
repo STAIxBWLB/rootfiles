@@ -97,9 +97,12 @@ func FirstNonEmpty(values ...string) string {
 }
 
 // WriteSuccess writes one success confirmation: "✓ <what was done>". The
-// marker takes the success role; the ASCII writer turns it into "ok".
-func WriteSuccess(w io.Writer, what string) {
-	fmt.Fprintf(displayWriter(w), "%s %s\n", StyleSuccess.Render(MarkOK), what)
+// marker takes the success role; the ASCII writer turns it into "ok". It
+// reports the write error, so a command whose exit code stands for "this was
+// confirmed to the operator" returns it instead of exiting 0 on a closed pipe.
+func WriteSuccess(w io.Writer, what string) error {
+	_, err := fmt.Fprintf(displayWriter(w), "%s %s\n", StyleSuccess.Render(MarkOK), what)
+	return err
 }
 
 // WriteWarning writes the standard warning line for this invocation:
