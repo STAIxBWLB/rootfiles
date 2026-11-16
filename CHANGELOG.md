@@ -24,6 +24,7 @@ A macOS machine can now act as the fleet controller without root, and the fleet 
 ### Action needed
 - Update with `sudo rootfiles update` on a host, or `rootfiles fleet update --version v0.21.0` from the fleet controller. Converged hosts need no `apply` afterwards. (#164)
 - Scripts that match warning text: warnings now start with `rootfiles: warning:`, the tenant audit-log warning included, and `tunnel`'s "up to date" line has no trailing period. (#170, #171)
+- Scripts that read `rootfiles rollback` output: the backup listing is now a `BACKUP PATHS NOTE` table, so a match on the old `path(s)` text finds nothing. Read the first column and match the id shape `YYYYMMDD-HHMMSS` instead. (#171)
 - The deprecated spellings (`backup -o`, `user backup -o`, `user add --pubkey`, `config init --force`, `user passwd --suffix`) still work in this release; their removal moves to v0.22.0. Switch to `--dir`, `--file`, `--ssh-pubkey`, `--overwrite` and `--password` or `--file`. (#105)
 
 **Full changelog**: https://github.com/STAIxBWLB/rootfiles/compare/v0.20.0...v0.21.0
