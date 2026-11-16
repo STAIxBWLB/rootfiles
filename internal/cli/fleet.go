@@ -92,8 +92,13 @@ func fleetCommonFlags(c *cobra.Command) {
 // location depends on the environment it runs in, and an absolute path there
 // would print one operator's home in every help page and in the committed
 // command reference. The fleet page's own help states where it is read from.
+//
+// Only an absent flag falls back to the per-user file. An explicit empty value
+// is passed through, so the loader refuses it and a mutation cannot replace the
+// default inventory by naming "".
 func fleetInventoryPath(c *cobra.Command) string {
-	if path, _ := c.Flags().GetString("inventory"); path != "" {
+	if c.Flags().Changed("inventory") {
+		path, _ := c.Flags().GetString("inventory")
 		return path
 	}
 	return defaultFleetInventory()

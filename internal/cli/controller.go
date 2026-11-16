@@ -39,7 +39,9 @@ type controllerSnapshot struct {
 
 func controllerPaths(cmd *cobra.Command) (string, string) {
 	inventory, _ := cmd.Flags().GetString("inventory")
-	if inventory == "" {
+	if !cmd.Flags().Changed("inventory") {
+		// An explicitly empty --inventory stays empty, so the report names the
+		// failure instead of silently reporting the per-user file.
 		inventory = defaultFleetInventory()
 	}
 	state := os.Getenv("XDG_STATE_HOME")

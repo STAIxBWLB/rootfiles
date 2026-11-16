@@ -145,6 +145,51 @@ func TestFleetMutationPreviewStillRequiresSelection(t *testing.T) {
 	}
 }
 
+// TestFleetExplicitEmptyInventoryIsNotTheDefault holds --inventory to the value
+// the operator gave it. An empty path is a path: the loader has to refuse it,
+// and a mutation must not fall back to the per-user file and replace it.
+func TestFleetExplicitEmptyInventoryIsNotTheDefault(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, "config"))
+	defaultPath := filepath.Join(dir, "config", "rootfiles", "fleet.yaml")
+	if err := os.MkdirAll(filepath.Dir(defaultPath), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(defaultPath, []byte("hosts:\n  default-host:\n    ssh: default-host\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Omitted: the per-user inventory is the target.
+	out, _, err := runFleetOnboarding(t, "hosts", "--json")
+	if err != nil || !strings.Contains(out, "default-host") {
+		t.Fatalf("omitted --inventory did not read the per-user file: %q %v", out, err)
+	}
+
+	// Explicitly empty: refused, and no host from the per-user file is reported.
+	if out, _, err := runFleetOnboarding(t, "hosts", "--inventory", "", "--json"); err == nil || strings.Contains(out, "default-host") {
+		t.Fatalf("explicit empty --inventory read the per-user file: %q %v", out, err)
+	}
+	if out, _, err := runFleetOnboarding(t, "status", "--inventory", "", "--all"); err == nil || strings.Contains(out, "default-host") {
+		t.Fatalf("explicit empty --inventory selected from the per-user file: %q %v", out, err)
+	}
+
+	before, err := os.ReadFile(defaultPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runFleetOnboarding(t, "init", "--inventory", "", "--overwrite"); err == nil {
+		t.Fatal("fleet init wrote an explicitly empty inventory")
+	}
+	after, err := os.ReadFile(defaultPath)
+	if err != nil || string(before) != string(after) {
+		t.Fatalf("fleet init --inventory '' rewrote the per-user inventory: %q %v", after, err)
+	}
+	if backups, _ := filepath.Glob(defaultPath + ".backup-*"); len(backups) != 0 {
+		t.Fatalf("fleet init --inventory '' backed up the per-user inventory: %v", backups)
+	}
+}
+
 func TestFleetScheduleRejectsExplicitInvalidCalendarBeforeSSH(t *testing.T) {
 	for _, tc := range []struct{ action, calendar string }{
 		{"enable", ""}, {"enable", " "}, {"enable", "daily\rOnBootSec=1m"},
