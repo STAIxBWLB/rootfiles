@@ -44,7 +44,18 @@ func pinInventoryPage(t *testing.T) {
 func TestDocsCommandInventory(t *testing.T) {
 	pinInventoryPage(t)
 
-	got := RenderInventory(Inventory(NewRootCmd("dev", "test")))
+	// The command walk runs before the capture: the capture points the state
+	// directory at a fixture, and a flag default that embeds it would otherwise
+	// record a temporary path in the page.
+	facts := Inventory(NewRootCmd("dev", "test"))
+	reports := append([]ReportFacts(nil), ReportInventory...)
+	captured := captureReports(t)
+	for i := range reports {
+		if reports[i].State == ReportMeasured {
+			reports[i].Issues = LayoutIssues(captured[reports[i].Command])
+		}
+	}
+	got := RenderInventory(facts, reports)
 	if os.Getenv("ROOTFILES_UPDATE") == "1" {
 		if err := os.WriteFile(inventoryPath, []byte(got), 0644); err != nil {
 			t.Fatal(err)
