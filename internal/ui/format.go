@@ -66,6 +66,27 @@ func FirstNonEmpty(values ...string) string {
 	return ""
 }
 
+// WriteSuccess writes one success confirmation: "✓ <what was done>". The
+// marker takes the success role; the ASCII writer turns it into "ok".
+func WriteSuccess(w io.Writer, what string) {
+	fmt.Fprintf(displayWriter(w), "%s %s\n", StyleSuccess.Render(MarkOK), what)
+}
+
+// WriteWarning writes the standard warning line for this invocation:
+// "rootfiles: warning: <what>: <why>", carrying the warn marker on a TTY, and
+// an optional next step below it. next is "" when no command settles it, so a
+// caller never invents a fix.
+func WriteWarning(w io.Writer, msg, next string) {
+	prefix := ""
+	if Terminal(w) {
+		prefix = WarnMark() + " "
+	}
+	fmt.Fprintln(displayWriter(w), prefix+"rootfiles: warning: "+msg)
+	if next != "" {
+		fmt.Fprintln(displayWriter(w), "  "+StyleAccent.Render(MarkNext+" "+next))
+	}
+}
+
 // WriteText writes formatted plain text without adding styling or a newline.
 // Tables and byte-sensitive payloads retain their caller's format.
 func WriteText(w io.Writer, format string, args ...any) {
