@@ -56,6 +56,7 @@ type Module interface {
 ## Release notes
 
 - Every published tag `vX.Y.Z` needs `docs/releases/vX.Y.Z.md` in the tagged commit. Add it in the release PR; the Release workflow publishes it as the GitHub release body and fails before goreleaser when it is missing or fails `bash scripts/check-release-notes.sh` (Test runs the same check on every PR; run it locally before pushing).
+- In the same release PR, regenerate `CHANGELOG.md` with `bash scripts/gen-changelog.sh`; never edit it by hand.
 - Readers are operators who run `rootfiles` on servers (and the fleet controller). Write what changes for them, not how the code changed. Cover every PR since the previous published release.
 - Format:
   - First line: one sentence on what this release changes for the user. No heading before it.
