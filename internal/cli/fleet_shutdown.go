@@ -22,7 +22,7 @@ func newFleetShutdownCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:     "shutdown",
 		Short:   "Schedule, cancel or inspect fleet poweroffs",
-		Example: "  rootfiles fleet shutdown status --all\n  sudo rootfiles fleet shutdown now --host gpu01 --yes",
+		Example: "  rootfiles fleet shutdown status --all\n  rootfiles fleet shutdown now --host gpu01 --yes",
 		Long: `schedule gives every selected host the same absolute UTC instant, so the hosts
 stop together however long the SSH fan-out took. Hosts are pre-flighted before
 anything is written: a host whose clock differs by more than 30s, whose
@@ -45,10 +45,10 @@ immediately. Powering hosts back on is out of scope.`,
 
 func newFleetShutdownScheduleCmd(mode string) *cobra.Command {
 	use, short := "schedule", "Schedule every selected host for one absolute instant"
-	example := "  sudo rootfiles fleet shutdown schedule --all --at 2026-11-21T09:00:00Z --yes"
+	example := "  rootfiles fleet shutdown schedule --all --at 2026-11-21T09:00:00Z --yes"
 	if mode == "now" {
 		use, short = "now", "Schedule every selected host within --in and announce it now"
-		example = "  sudo rootfiles fleet shutdown now --host gpu01 --in 90s --yes"
+		example = "  rootfiles fleet shutdown now --host gpu01 --in 90s --yes"
 	}
 	c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs, Example: example, RunE: func(c *cobra.Command, args []string) error {
 		timeout, err := fleetMutationTimeout(c)
@@ -420,7 +420,7 @@ func fleetCancelRerun(c *cobra.Command, hosts []string) string {
 
 func newFleetShutdownCancelCmd() *cobra.Command {
 	c := &cobra.Command{Use: "cancel", Short: "Cancel any scheduled shutdown on every selected host", Args: cobra.NoArgs,
-		Example: `  sudo rootfiles fleet shutdown cancel --all --yes`,
+		Example: `  rootfiles fleet shutdown cancel --all --yes`,
 		RunE: func(c *cobra.Command, args []string) error {
 			timeout, err := fleetMutationTimeout(c)
 			if err != nil {

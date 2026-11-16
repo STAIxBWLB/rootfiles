@@ -26,7 +26,7 @@ func newStatusCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "status",
 		Short:   "Show full system status at a glance",
-		Example: "  sudo rootfiles status\n  sudo rootfiles status --json",
+		Example: "  rootfiles status\n  rootfiles status --json",
 		Long: "Read-only overview of the system, profile, modules, GPU allocations, tunnel\n" +
 			"and users.\n" +
 			"Exit code: 0 for the overview, including reported findings; invalid inputs\n" +

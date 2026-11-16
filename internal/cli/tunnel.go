@@ -31,7 +31,7 @@ func newTunnelCmd() *cobra.Command {
 		Use:     "setup [TOKEN]",
 		Aliases: []string{"install"},
 		Short:   "Set up the tunnel, VLAN and cloudflared",
-		Example: "  sudo rootfiles tunnel setup\n  sudo rootfiles tunnel setup <TOKEN> --vlan-address 203.0.113.10/32",
+		Example: "  sudo rootfiles tunnel setup\n  sudo rootfiles tunnel setup \"$ROOTFILES_TUNNEL_TOKEN\"",
 		Long: `Sets up the cloudflared binary, the tunnel token and the VLAN private network.
 Configured credentials (including tunnel_token_file) and VLAN settings are used
 unless an explicit token or VLAN address overrides them. Without credentials,

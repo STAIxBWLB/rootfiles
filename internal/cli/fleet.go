@@ -396,8 +396,8 @@ func newFleetApplyCmd() *cobra.Command {
 }
 func newFleetUpdateCmd() *cobra.Command {
 	c := &cobra.Command{Use: "update", Short: "Update selected hosts serially", Args: cobra.NoArgs,
-		Example: `  sudo rootfiles fleet update --all --version v0.21.0 --yes
-  rootfiles fleet update --host gpu01 --dry-run`,
+		Example: `  rootfiles fleet update --all --version v0.21.0 --yes
+  rootfiles fleet update --host gpu01 --version v0.21.0 --dry-run`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			timeout, err := fleetMutationTimeout(c)
 			if err != nil {
@@ -423,7 +423,7 @@ func newFleetUpdateCmd() *cobra.Command {
 }
 func newFleetBootstrapCmd() *cobra.Command {
 	c := &cobra.Command{Use: "bootstrap", Short: "Install a pinned release on selected hosts", Args: cobra.NoArgs,
-		Example: `  sudo rootfiles fleet bootstrap --all --version v0.21.0 --yes`,
+		Example: `  rootfiles fleet bootstrap --all --version v0.21.0 --yes`,
 		RunE: func(c *cobra.Command, _ []string) error {
 			timeout, err := fleetMutationTimeout(c)
 			if err != nil {
@@ -449,8 +449,8 @@ func newFleetBootstrapCmd() *cobra.Command {
 }
 func newFleetScheduleCmd() *cobra.Command {
 	c := &cobra.Command{Use: "schedule <enable|disable>", Short: "Enable or disable scheduled reports serially", Args: cobra.ExactArgs(1),
-		Example: `  sudo rootfiles fleet schedule enable --all --yes
-  sudo rootfiles fleet schedule disable --group gpu --yes`,
+		Example: `  rootfiles fleet schedule enable --all --yes
+  rootfiles fleet schedule disable --group gpu --yes`,
 		RunE: func(c *cobra.Command, args []string) error {
 			action := args[0]
 			calendar, _ := c.Flags().GetString("on-calendar")

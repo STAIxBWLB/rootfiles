@@ -20,7 +20,7 @@ func newTenantCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "tenant",
 		Short:   "Manage long-lived tenant containers",
-		Example: "  rootfiles tenant list\n  sudo rootfiles tenant create lab --image ubuntu:24.04 --size 200G",
+		Example: "  rootfiles tenant list\n  sudo rootfiles tenant apply --all",
 		Long: `Each tenant gets one Docker container with SSH on its own host port, a
 size-capped volume (/data, /home, /tmp) and accounts whose passwords and
 host keys survive image changes. Specs live in <home_base>/.rootfiles/tenants.`,
@@ -155,8 +155,8 @@ func newTenantCreateCmd() *cobra.Command {
 		Use:   "create <TENANT>",
 		Short: "Create a tenant: volume, container and temporary passwords",
 		Args:  cobra.ExactArgs(1),
-		Example: `  sudo rootfiles tenant create lab --image ubuntu:24.04 --size 200G
-  sudo rootfiles tenant create lab --ssh-port 2201 --account alice:1000`,
+		Example: `  sudo rootfiles tenant create lab --image ubuntu:24.04 \
+    --ssh-port 2201 --size 200G --account alice`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			t := args[0]
 			s := &tenant.Spec{Name: t}
