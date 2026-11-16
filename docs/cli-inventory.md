@@ -232,7 +232,7 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles` | `--yes` | bool | false | - | no |
 | `rootfiles apply` | `--force` | bool | false | - | no |
 | `rootfiles apply` | `--module` | stringSlice | [] | - | no |
-| `rootfiles backup` | `--dir` | string | /var/lib/rootfiles/system-backup | - | no |
+| `rootfiles backup` | `--dir` | string | - | - | no |
 | `rootfiles backup` | `-o, --output` | string | - | o | yes |
 | `rootfiles backup` | `--skip-docker` | bool | false | - | no |
 | `rootfiles backup` | `--skip-etc` | bool | false | - | no |

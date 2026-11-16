@@ -5,15 +5,18 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 )
 
-// TestHelpProseWidthWithALongStateDir renders the whole tree with a state
-// directory long enough to wrap a concatenated path, so no page can hard-code a
-// dynamic path's length into its prose. Flag usage is measured separately: a
-// default that names a path the environment supplies is data, not prose.
-func TestHelpProseWidthWithALongStateDir(t *testing.T) {
+// TestHelpWidthWithALongStateDir renders the whole tree with a state directory
+// long enough to wrap a concatenated path, so no page can exceed the budget on
+// a value the environment supplies.
+//
+// Flag defaults are part of the page: a default that names the state directory
+// is longer on one machine than another, which is why a flag whose default is
+// such a path carries none (`backup --dir`, `fleet --inventory`) and resolves
+// it at run time instead.
+func TestHelpWidthWithALongStateDir(t *testing.T) {
 	pinInventoryPage(t)
 	long := filepath.Join(t.TempDir(), strings.Repeat("nested-state-", 12), "rootfiles")
 	t.Setenv("ROOTFILES_STATE_DIR", long)
@@ -23,27 +26,13 @@ func TestHelpProseWidthWithALongStateDir(t *testing.T) {
 	pages := 0
 	walkCommands(root, func(c *cobra.Command) {
 		pages++
-		if n := proseWidth(c); n > InventoryWidth {
-			t.Errorf("%s: help prose is %d columns with a %d-character state directory", c.CommandPath(), n, len(long))
+		if n := widestLine(renderHelp(c)); n > InventoryWidth {
+			t.Errorf("%s: help page is %d columns with a %d-character state directory", c.CommandPath(), n, len(long))
 		}
 	})
 	if pages < 90 {
 		t.Fatalf("rendered %d pages, fewer than the tree has", pages)
 	}
-}
-
-// proseWidth is the widest line the command itself wrote: its summary, long
-// text, examples and usage line.
-func proseWidth(c *cobra.Command) int {
-	widest := 0
-	for _, text := range []string{c.Short, c.Long, c.Example, c.UseLine()} {
-		for _, line := range strings.Split(text, "\n") {
-			if n := ansi.StringWidth(line); n > widest {
-				widest = n
-			}
-		}
-	}
-	return widest
 }
 
 // TestLongStateDirAppearsInTheReportNotTheHelp names the trade: the resolved

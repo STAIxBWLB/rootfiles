@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
-	"github.com/STAIxBWLB/rootfiles/internal/state"
 )
 
 func TestNewBackupCmd_Basics(t *testing.T) {
@@ -28,7 +27,9 @@ func TestBackupCmd_Flags(t *testing.T) {
 		name       string
 		defaultVal string
 	}{
-		{"dir", filepath.Join(state.Dir(), "system-backup")},
+		// The resolved state directory is a host path, so the flag carries no
+		// default and backupDirFlag supplies one when the flag is omitted.
+		{"dir", ""},
 		{"output", ""},
 		{"skip-docker", "false"},
 		{"skip-etc", "false"},
@@ -41,6 +42,54 @@ func TestBackupCmd_Flags(t *testing.T) {
 		if f.DefValue != tc.defaultVal {
 			t.Errorf("flag %q default = %q, want %q", tc.name, f.DefValue, tc.defaultVal)
 		}
+	}
+}
+
+// TestBackupDirFlagFollowsTheStateDirectory holds the default to the state
+// directory the run resolves, and holds an explicit value to itself: the flag
+// carrying no default must not turn `--dir ""` into the state directory.
+func TestBackupDirFlagFollowsTheStateDirectory(t *testing.T) {
+	stateDir := filepath.Join(t.TempDir(), "state")
+	t.Setenv("ROOTFILES_STATE_DIR", stateDir)
+
+	cmd := newBackupCmd()
+	if got, want := backupDirFlag(cmd), filepath.Join(stateDir, "system-backup"); got != want {
+		t.Fatalf("omitted --dir = %q, want %q", got, want)
+	}
+
+	cmd = newBackupCmd()
+	if err := cmd.Flags().Set("dir", ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := backupDirFlag(cmd); got != "" {
+		t.Fatalf("explicit empty --dir = %q, want the empty value the operator gave", got)
+	}
+
+	cmd = newBackupCmd()
+	if err := cmd.Flags().Set("output", "/data/backup"); err != nil {
+		t.Fatal(err)
+	}
+	if got := backupDirFlag(cmd); got != "/data/backup" {
+		t.Fatalf("deprecated alias --output = %q, want /data/backup", got)
+	}
+}
+
+// TestBackupCmd_WritesUnderTheStateDirectory runs the command with no --dir, so
+// the resolution the flag now performs at run time is exercised end to end.
+func TestBackupCmd_WritesUnderTheStateDirectory(t *testing.T) {
+	backupStubs(t)
+	backupFixtures(t)
+	stubSnapshot(t, "")
+	stateDir := t.TempDir()
+	t.Setenv("ROOTFILES_STATE_DIR", stateDir)
+	hostname, _ := os.Hostname()
+	if err := runBackup(t); err != nil {
+		t.Fatalf("backup: %v", err)
+	}
+	want := filepath.Join(stateDir, "system-backup",
+		fmt.Sprintf("rootfiles-backup-%s-%s", hostname, time.Now().Format("20060102")))
+	if fi, err := os.Stat(want); err != nil || !fi.IsDir() {
+		t.Fatalf("backup wrote no archive to %s: %v", want, err)
 	}
 }
 
