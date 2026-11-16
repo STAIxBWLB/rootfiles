@@ -478,7 +478,7 @@ Show each GPU with its owner.
 ### rootfiles rollback
 
 Restore files changed by an earlier run.
-`rootfiles rollback [BACKUP_ID]`. Without an id, list backup sessions. With an id, restore the files that run saved and remove the files it created; `--dry-run` shows the plan, `--yes` skips the confirmation. Restoring needs root and the lock. Packages, accounts and services are not reverted ([operations.md](operations.md#file-backups-and-rollback)).
+`rootfiles rollback [BACKUP_ID]`. Without an id, list backup sessions. With an id, restore the files that run saved and remove the files it created; `--dry-run` shows the plan, `--yes` skips the confirmation. Restoring needs root and the lock. Packages, accounts and services are not reverted ([operations.md](operations.md#file-backups-and-rollback)). The listing is a table of the session id, the number of paths it saved and its note, newest first; there is no machine format, so a script that needs the newest id takes the first `YYYYMMDD-HHMMSS` cell of the first column.
 
 ### rootfiles schedule
 
