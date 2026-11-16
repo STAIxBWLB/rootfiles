@@ -180,7 +180,7 @@ its golden belong to the T3 output slice, so this page records the seam each one
 | `rootfiles schedule status` | schedule.go | statusContractFixture PATH stubs | measured | starts with a blank line, so no header line |
 | `rootfiles gpu list` | gpu.go | statusContractFixture allocation DB | measured | starts with a blank line, so no header line |
 | `rootfiles user list` | user.go | statusContractFixture users DB | measured | no header line |
-| `rootfiles user du` | userlife.go | statusContractFixture home base | measured | no header line |
+| `rootfiles user du` | userlife.go | statusContractFixture home base | measured | starts with a blank line, so no header line |
 | `rootfiles config show` | configcmd.go | config.LoadWithHomeBase | raw | - |
 | `rootfiles gpu status` | gpu.go | - | owed | - |
 | `rootfiles gpu mig status` | gpu.go | - | owed | - |
