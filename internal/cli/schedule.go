@@ -115,8 +115,8 @@ func newScheduleCmd() *cobra.Command {
 					return fmt.Errorf("cannot enable schedule timer: %w; inspect systemctl status %s.timer before retrying", err, scheduleName)
 				}
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "%s timer enabled (%s); reports in %s/{check,doctor}.json\n",
-				ui.MarkOK, onCal, state.Dir())
+			ui.WriteSuccess(cmd.OutOrStdout(), "timer enabled ("+onCal+")")
+			ui.WriteHint(cmd.OutOrStdout(), "reports land in "+state.Dir()+"/{check,doctor}.json")
 			startFirstReport(cmd.Context(), rc.Runner, cmd.OutOrStdout(), cmd.ErrOrStderr())
 			return nil
 		},
@@ -139,7 +139,7 @@ func newScheduleCmd() *cobra.Command {
 				}
 			}
 			_, _ = rc.Runner.Run(cmd.Context(), "systemctl", "daemon-reload")
-			fmt.Fprintln(cmd.OutOrStdout(), ui.MarkOK+" report timer removed")
+			ui.WriteSuccess(cmd.OutOrStdout(), "report timer removed")
 			return nil
 		},
 	}
@@ -299,8 +299,8 @@ func startFirstReport(ctx context.Context, runner *exec.Runner, out, errOut io.W
 		return
 	}
 	if _, err := runner.Run(ctx, "systemctl", "start", "--no-block", scheduleName+".service"); err != nil {
-		fmt.Fprintf(errOut, "%s could not start the first report: %v\n", ui.MarkWarn, err)
+		ui.WriteWarning(errOut, "could not start the first report: "+err.Error(), "")
 		return
 	}
-	fmt.Fprintf(out, "%s first report started (no report existed yet)\n", ui.MarkOK)
+	ui.WriteSuccess(out, "first report started (no report existed yet)")
 }

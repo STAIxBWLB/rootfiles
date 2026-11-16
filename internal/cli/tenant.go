@@ -74,7 +74,7 @@ func recordTenant(cmd *cobra.Command, t, action string, err error) {
 		result = "error: " + strings.SplitN(err.Error(), "\n", 2)[0]
 	}
 	if aerr := tenant.Audit(actor, t, action, result); aerr != nil {
-		ui.WriteText(cmd.ErrOrStderr(), ui.MarkWarn+" tenant audit log: %v\n", aerr)
+		ui.WriteWarning(cmd.ErrOrStderr(), "tenant audit log: "+aerr.Error(), "")
 	}
 }
 
@@ -101,10 +101,10 @@ func issuePassword(ctx context.Context, cmd *cobra.Command, m *tenant.Manager, s
 		return err
 	}
 	if pw == "" {
-		fmt.Fprintf(cmd.OutOrStdout(), "[dry-run] would issue a temporary password for %s@%s\n", user, s.Name)
+		ui.WriteText(cmd.OutOrStdout(), "%s would issue a temporary password for %s@%s\n", ui.PendingMark(), user, s.Name)
 		return nil
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Temporary password for %s@%s: %s (must be changed at first login; not stored or logged)\n", user, s.Name, pw)
+	ui.WriteText(cmd.OutOrStdout(), "Temporary password for %s@%s: %s (must be changed at first login; not stored or logged)\n", user, s.Name, pw)
 	return nil
 }
 
@@ -121,7 +121,7 @@ func newTenantListCmd() *cobra.Command {
 			}
 			names, err := tenant.ListSpecs(m.SpecDir)
 			for _, n := range names {
-				fmt.Fprintln(cmd.OutOrStdout(), n)
+				ui.WriteLine(cmd.OutOrStdout(), n)
 			}
 			return err
 		},
@@ -207,7 +207,7 @@ func newTenantCreateCmd() *cobra.Command {
 					}
 				}
 				for _, r := range m.Routes(s) {
-					fmt.Fprintln(cmd.OutOrStdout(), "Through sshpiper:", r)
+					ui.WriteText(cmd.OutOrStdout(), "Through sshpiper: %s\n", r)
 				}
 				return nil
 			})
@@ -282,7 +282,7 @@ func newTenantApplyCmd() *cobra.Command {
 					recordTenant(cmd, t, "apply", err)
 				}
 				if err != nil {
-					ui.WriteText(cmd.ErrOrStderr(), ui.MarkFail+" %s: %v\n", t, err)
+					ui.WriteText(cmd.ErrOrStderr(), "%s %s: %s\n", ui.FailMark(), t, err.Error())
 					failed = append(failed, t)
 				}
 			}
@@ -596,7 +596,7 @@ Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 			actor, viaSudo := tenant.Actor()
 			refuse := func(err error) error {
 				if aerr := tenant.Audit(actor, t, "ops "+action, "refused: "+err.Error()); aerr != nil {
-					ui.WriteText(cmd.ErrOrStderr(), ui.MarkWarn+" tenant audit log: %v\n", aerr)
+					ui.WriteWarning(cmd.ErrOrStderr(), "tenant audit log: "+aerr.Error(), "")
 				}
 				return err
 			}
@@ -673,7 +673,7 @@ running: it only rewrites each tenant's derived files. It still needs root.`,
 					err = m.Sync(cmd.Context(), s)
 				}
 				if err != nil {
-					ui.WriteText(cmd.ErrOrStderr(), ui.MarkFail+" %s: %v\n", t, err)
+					ui.WriteText(cmd.ErrOrStderr(), "%s %s: %s\n", ui.FailMark(), t, err.Error())
 					failed = append(failed, t)
 				}
 			}

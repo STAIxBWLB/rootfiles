@@ -140,7 +140,7 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			}
 			ui.WriteBullet(out, marker, fmt.Sprintf("%-16s %s", f.Check, detail))
 			if f.Hint != "" && f.Level != module.LevelOK {
-				fmt.Fprintf(out, "      %s\n", ui.StyleAccent.Render(ui.MarkNext+" "+f.Hint))
+				ui.WriteText(out, "    %s\n", ui.StyleAccent.Render(ui.MarkNext+" "+f.Hint))
 			}
 		}
 		counts := map[string]int{}

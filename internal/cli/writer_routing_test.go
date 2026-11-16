@@ -134,7 +134,7 @@ func TestTunnelUpdateCheckUsesRunContextWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	for _, want := range []string{"Cloudflared update check", "Current:", "2026.1.0", "Latest:", "v2026.1.0", "up to date."} {
+	for _, want := range []string{"Cloudflared update check", "Current:", "2026.1.0", "Latest:", "v2026.1.0", "up to date"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("tunnel writer missing %q: %s", want, output.String())
 		}

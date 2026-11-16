@@ -405,7 +405,7 @@ func renderModulesSection(out io.Writer, report statusReport) {
 	}
 	pending := len(report.Modules) - satisfied
 	if pending > 0 {
-		fmt.Fprintln(out)
+		ui.WriteLine(out)
 		ui.WriteHint(out, fmt.Sprintf("%d module(s) need attention — run 'rootfiles check' for details.", pending))
 	}
 }

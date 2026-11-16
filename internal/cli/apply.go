@@ -157,15 +157,16 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	}
 	if runner.Backup.Used() {
 		run.BackupID = runner.Backup.ID
-		ui.WriteText(out, "\nFiles changed by this run were backed up (undo with: rootfiles rollback %s)\n", run.BackupID)
+		ui.WriteSuccess(out, "changed files backed up as "+run.BackupID)
+		ui.WriteText(out, "  %s\n", ui.StyleAccent.Render(ui.MarkNext+" rootfiles rollback "+run.BackupID))
 	}
 	if err := state.Record(run); err != nil {
-		ui.WriteText(cmd.ErrOrStderr(), "warning: recording apply state: %v\n", err)
+		ui.WriteWarning(cmd.ErrOrStderr(), "recording apply state: "+err.Error(), "")
 	}
 	// Keep the copy in step with the recorded run, failed or not, as check
 	// follows the recorded run; an outdated copy must not outlive a failed save.
 	if err := saveAppliedConfig(cfg); err != nil {
-		ui.WriteText(cmd.ErrOrStderr(), "warning: saving the applied config: %v\n", err)
+		ui.WriteWarning(cmd.ErrOrStderr(), "saving the applied config: "+err.Error(), "")
 		_ = state.SaveAppliedConfig(nil)
 	}
 	auditf(cmd, "apply finished", "profile", profileName, "success", runErr == nil, "backup", run.BackupID)

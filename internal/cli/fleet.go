@@ -361,10 +361,15 @@ func finishFleetMutation(c *cobra.Command, op string, args []string, results []f
 		}
 	}
 	if len(skipped) > 0 {
-		fmt.Fprintf(c.ErrOrStderr(), "%d unreachable host(s) skipped; rerun them with:\n  %s\n", len(skipped), fleetRerunCommand(c, args, skipped))
+		ui.WriteWarning(c.ErrOrStderr(),
+			fmt.Sprintf("%d unreachable host(s) skipped", len(skipped)),
+			fleetRerunCommand(c, args, skipped))
 	}
 	if len(pending) > 0 {
-		fmt.Fprintf(c.ErrOrStderr(), "%d host(s) updated but still need apply; review with 'rootfiles fleet check', then run 'rootfiles fleet apply' for: %s\n", len(pending), strings.Join(pending, ", "))
+		ui.WriteWarning(c.ErrOrStderr(),
+			fmt.Sprintf("%d host(s) updated but still need apply: review with 'rootfiles fleet check', then run 'rootfiles fleet apply' for: %s",
+				len(pending), strings.Join(pending, ", ")),
+			"")
 	}
 	if !allOK(results) {
 		return &ExitError{Code: exitDrift}

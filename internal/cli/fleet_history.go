@@ -43,7 +43,7 @@ and skipped.`,
 				return err
 			}
 			for _, warning := range warnings {
-				fmt.Fprintf(c.ErrOrStderr(), "rootfiles: warning: %s\n", warning)
+				ui.WriteWarning(c.ErrOrStderr(), warning, "")
 			}
 			if format == "json" {
 				return writeHistoryJSON(c.OutOrStdout(), entries)

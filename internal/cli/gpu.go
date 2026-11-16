@@ -2,12 +2,14 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 func newGPUCmd() *cobra.Command {
@@ -106,23 +108,29 @@ func newGPUCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out := cmd.OutOrStdout()
-			for _, g := range gpus {
-				mode := g.Current
-				if g.Pending != g.Current {
-					mode += " (pending: " + g.Pending + ", needs GPU reset)"
-				}
-				fmt.Fprintf(out, "GPU %s  %s  MIG %s\n", g.Index, g.Name, mode)
-				for _, inst := range g.Instances {
-					fmt.Fprintf(out, "    %s\n", inst)
-				}
-			}
+			renderMIGStatus(cmd.OutOrStdout(), gpus)
 			return nil
 		},
 	})
 	gpuCmd.AddCommand(migCmd)
 
 	return usesConfigTarget(gpuCmd)
+}
+
+// renderMIGStatus prints the MIG mode and instances per GPU without querying
+// nvidia-smi, so a fixture golden pins the layout.
+func renderMIGStatus(out io.Writer, gpus []module.MIGGPU) {
+	ui.WriteSection(out, "MIG")
+	for _, g := range gpus {
+		mode := g.Current
+		if g.Pending != g.Current {
+			mode += " (pending: " + g.Pending + ", needs GPU reset)"
+		}
+		ui.WriteKV(out, "GPU "+g.Index, g.Name+"  MIG "+mode)
+		for _, inst := range g.Instances {
+			ui.WriteText(out, "%s\n", ui.StyleHint.Render("    -  "+inst))
+		}
+	}
 }
 
 func parseGPUList(s string) ([]int, error) {

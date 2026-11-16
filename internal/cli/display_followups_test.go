@@ -48,7 +48,9 @@ func TestTenantAuditWarningUsesCommandErrorPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	recordTenant(root, "fixture", "status", nil)
-	if !strings.HasPrefix(stderr.String(), "! tenant audit log:") || strings.ContainsRune(stderr.String(), 27) || strings.Contains(stderr.String(), "⚠") {
+	// A piped stderr keeps the plain warning line: the marker is TTY-only, so
+	// a script matching "rootfiles: " keeps working.
+	if !strings.HasPrefix(stderr.String(), "rootfiles: warning: tenant audit log:") || strings.ContainsRune(stderr.String(), 27) || strings.Contains(stderr.String(), "⚠") {
 		t.Fatalf("tenant warning bypasses command policy: %q", stderr.String())
 	}
 	if out.Len() != 0 {

@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -42,9 +43,8 @@ func newFleetPingCmd() *cobra.Command {
 						ok++
 					}
 				}
-				if _, err := fmt.Fprintf(c.OutOrStdout(), "\n%d of %d hosts ready\n", ok, len(results)); err != nil {
-					return err
-				}
+				ui.WriteLine(c.OutOrStdout())
+				ui.WriteText(c.OutOrStdout(), "%d of %d hosts ready\n", ok, len(results))
 			}
 			if !allOK(results) {
 				return &ExitError{Code: exitDrift}

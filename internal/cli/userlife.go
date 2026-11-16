@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -160,16 +161,26 @@ func newUserDuCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out := cmd.OutOrStdout()
-			var total int64
-			for _, r := range rows {
-				fmt.Fprintf(out, "%10s  %-16s %s\n", humanBytes(r.Bytes), r.User, r.Home)
-				total += r.Bytes
-			}
-			fmt.Fprintf(out, "%10s  total\n", humanBytes(total))
-			return nil
+			return renderHomeUsage(cmd.OutOrStdout(), rows)
 		},
 	}
+}
+
+// renderHomeUsage prints the measured home sizes without running du, so a
+// fixture golden pins the layout.
+func renderHomeUsage(out io.Writer, rows []module.HomeUsage) error {
+	ui.WriteSection(out, "Home usage")
+	table := make([][]string, 0, len(rows))
+	var total int64
+	for _, r := range rows {
+		table = append(table, []string{humanBytes(r.Bytes), r.User, r.Home})
+		total += r.Bytes
+	}
+	if err := ui.WriteTable(out, []string{"SIZE", "USER", "HOME"}, table, 2); err != nil {
+		return err
+	}
+	ui.WriteKV(out, "Total", humanBytes(total))
+	return nil
 }
 
 func newUserAuditCmd() *cobra.Command {
@@ -188,7 +199,7 @@ func newUserAuditCmd() *cobra.Command {
 			}
 			out := cmd.OutOrStdout()
 			if len(findings) == 0 {
-				fmt.Fprintln(out, ui.StyleSuccess.Render(ui.MarkOK+" users.json and system accounts agree"))
+				ui.WriteSuccess(out, "users.json and system accounts agree")
 				return nil
 			}
 			for _, f := range findings {
