@@ -104,8 +104,11 @@ The config-loading variables apply wherever a config is loaded, after the file a
 
 ## Command reference
 
+Each section opens with the summary `rootfiles <command> --help` shows for that command; `TestDocsCommandsCoverCobraTree` fails when that summary, a flag or a command in this reference no longer matches the help.
+
 ### rootfiles
 
+Bootstrap Ubuntu, DGX OS and Rocky servers.
 Root command. Run `rootfiles help <command>` or `rootfiles <command> --help` for the built-in help.
 
 | Flag | Default | Purpose |
@@ -130,6 +133,7 @@ See [Root flags and their readers](#root-flags-and-their-readers) for which comm
 
 ### rootfiles apply
 
+Apply server configuration.
 Converge this host to a profile or site config through the enabled modules ([modules.md](modules.md)). Mutating.
 
 ```bash
@@ -150,6 +154,7 @@ sudo rootfiles apply --module cloudflared,docker
 
 ### rootfiles backup
 
+Back up the system for an OS upgrade or restore.
 Capture what is needed to rebuild this host after an OS reinstall ([operations.md](operations.md#system-backup)). Mutating.
 
 | Flag | Default | Purpose |
@@ -162,6 +167,7 @@ Capture what is needed to rebuild this host after an OS reinstall ([operations.m
 
 ### rootfiles check
 
+Check current system state against profile.
 Report which modules have pending changes. Read-only: every module runs `Check` only. `check -v`, `check --verbose` and `rootfiles --verbose check` all expand the report while keeping the console logger at WARN. Check has no INFO diagnostic mode; its local verbose flag shadows the root flag in every position.
 
 | Flag | Default | Purpose |
@@ -178,10 +184,12 @@ Report which modules have pending changes. Read-only: every module runs `Check` 
 
 ### rootfiles config
 
+Inspect, validate or scaffold configuration.
 Inspect, validate and scaffold configuration ([configuration.md](configuration.md)).
 
 ### rootfiles config init
 
+Scaffold a site config.
 Write a site config: a commented template that extends a profile, or a capture of this host.
 
 | Flag | Default | Purpose |
@@ -195,6 +203,7 @@ Write a site config: a commented template that extends a profile, or a capture o
 
 ### rootfiles config show
 
+Print the fully merged configuration.
 Print the fully merged config that `check` would use, with `extends`, environment and flag overrides applied. The first line names the source.
 
 | Flag | Default | Purpose |
@@ -203,10 +212,12 @@ Print the fully merged config that `check` would use, with `extends`, environmen
 
 ### rootfiles config validate
 
+Validate a profile or config file.
 Load and validate the same target as `config show`: unknown keys, paths, ports, CIDRs, names and, on Rocky Linux, unsupported modules. Prints `<source> is valid`; exit 1 with every problem listed otherwise.
 
 ### rootfiles doctor
 
+Check disks, reboot, time sync, GPU, systemd and access.
 On non-Linux controllers, `--inventory` selects the local fleet inventory; `--json` includes `mode: "controller"`. Controller checks do not connect to hosts.
 
 Read-only health checks of the live host, as opposed to `check`, which compares against the config. Checks: SSH access (keys against `sshd -T`, password-only and no-login accounts, the effective config), firewall state and the SSH port, exporter exposure and the exporter firewall guard, reboot required, disk use, time sync, GPU driver and persistence mode, failed systemd units, the config and its capabilities, and the last apply.
@@ -224,6 +235,7 @@ Read-only health checks of the live host, as opposed to `check`, which compares 
 
 ### rootfiles fleet
 
+Manage and monitor an SSH host fleet.
 Operator-side SSH controller ([fleet.md](fleet.md)). It runs as the operator, takes no host lock and refuses native-host flags (`--module`, `--profile`, `--config`, `--force`, `--home-base`, `--user`, `--ssh-pubkey`, `--tunnel-token`, `--vlan-address`) before connecting.
 
 Selection flags shared by fleet report and rollout commands:
@@ -247,14 +259,17 @@ Rollouts (`apply`, `update`, `bootstrap`, `schedule`) also take:
 
 ### rootfiles fleet init
 
+Create a fleet inventory.
 Create an inventory with `--inventory`, optionally importing SSH aliases with `--from-ssh-config`, `--match` and `--group`. `--overwrite` backs up the existing file; `--dry-run` prints YAML.
 
 ### rootfiles fleet hosts
 
+List and validate inventory hosts.
 Validate and list hosts without connecting. `--inventory`, `--host`, `--group` and `--all` select the inventory and hosts; without a selection all hosts are listed. `--json` or `--output json` returns an array of objects with `name`, `groups`, `ssh`, `sudo` and `config`.
 
 ### rootfiles fleet log
 
+Show recorded fleet rollouts, newest first.
 Read the controller's own run log back, newest first. Every fleet mutation appends to `~/.local/state/rootfiles/fleet.jsonl`, so this needs no SSH and no inventory.
 
 | Flag | Default | Purpose |
@@ -270,6 +285,7 @@ The text report has one row per run and host: time, operation, host, state, exit
 
 ### rootfiles fleet apply
 
+Apply selected hosts' site configs serially.
 Apply each selected host's site config, one host at a time.
 
 | Flag | Default | Purpose |
@@ -281,6 +297,7 @@ Apply each selected host's site config, one host at a time.
 
 ### rootfiles fleet bootstrap
 
+Install a pinned release on selected hosts.
 Install a pinned, checksum-verified release on selected hosts where rootfiles is missing.
 
 | Flag | Default | Purpose |
@@ -293,6 +310,7 @@ Install a pinned, checksum-verified release on selected hosts where rootfiles is
 
 ### rootfiles fleet check
 
+Run a read-only fleet check report.
 Run `rootfiles check -o json` on the selected hosts in parallel and summarise the host states.
 
 | Flag | Default | Purpose |
@@ -304,14 +322,17 @@ Run `rootfiles check -o json` on the selected hosts in parallel and summarise th
 
 ### rootfiles fleet doctor
 
+Run a read-only fleet doctor report.
 Run `rootfiles doctor -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
 
 ### rootfiles fleet ping
 
+Check fleet connectivity and privilege.
 Check connectivity, version and privilege without writing to hosts. Select using `--inventory`, `--host`, `--group`, or `--all`; `--parallel` controls concurrency. Use `--json` or `--output json` for structured results. Exit 0 when all hosts are ready, 2 for findings and 1 for controller errors.
 
 ### rootfiles fleet schedule
 
+Enable or disable scheduled reports serially.
 `rootfiles fleet schedule enable|disable` runs `rootfiles schedule enable` or `disable` on each selected host.
 
 | Flag | Default | Purpose |
@@ -324,9 +345,12 @@ Check connectivity, version and privilege without writing to hosts. Select using
 
 ### rootfiles fleet shutdown
 
+Schedule, cancel or inspect fleet poweroffs.
 Schedule, cancel or inspect a poweroff across the fleet ([fleet.md](fleet.md#shutdown), [specs/shutdown.md](specs/shutdown.md)). Every selected host receives the same absolute UTC instant; scheduling stays serial, and only the timers fire together.
 
 ### rootfiles fleet shutdown schedule
+
+Schedule every selected host for one absolute instant.
 
 ```bash
 rootfiles fleet shutdown schedule --group gpu --at 2026-11-21T18:00:00+09:00 --message 'Building power work' --yes
@@ -348,6 +372,7 @@ Pre-flights every host before writing anything: the host clock must be within 30
 
 ### rootfiles fleet shutdown now
 
+Schedule every selected host within --in and announce it now.
 The same schedule with `--in` instead of `--at`, and one notice sent immediately.
 
 | Flag | Default | Purpose |
@@ -364,24 +389,28 @@ The same schedule with `--in` instead of `--at`, and one notice sent immediately
 
 ### rootfiles fleet shutdown cancel
 
+Cancel any scheduled shutdown on every selected host.
 Cancel any schedule on every selected host. This is the one mutating fleet command that continues past failures, so cancel reaches every host it can; the run exits 2 when any host failed. It is also the recovery for a host whose state file cannot be read: the host finds its units by name and removes them.
 
 Flags: `--inventory`, `--host`, `--group`, `--all` for the selection, `--timeout` and `--skip-unreachable` for the rollout limits, and `-o`/`--output` (`--json` is its alias) for the report. It takes no instant, message or notice flag.
 
 ### rootfiles fleet shutdown status
 
+Show each selected host's scheduled shutdown.
 Read-only, parallel, from `scheduled_shutdown` in each host's `status -o json`. Prints the same table as `rootfiles fleet status`, whose `SHUTDOWN` column carries the instant and the action, or `unknown` when the host's state file cannot be read.
 
 Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
 
 ### rootfiles fleet status
 
+Run a read-only fleet status report.
 Run `rootfiles status -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
 
 `--view gpu` or `--view users` adds a fleet-wide section rendered from that same remote report: GPU allocations, or the managed and system account counts, per host. A host that did not report the section shows `-` instead of failing the run. With `--json` the section is added beside `hosts` under its own key (`gpu` or `users`, keyed by host name); without `--view` the report is byte-for-byte what it was.
 
 ### rootfiles fleet targets
 
+Render scrape targets or push them to a hub.
 Print Prometheus `file_sd` scrape targets as JSON, or push them to the monitoring hub.
 
 | Flag | Default | Purpose |
@@ -395,6 +424,7 @@ Exit codes: 0 printed or pushed, 2 when the push failed on the hub, 1 on errors.
 
 ### rootfiles fleet update
 
+Update selected hosts serially.
 Update the selected hosts to a pinned release, then run a read-only `check` on each. A host that now plans changes is reported `apply-pending`.
 
 | Flag | Default | Purpose |
@@ -407,10 +437,12 @@ Update the selected hosts to a pinned release, then run a read-only `check` on e
 
 ### rootfiles gpu
 
+Manage per-user GPU allocation.
 Per-user GPU allocation ([gpu.md](gpu.md)). Reads `--profile`, `--config` and `--home-base` to find the ledger.
 
 ### rootfiles gpu assign
 
+Assign GPUs to a user.
 `sudo rootfiles gpu assign <USERNAME> --gpus 0,1`. Mutating. Assigning a user again replaces the allocation.
 
 | Flag | Default | Purpose |
@@ -420,38 +452,47 @@ Per-user GPU allocation ([gpu.md](gpu.md)). Reads `--profile`, `--config` and `-
 
 ### rootfiles gpu list
 
+List current GPU allocations.
 List the allocations in the ledger.
 
 ### rootfiles gpu mig
 
+Show Multi-Instance GPU mode and instances.
 Multi-Instance GPU commands (read-only).
 
 ### rootfiles gpu mig status
 
+Show MIG mode and instances per GPU.
 Show the current and pending MIG mode and the instances of each GPU.
 
 ### rootfiles gpu revoke
 
+Revoke GPU allocation from a user.
 `sudo rootfiles gpu revoke <USERNAME>`. Mutating. Refuses a tenant's entry; use `tenant gpu`.
 
 ### rootfiles gpu status
 
+Show GPU status with allocation info.
 Show each GPU with its owner.
 
 ### rootfiles rollback
 
+Restore files changed by an earlier run.
 `rootfiles rollback [BACKUP_ID]`. Without an id, list backup sessions. With an id, restore the files that run saved and remove the files it created; `--dry-run` shows the plan, `--yes` skips the confirmation. Restoring needs root and the lock. Packages, accounts and services are not reverted ([operations.md](operations.md#file-backups-and-rollback)).
 
 ### rootfiles schedule
 
+Install check and doctor report timers.
 Systemd timer that writes `check` and `doctor` reports into the state directory ([operations.md](operations.md#scheduled-reports)). It changes nothing else.
 
 ### rootfiles schedule disable
 
+Stop and remove the report timer.
 Stop the timer and remove `rootfiles-check.timer` and `rootfiles-check.service`. Mutating.
 
 ### rootfiles schedule enable
 
+Install and start the report timer.
 Install and start the timer; when no report exists yet, also run the first report. Mutating.
 
 | Flag | Default | Purpose |
@@ -460,14 +501,17 @@ Install and start the timer; when no report exists yet, also run the first repor
 
 ### rootfiles schedule status
 
+Show the report timer state and the age of its reports.
 Show whether the units are installed, the timer's enabled and active state, its OnCalendar expression and the age of `check.json` and `doctor.json`. A report older than 48 hours is marked stale. Read-only; exit 0.
 
 ### rootfiles shutdown
 
+Schedule a poweroff or reboot with advance notice.
 Schedule one poweroff or reboot at an absolute UTC instant, with advance notice to host sessions and tenant containers ([specs/shutdown.md](specs/shutdown.md)). `schedule`, `cancel` and the internal `notify` are mutating: they need root and the lock. Only one schedule exists per host.
 
 ### rootfiles shutdown schedule
 
+Schedule the poweroff or reboot.
 `sudo rootfiles shutdown schedule --at 2026-11-21T18:00:00+09:00`. Writes `rootfiles-shutdown.service`, `rootfiles-shutdown.timer`, one notice timer pair per future lead time and `/var/lib/rootfiles/shutdown.json`.
 
 | Flag | Default | Purpose |
@@ -483,16 +527,19 @@ The timer sets `OnCalendar` to the UTC instant, `Persistent=false` so a host tha
 
 ### rootfiles shutdown cancel
 
+Remove the schedule, the units and any tenant login block.
 Remove the units, the state file and any `/run/nologin` this schedule wrote, then announce the cancellation to host sessions and tenant containers. Running it again is a no-op. A timer that will not stop or a unit that will not be removed is an error, not a warning: the state file stays so the schedule remains on record. It is also the recovery for a state file that cannot be read, which it removes by name. Mutating.
 
 ### rootfiles shutdown status
 
+Show the schedule, next notice and tenant login block.
 Show the schedule, the instant in UTC and host local time, the time left, the notice instants and whether logins are blocked. Read-only; exit 0, including when nothing is scheduled. An instant that has already passed is not a schedule, so it is not reported. `-o`/`--output` takes `text` or `json`, and `--json` is its alias; the JSON report holds `scheduled_shutdown`, `next_notice`, `logins_blocked` (true if any checked tenant is blocked, false if none are blocked, null when inspection is incomplete), `tenant_logins` (checked, blocked and unknown counts), `legacy_host_block`, `units_installed` and, when the state file cannot be read, `scheduled_shutdown_error`.
 
 `rootfiles status -o json` also carries a `scheduled_shutdown` object, but only when a schedule exists; an unreadable state file appears as `scheduled_shutdown_error` so a fleet pre-flight never reads silence as "nothing scheduled".
 
 ### rootfiles status
 
+Show full system status at a glance.
 On non-Linux controllers, `--inventory` selects the local fleet inventory; `--json` includes `mode: "controller"`, inventory counts and latest fleet run per host.
 
 Read-only overview: system, profile, last apply, module satisfaction, GPU allocations, tunnel and users.
@@ -507,10 +554,12 @@ Exit code 0 for the overview, including reported findings; 2 for argument/flag p
 
 ### rootfiles tenant
 
+Manage long-lived tenant containers.
 Long-lived tenant containers ([tenant.md](tenant.md)). Every subcommand except `ops` reads `--profile`, `--config` and `--home-base` to find the tenant specs. Not supported on Rocky Linux.
 
 ### rootfiles tenant apply
 
+Converge a tenant to its spec.
 `rootfiles tenant apply [TENANT]`. Converge a tenant to its spec; recreates the container when the image, GPUs or ports changed. Mutating.
 
 | Flag | Default | Purpose |
@@ -519,6 +568,7 @@ Long-lived tenant containers ([tenant.md](tenant.md)). Every subcommand except `
 
 ### rootfiles tenant create
 
+Create a tenant: volume, container and temporary passwords.
 `rootfiles tenant create <TENANT>`. Write the spec, create the volume, start the container and print a temporary password per account. Mutating.
 
 | Flag | Default | Purpose |
@@ -538,6 +588,7 @@ Long-lived tenant containers ([tenant.md](tenant.md)). Every subcommand except `
 
 ### rootfiles tenant cpuset
 
+Pin tenant CPUs and NUMA memory.
 `rootfiles tenant cpuset <TENANT> --cpus 0-3 --mems 0`. Save CPU/NUMA pinning and update the existing running or stopped container in place, without restarting. Mutating.
 
 | Flag | Default | Purpose |
@@ -550,6 +601,7 @@ Absent or empty spec keys are unmanaged, so hand-set pins stay untouched. Other 
 
 ### rootfiles tenant gpu
 
+Change a tenant's GPUs (recreates the container).
 `rootfiles tenant gpu <TENANT> --gpus 0,1`. Change a tenant's GPUs and recreate the container. Mutating.
 
 | Flag | Default | Purpose |
@@ -558,10 +610,12 @@ Absent or empty spec keys are unmanaged, so hand-set pins stay untouched. Other 
 
 ### rootfiles tenant image
 
+Change a tenant's image (recreates the container).
 `rootfiles tenant image <TENANT> <IMAGE>`. Change the image and recreate the container. Mutating.
 
 ### rootfiles tenant import
 
+Adopt an existing container as a tenant.
 `rootfiles tenant import <TENANT> --from <CONTAINER> --size <SIZE>`. Move a hand-made container under rootfiles; the old container is kept stopped. Mutating.
 
 | Flag | Default | Purpose |
@@ -575,10 +629,12 @@ Absent or empty spec keys are unmanaged, so hand-set pins stay untouched. Other 
 
 ### rootfiles tenant list
 
+List tenant names.
 Print the tenant names.
 
 ### rootfiles tenant logs
 
+Show the container log.
 `rootfiles tenant logs <TENANT>`. Show the container log.
 
 | Flag | Default | Purpose |
@@ -587,34 +643,42 @@ Print the tenant names.
 
 ### rootfiles tenant ops
 
+Run tenant operator actions (sudo).
 `sudo rootfiles tenant ops <TENANT> <ACTION> [USER]` with `ACTION` one of `status`, `logs`, `gpu-heal`, `restart` or `reset USER`. For members of the tenant operator group listed in the spec's `operators`. It takes no flags, ignores `ROOTFILES_*` variables, reads only the applied host config, and audits every attempt, refused ones included.
 
 ### rootfiles tenant passwd
 
+Issue a temporary password for a tenant user.
 `rootfiles tenant passwd <TENANT> <USER>`. Issue a temporary password that must be changed at first login. Alias: `tenant reset`. Mutating.
 
 ### rootfiles tenant port
 
+Change a tenant's SSH host port (recreates the container).
 `rootfiles tenant port <TENANT> <SSH_PORT>`. Change the SSH host port and recreate the container. Mutating.
 
 ### rootfiles tenant restart
 
+Restart a tenant container.
 `rootfiles tenant restart <TENANT>`. Restart the container; it is kept. Mutating.
 
 ### rootfiles tenant status
 
+Show tenant containers, spec drift and volume use.
 `rootfiles tenant status [TENANT]`. Show state, spec drift and volume use; with a name also the writable-layer size.
 
 ### rootfiles tenant sync
 
+Refresh tenant password hashes and sshpiper keys.
 Save the password hashes and refresh the sshpiper keys of every tenant. Run by a 2-minute timer; needs root but not the global lock.
 
 ### rootfiles tenant user
 
+Manage tenant accounts.
 Tenant accounts.
 
 ### rootfiles tenant user add
 
+Add an account and issue its temporary password.
 `rootfiles tenant user add <TENANT> <NAME>`. Add an account to a running tenant and print its temporary password. Mutating.
 
 | Flag | Default | Purpose |
@@ -625,10 +689,12 @@ Tenant accounts.
 
 ### rootfiles tenant volume
 
+Manage tenant volumes.
 Tenant volumes.
 
 ### rootfiles tenant volume resize
 
+Grow a volume, or shrink it offline.
 `rootfiles tenant volume resize <TENANT> <SIZE>`. Grow a volume online, or shrink an ext4 volume. Mutating.
 
 | Flag | Default | Purpose |
@@ -637,14 +703,17 @@ Tenant volumes.
 
 ### rootfiles tunnel
 
+Manage cloudflared tunnel and VLAN private network.
 Cloudflare tunnel and its private network address ([tunnel.md](tunnel.md)). Not supported on Rocky Linux for changes.
 
 ### rootfiles tunnel restart
 
+Restart cloudflared service.
 Restart `cloudflared.service`. Mutating.
 
 ### rootfiles tunnel setup
 
+Set up the tunnel, VLAN and cloudflared.
 `sudo rootfiles tunnel setup [TOKEN]`. Install the cloudflared binary, the tunnel service and the private network address. Alias: `tunnel install`. Mutating.
 
 - Token: the argument, else `--tunnel-token`, else `ROOTFILES_TUNNEL_TOKEN`, else the config (`tunnel_token` or `tunnel_token_file`). Without a token only the binary and a configured address are managed.
@@ -653,14 +722,17 @@ Restart `cloudflared.service`. Mutating.
 
 ### rootfiles tunnel status
 
+Show tunnel service and VLAN status.
 Show the tunnel service and private network state. Read-only.
 
 ### rootfiles tunnel uninstall
 
+Remove tunnel service, VLAN, and binary.
 Remove the tunnel service, the private network interface and the binary. Mutating.
 
 ### rootfiles tunnel update
 
+Upgrade cloudflared binary to latest (or a pinned version).
 Replace the cloudflared binary with the latest upstream release, or a pinned one, and restart the service when it exists. Mutating.
 
 | Flag | Default | Purpose |
@@ -672,6 +744,7 @@ Exit codes with `--check`: 0 current, 2 an update is available or cloudflared is
 
 ### rootfiles update
 
+Update rootfiles to the latest release.
 Replace this binary with the latest GitHub release, or a pinned one, after verifying its SHA-256 checksum; then run `check` and print an `Apply pending` hint when the new release plans changes. Linux only. Alias: `rootfiles upgrade`. Mutating.
 
 | Flag | Default | Purpose |
@@ -683,10 +756,12 @@ Replace this binary with the latest GitHub release, or a pinned one, after verif
 
 ### rootfiles user
 
+Manage system users (custom home, backup, restore).
 Accounts and the home base ([users.md](users.md)). Every subcommand reads `--profile`, `--config` and `--home-base`.
 
 ### rootfiles user add
 
+Create a user with custom home directory.
 `sudo rootfiles user add [USERNAME]`. Create an account under the home base. Mutating.
 
 | Flag | Default | Purpose |
@@ -699,10 +774,12 @@ Accounts and the home base ([users.md](users.md)). Every subcommand reads `--pro
 
 ### rootfiles user audit
 
+Compare users.json metadata with the accounts on this system.
 Compare `users.json` with the accounts on the host. Exit 2 on drift.
 
 ### rootfiles user backup
 
+Backup user list and metadata to JSON.
 Write the users database, merged with the accounts found on the host, to a JSON file.
 
 | Flag | Default | Purpose |
@@ -713,6 +790,7 @@ Write the users database, merged with the accounts found on the host, to a JSON 
 
 ### rootfiles user del
 
+Delete a user (home kept by default).
 `sudo rootfiles user del <USERNAME>`. Remove the account, its sudoers drop-in, GPU allocation and database entry. The home is kept by default. Mutating.
 
 | Flag | Default | Purpose |
@@ -722,14 +800,17 @@ Write the users database, merged with the accounts found on the host, to a JSON 
 
 ### rootfiles user du
 
+Show home directory disk usage per user (largest first).
 Show home directory usage per user, largest first.
 
 ### rootfiles user expire
 
+Set or clear the account expiry date.
 `sudo rootfiles user expire <USERNAME> <YYYY-MM-DD|never>`. Set or clear the account expiry date. Mutating.
 
 ### rootfiles user group-add
 
+Add a user to groups.
 `sudo rootfiles user group-add <USERNAME>`. Add the account to groups. Mutating.
 
 | Flag | Default | Purpose |
@@ -740,6 +821,7 @@ Show home directory usage per user, largest first.
 
 ### rootfiles user group-del
 
+Remove a user from groups.
 `sudo rootfiles user group-del <USERNAME>`. Remove the account from groups. Mutating.
 
 | Flag | Default | Purpose |
@@ -750,30 +832,37 @@ Show home directory usage per user, largest first.
 
 ### rootfiles user groups
 
+List groups (all groups or for a specific user).
 `rootfiles user groups [USERNAME]`. List all groups, or one user's groups.
 
 ### rootfiles user id
 
+Show UID, GID, and groups for a user.
 `rootfiles user id <USERNAME>`. Show UID, GID and groups.
 
 ### rootfiles user key
 
+Manage a user's SSH authorized keys.
 A user's SSH authorized keys.
 
 ### rootfiles user key add
 
+Add an authorized key.
 `sudo rootfiles user key add <USERNAME> <KEY>`. Mutating.
 
 ### rootfiles user key list
 
+List authorized keys (numbered).
 `rootfiles user key list <USERNAME>`. List the authorized keys, numbered.
 
 ### rootfiles user key rm
 
+Remove authorized key(s) by list index, key or comment.
 `sudo rootfiles user key rm <USERNAME> <INDEX|KEY|COMMENT>`. Remove keys by list index, key or comment. Mutating.
 
 ### rootfiles user list
 
+List managed users (or system users with --system).
 List managed users.
 
 | Flag | Default | Purpose |
@@ -783,10 +872,12 @@ List managed users.
 
 ### rootfiles user lock
 
+Block all logins (password and SSH key).
 `sudo rootfiles user lock <USERNAME>`. Block password and SSH key logins. Mutating.
 
 ### rootfiles user passwd
 
+Set passwords for users (batch).
 `sudo rootfiles user passwd [USERNAME...]`. Set passwords in batch. By default each user gets a random password, printed once. Passwords reach `chpasswd` on stdin. Mutating.
 
 | Flag | Default | Purpose |
@@ -800,22 +891,27 @@ List managed users.
 
 ### rootfiles user quota
 
+Limit per-user disk usage on the home base.
 Per-user hard limits on the home base filesystem: XFS project quota or ext4 user quota.
 
 ### rootfiles user quota rm
 
+Remove a user's limit.
 `sudo rootfiles user quota rm <USERNAME>`. Remove a user's limit. Mutating.
 
 ### rootfiles user quota set
 
+Set a hard quota, e.g. 500G.
 `sudo rootfiles user quota set <USERNAME> <SIZE>`, such as `500G`. The limit is recorded and applied again by `user restore`. Mutating.
 
 ### rootfiles user quota show
 
 Show the quota report.
+Show the quota report.
 
 ### rootfiles user rehome
 
+Move user home to custom home base directory.
 `sudo rootfiles user rehome <USERNAME>`. Copy the home to `<home_base>/<user>`, verify the copy, switch the account and leave a symlink at the old path. Mutating.
 
 | Flag | Default | Purpose |
@@ -824,8 +920,10 @@ Show the quota report.
 
 ### rootfiles user restore
 
+Restore users from backup (reconnect existing home dirs).
 `sudo rootfiles user restore [BACKUP_FILE]`. Recreate accounts from a `user backup` file, or from `<home_base>/.rootfiles/users.json`, reconnecting surviving homes. Mutating.
 
 ### rootfiles user unlock
 
+Re-enable logins for a locked user.
 `sudo rootfiles user unlock <USERNAME>`. Re-enable logins. Mutating.
