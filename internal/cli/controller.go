@@ -39,9 +39,12 @@ type controllerSnapshot struct {
 
 func controllerPaths(cmd *cobra.Command) (string, string) {
 	inventory, _ := cmd.Flags().GetString("inventory")
-	if !cmd.Flags().Changed("inventory") {
-		// An explicitly empty --inventory stays empty, so the report names the
-		// failure instead of silently reporting the per-user file.
+	if inventory == "" {
+		// The controller report keeps reading the per-user file for an empty
+		// value, as it did before the flag carried no default: it names the
+		// inventory it used instead of failing on a path nobody chose. The
+		// fleet inventory load is where an explicit empty path is refused,
+		// because there a mutation could replace the default file.
 		inventory = defaultFleetInventory()
 	}
 	state := os.Getenv("XDG_STATE_HOME")

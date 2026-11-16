@@ -85,6 +85,37 @@ func TestControllerDoctorMissingInventoryAndIdentity(t *testing.T) {
 	}
 }
 
+// TestControllerExplicitEmptyInventoryKeepsTheDefault pins the controller half
+// of --inventory carrying no default: an empty value reports the per-user
+// inventory and succeeds, exactly as an omitted flag does, so the audit changed
+// the page and not this report's target or exit code.
+func TestControllerExplicitEmptyInventoryKeepsTheDefault(t *testing.T) {
+	home, _ := controllerFixture(t)
+	perUser := filepath.Join(home, ".config", "rootfiles", "fleet.yaml")
+	if err := os.MkdirAll(filepath.Dir(perUser), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(perUser, []byte("hosts:\n  peruser:\n    ssh: peruser\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"status", "--json"}, `"inventory": "` + perUser + `"`},
+		{[]string{"status", "--json", "--inventory", ""}, `"inventory": "` + perUser + `"`},
+		{[]string{"doctor", "--json", "--inventory", ""}, `"detail": "1 hosts, 0 groups"`},
+	} {
+		out, err := runControllerTest(t, tc.args...)
+		if err != nil {
+			t.Fatalf("%v: %v", tc.args, err)
+		}
+		if !strings.Contains(out, tc.want) {
+			t.Fatalf("%v reported %s, want %s", tc.args, out, tc.want)
+		}
+	}
+}
+
 func TestControllerIdentityFileAndUnsafeInventory(t *testing.T) {
 	home, inventory := controllerFixture(t)
 	key := filepath.Join(home, "id_fixture")
