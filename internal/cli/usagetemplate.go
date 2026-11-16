@@ -14,6 +14,10 @@ const helpWidth = 80
 // wrapped at helpWidth, so a detailed default is not a line a reader has to
 // scroll sideways; and the command-group branch is dropped, because no command
 // here calls AddGroup.
+//
+// The footer names `help` from the root, which is where cobra registers it: a
+// nested page that said `<command path> help <command>` named a subcommand no
+// parent has, and resolving it failed with "unknown command".
 var usageTemplate = fmt.Sprintf(`Usage:{{if .Runnable}}
   {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
   {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
@@ -36,5 +40,5 @@ Global Flags:
 Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
   {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
 
-Run "{{.CommandPath}} help <command>" for details.{{end}}
+Run "{{.Root.CommandPath}} help <command>" for details.{{end}}
 `, helpWidth, helpWidth)
