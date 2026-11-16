@@ -10,8 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/tenant"
 )
 
 // captureReports renders every report the inventory marks measured - colour
@@ -135,6 +138,8 @@ var reportCaptures = map[string]struct {
 	"rootfiles gpu mig status":        {setup: stubMIGStatus},
 	"rootfiles user audit":            {setup: stubUserAudit},
 	"rootfiles user key list":         {args: []string{"alice"}, setup: stubKeyList},
+	"rootfiles tenant list":           {setup: stubTenantReports},
+	"rootfiles tenant status":         {setup: stubTenantReports},
 	"rootfiles update":                {args: []string{"--check", "--version", "v0.0.1-fixture"}},
 }
 
@@ -300,6 +305,29 @@ func stubKeyList(t *testing.T, _ string) {
 		return []module.AuthorizedKey{
 			{Blob: "AAAAC3NzaC1lZDI1NTE5AAAAIFixtureKeyMaterialForTheGolden", Comment: "alice@laptop"},
 			{Blob: "AAAAB3NzaC1yc2EAAAADAQABAAABAQFixtureKeyMaterial"},
+		}, nil
+	}
+}
+
+// stubTenantReports answers the tenant seams: no root-owned data root, no
+// container runtime, two specs and the report rows they produce.
+func stubTenantReports(t *testing.T, _ string) {
+	t.Helper()
+	previousEnv, previousList, previousStatus := tenantReportEnv, tenantSpecLister, tenantStatusCollector
+	t.Cleanup(func() {
+		tenantReportEnv, tenantSpecLister, tenantStatusCollector = previousEnv, previousList, previousStatus
+	})
+	tenantReportEnv = func(*cobra.Command) (*module.RunContext, *tenant.Manager, error) {
+		return nil, &tenant.Manager{}, nil
+	}
+	tenantSpecLister = func(string) ([]string, error) { return []string{"lab", "ml"}, nil }
+	tenantStatusCollector = func(*tenant.Manager, context.Context, []string, bool) (*tenant.StatusReport, error) {
+		return &tenant.StatusReport{
+			Rows: []tenant.StatusRow{
+				{Tenant: "lab", State: "running", SSHPort: 2201, GPUs: "0,1", Spec: "current", Volume: "12G/200G 6%", Image: "ubuntu:24.04"},
+				{Tenant: "ml", State: "missing", SSHPort: 2202, GPUs: "-", Spec: "current", Volume: "unmounted/100G", Image: "ubuntu:24.04"},
+			},
+			Commitment: "volumes commit 300G, 12G allocated, 1.2T free on /srv/tenants",
 		}, nil
 	}
 }

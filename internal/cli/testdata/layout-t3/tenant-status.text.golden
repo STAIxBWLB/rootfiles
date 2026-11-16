@@ -1,0 +1,7 @@
+ rootfiles tenant status
+
+▸ Tenants
+  TENANT  STATE    SSH   GPUS  SPEC     VOLUME          IMAGE
+  lab     running  2201  0,1   current  12G/200G 6%     ubuntu:24.04
+  ml      missing  2202  -     current  unmounted/100G  ubuntu:24.04
+  ✓  volumes commit 300G, 12G allocated, 1.2T free on /srv/tenants

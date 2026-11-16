@@ -634,14 +634,38 @@ func freeSpace(path string) uint64 {
 	}
 }
 
-// Status prints one line per tenant and the volume commitment.
-func (m *Manager) Status(ctx context.Context, names []string, detail bool) error {
+// StatusRow is one tenant in the status report. Detail lines carry what only
+// the detail view shows, already formatted: routes, the cpuset pin, a writable
+// layer without a quota and a kept rollback container.
+type StatusRow struct {
+	Tenant  string
+	State   string
+	SSHPort int
+	GPUs    string
+	Spec    string
+	Volume  string
+	Image   string
+	Detail  []string
+	Error   string
+}
+
+// StatusReport is what `rootfiles tenant status` reports: one row per tenant
+// and, when any spec loaded, the volume commitment of the whole set.
+type StatusReport struct {
+	Rows          []StatusRow
+	Commitment    string
+	Overcommitted bool
+}
+
+// CollectStatus reads the tenant specs, their containers and their volume use,
+// so the command renders the report from data instead of printing it here.
+func (m *Manager) CollectStatus(ctx context.Context, names []string, detail bool) (*StatusReport, error) {
+	report := &StatusReport{}
 	var specs []*Spec
-	fmt.Fprintf(m.Out, "%-14s %-9s %-7s %-6s %-8s %-19s %s\n", "TENANT", "STATE", "SSH", "GPUS", "SPEC", "VOLUME", "IMAGE")
 	for _, n := range names {
 		s, err := m.Load(n)
 		if err != nil {
-			fmt.Fprintf(m.Out, "%-14s error: %v\n", n, err)
+			report.Rows = append(report.Rows, StatusRow{Tenant: n, Error: fmt.Sprintf("error: %v", err)})
 			continue
 		}
 		specs = append(specs, s)
@@ -667,38 +691,39 @@ func (m *Manager) Status(ctx context.Context, names []string, detail bool) error
 		if len(s.GPUs) > 0 {
 			gpus = intList(s.GPUs)
 		}
-		fmt.Fprintf(m.Out, "%-14s %-9s %-7d %-6s %-8s %-19s %s\n", n, state, s.SSHPort, gpus, drift, vol, s.Image)
-		for _, r := range m.Routes(s) {
-			fmt.Fprintf(m.Out, "  %s\n", r)
+		row := StatusRow{
+			Tenant: n, State: state, SSHPort: s.SSHPort, GPUs: gpus,
+			Spec: drift, Volume: vol, Image: s.Image,
 		}
+		row.Detail = append(row.Detail, m.Routes(s)...)
 		if detail {
 			pin := Cpuset{}
 			if s.Cpuset != nil {
 				pin = *s.Cpuset
 			}
-			m.printf("  cpuset spec: cpus=%s mems=%s (empty keys are unmanaged)\n", orDefault(pin.CPUs, "unmanaged"), orDefault(pin.Mems, "unmanaged"))
+			row.Detail = append(row.Detail, fmt.Sprintf("cpuset spec: cpus=%s mems=%s (empty keys are unmanaged)",
+				orDefault(pin.CPUs, "unmanaged"), orDefault(pin.Mems, "unmanaged")))
 			if st.Exists {
-				m.printf("  cpuset container: cpus=%q mems=%q\n", st.Cpuset.CPUs, st.Cpuset.Mems)
+				row.Detail = append(row.Detail, fmt.Sprintf("cpuset container: cpus=%q mems=%q", st.Cpuset.CPUs, st.Cpuset.Mems))
 			}
 		}
 		if detail && st.Exists {
 			if size := m.writableSize(ctx, ContainerName(n)); size != "" {
-				fmt.Fprintf(m.Out, "  writable layer: %s (no quota; keep data in /data, /home or /tmp)\n", size)
+				row.Detail = append(row.Detail, fmt.Sprintf("writable layer: %s (no quota; keep data in /data, /home or /tmp)", size))
 			}
 			if m.inspect(ctx, ContainerName(n)+"-prev").Exists {
-				fmt.Fprintf(m.Out, "  previous container %s-prev is kept for rollback\n", ContainerName(n))
+				row.Detail = append(row.Detail, fmt.Sprintf("previous container %s-prev is kept for rollback", ContainerName(n)))
 			}
 		}
+		report.Rows = append(report.Rows, row)
 	}
 	if len(specs) > 0 {
 		c := m.commitment(specs)
-		mark := ui.MarkOK
-		if c.Overcommitted() {
-			mark = ui.MarkWarn + " overcommitted:"
-		}
-		fmt.Fprintf(m.Out, "%s volumes commit %s, %s allocated, %s free on %s\n", mark, human(c.Committed), human(c.Allocated), human(c.Free), m.Root)
+		report.Commitment = fmt.Sprintf("volumes commit %s, %s allocated, %s free on %s",
+			human(c.Committed), human(c.Allocated), human(c.Free), m.Root)
+		report.Overcommitted = c.Overcommitted()
 	}
-	return nil
+	return report, nil
 }
 
 func pct(a, b uint64) uint64 {

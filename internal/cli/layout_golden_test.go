@@ -154,6 +154,8 @@ func layoutCases() []layoutCase {
 		{name: "user-key-list", render: layoutCaptured("rootfiles user key list")},
 		{name: "shutdown-status", render: layoutCaptured("rootfiles shutdown status")},
 		{name: "tunnel-status", render: layoutCaptured("rootfiles tunnel status")},
+		{name: "tenant-list", render: layoutCaptured("rootfiles tenant list")},
+		{name: "tenant-status", render: layoutCaptured("rootfiles tenant status")},
 		{name: "update-check", render: layoutCaptured("rootfiles update")},
 	}
 }

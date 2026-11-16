@@ -62,9 +62,10 @@ var ReportInventory = []ReportFacts{
 	{Command: "rootfiles shutdown status", File: "shutdown.go", Seam: "state directory fixture", State: ReportMeasured},
 	{Command: "rootfiles tunnel status", File: "tunnel.go", Seam: "statusContractFixture PATH stubs", State: ReportMeasured},
 	{Command: "rootfiles update", File: "upgrade.go", Seam: "--check --version fixture", State: ReportMeasured},
-	{Command: "rootfiles tenant list", File: "tenant.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles tenant status", File: "tenant.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles tenant logs", File: "tenant.go", Seam: "-", State: ReportOwed},
+	{Command: "rootfiles tenant list", File: "tenant.go", Seam: "tenantSpecLister fixture", State: ReportMeasured},
+	{Command: "rootfiles tenant status", File: "tenant.go", Seam: "tenantStatusCollector fixture", State: ReportMeasured},
+	// The container's own log stream is the payload `docker logs` writes.
+	{Command: "rootfiles tenant logs", File: "tenant.go", Seam: "docker logs payload", State: ReportRaw},
 	{Command: "rootfiles fleet status", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
 	{Command: "rootfiles fleet check", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
 	{Command: "rootfiles fleet doctor", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},

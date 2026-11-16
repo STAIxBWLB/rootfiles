@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -115,15 +116,25 @@ func newTenantListCmd() *cobra.Command {
 		Example: "  rootfiles tenant list",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, m, err := tenantEnv(cmd)
+			_, m, err := tenantReportEnv(cmd)
 			if err != nil {
 				return err
 			}
-			names, err := tenant.ListSpecs(m.SpecDir)
-			for _, n := range names {
-				ui.WriteLine(cmd.OutOrStdout(), n)
+			names, err := tenantSpecLister(m.SpecDir)
+			if err != nil {
+				return err
 			}
-			return err
+			out := cmd.OutOrStdout()
+			ui.WriteHeader(out, cmd.CommandPath())
+			ui.WriteSection(out, "Tenants")
+			if len(names) == 0 {
+				ui.WriteHint(out, "no tenant specs; run `rootfiles tenant create <TENANT>`")
+				return nil
+			}
+			for _, n := range names {
+				ui.WriteLine(out, "  "+n)
+			}
+			return nil
 		},
 	}
 }
@@ -135,19 +146,73 @@ func newTenantStatusCmd() *cobra.Command {
 		Example: "  rootfiles tenant status\n  rootfiles tenant status lab",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, m, err := tenantEnv(cmd)
+			_, m, err := tenantReportEnv(cmd)
 			if err != nil {
 				return err
 			}
 			names := args
 			if len(names) == 0 {
-				if names, err = tenant.ListSpecs(m.SpecDir); err != nil {
+				if names, err = tenantSpecLister(m.SpecDir); err != nil {
 					return err
 				}
 			}
-			return m.Status(cmd.Context(), names, len(args) == 1)
+			report, err := tenantStatusCollector(m, cmd.Context(), names, len(args) == 1)
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			ui.WriteHeader(out, cmd.CommandPath())
+			return renderTenantStatus(out, report)
 		},
 	}
+}
+
+// The tenant reports read a root-owned data root and a container runtime, so a
+// test replaces these three seams with fixture data and pins the layout without
+// either.
+var (
+	tenantReportEnv       = tenantEnv
+	tenantSpecLister      = tenant.ListSpecs
+	tenantStatusCollector = (*tenant.Manager).CollectStatus
+)
+
+// renderTenantStatus prints one row per tenant, the detail lines the report
+// carries, and the volume commitment last.
+func renderTenantStatus(out io.Writer, report *tenant.StatusReport) error {
+	ui.WriteSection(out, "Tenants")
+	if len(report.Rows) == 0 {
+		ui.WriteHint(out, "no tenant specs yet; run `rootfiles tenant create <TENANT>`")
+		return nil
+	}
+	rows := make([][]string, 0, len(report.Rows))
+	details := make([][]string, 0, len(report.Rows))
+	for _, row := range report.Rows {
+		if row.Error != "" {
+			rows = append(rows, []string{row.Tenant, "error", "-", "-", "-", "-", row.Error})
+			details = append(details, nil)
+			continue
+		}
+		rows = append(rows, []string{
+			row.Tenant, row.State, strconv.Itoa(row.SSHPort), row.GPUs, row.Spec, row.Volume, row.Image,
+		})
+		details = append(details, row.Detail)
+	}
+	if err := ui.WriteTable(out, []string{"TENANT", "STATE", "SSH", "GPUS", "SPEC", "VOLUME", "IMAGE"}, rows, 6); err != nil {
+		return err
+	}
+	for _, lines := range details {
+		for _, line := range lines {
+			ui.WriteHint(out, line)
+		}
+	}
+	if report.Commitment != "" {
+		marker := ui.OKMark()
+		if report.Overcommitted {
+			marker = ui.WarnMark()
+		}
+		ui.WriteBullet(out, marker, strings.TrimPrefix(report.Commitment, ui.MarkWarn+" overcommitted: "))
+	}
+	return nil
 }
 
 func newTenantCreateCmd() *cobra.Command {
@@ -629,7 +694,13 @@ Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 			ctx := cmd.Context()
 			switch action {
 			case "status":
-				err = m.Status(ctx, []string{t}, true)
+				report, err := tenantStatusCollector(m, ctx, []string{t}, true)
+				if err == nil {
+					err = renderTenantStatus(cmd.OutOrStdout(), report)
+				}
+				if err != nil {
+					return err
+				}
 			case "logs":
 				err = m.Logs(ctx, s, 200)
 			case "gpu-heal":

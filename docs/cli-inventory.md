@@ -193,9 +193,9 @@ its golden belong to the T3 output slice, so this page records the seam each one
 | `rootfiles shutdown status` | shutdown.go | state directory fixture | measured | - |
 | `rootfiles tunnel status` | tunnel.go | statusContractFixture PATH stubs | measured | - |
 | `rootfiles update` | upgrade.go | --check --version fixture | measured | - |
-| `rootfiles tenant list` | tenant.go | - | owed | - |
-| `rootfiles tenant status` | tenant.go | - | owed | - |
-| `rootfiles tenant logs` | tenant.go | - | owed | - |
+| `rootfiles tenant list` | tenant.go | tenantSpecLister fixture | measured | - |
+| `rootfiles tenant status` | tenant.go | tenantStatusCollector fixture | measured | - |
+| `rootfiles tenant logs` | tenant.go | docker logs payload | raw | - |
 | `rootfiles fleet status` | fleet.go | readFleetHost + inventory fixture | measured | - |
 | `rootfiles fleet check` | fleet.go | readFleetHost + inventory fixture | measured | - |
 | `rootfiles fleet doctor` | fleet.go | readFleetHost + inventory fixture | measured | - |
