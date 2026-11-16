@@ -1,0 +1,5 @@
+ rootfiles fleet status
+  HOST   STATE  SHUTDOWN                    REASON
+  gpu01  ok     2026-11-21T09:00Z poweroff  -
+  gpu02  ok     -                           -
+  web01  error  -                           rootfiles is not installed

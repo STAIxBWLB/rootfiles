@@ -68,12 +68,12 @@ only the binary and any configured VLAN are managed. "install" is an alias.`,
 				return err
 			}
 			for _, warning := range result.Warnings {
-				fmt.Fprintln(cmd.ErrOrStderr(), ui.MarkWarn+" "+warning)
+				ui.WriteWarning(cmd.ErrOrStderr(), warning, "")
 			}
 			if result.Changed {
-				fmt.Fprintln(cmd.OutOrStdout(), "Cloudflared setup complete.")
+				ui.WriteSuccess(cmd.OutOrStdout(), "cloudflared setup complete")
 			} else {
-				fmt.Fprintln(cmd.OutOrStdout(), "Cloudflared setup is already current.")
+				ui.WriteSuccess(cmd.OutOrStdout(), "cloudflared setup is already current")
 			}
 			return nil
 		},
@@ -88,6 +88,7 @@ only the binary and any configured VLAN are managed. "install" is an alias.`,
 			if err != nil {
 				return err
 			}
+			ui.WriteHeader(rc.Output(), cmd.CommandPath())
 			return module.TunnelStatus(cmd.Context(), rc)
 		},
 	})
@@ -188,7 +189,7 @@ func tunnelUpdateCheck(ctx context.Context, rc *module.RunContext) error {
 		ui.WriteHint(out, "run `sudo rootfiles tunnel setup` to install.")
 		return &ExitError{Code: exitDrift}
 	case normalizeVersion(current) == normalizeVersion(latest):
-		ui.WriteLine(out, "  "+ui.StyleSuccess.Render(ui.MarkOK+" up to date."))
+		ui.WriteBullet(out, ui.OKMark(), "up to date")
 	default:
 		ui.WriteHint(out, "run `sudo rootfiles tunnel update` to upgrade.")
 		return &ExitError{Code: exitDrift}

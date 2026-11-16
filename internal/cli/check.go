@@ -186,19 +186,19 @@ func renderCheckText(out io.Writer, profileName, configPath string, modules []mo
 		}
 		for _, c := range r.Changes {
 			if c.State == module.ChangeBlocked {
-				fmt.Fprintf(out, "        %s blocked: %s\n", ui.FailMark(), c.Description)
+				ui.WriteText(out, "    %s  blocked: %s\n", ui.FailMark(), c.Description)
 				continue
 			}
-			fmt.Fprintf(out, "        %s %s\n", ui.PendingMark(), c.Description)
+			ui.WriteText(out, "    %s  %s\n", ui.PendingMark(), c.Description)
 			if verbose && c.Command != "" {
-				fmt.Fprintf(out, "          %s\n", ui.StyleHint.Render("$ "+c.Command))
+				ui.WriteText(out, "      %s\n", ui.StyleHint.Render("$ "+c.Command))
 			}
 		}
 	}
 
-	fmt.Fprintln(out)
+	ui.WriteLine(out)
 	if satisfied == len(modules) {
-		fmt.Fprintln(out, "  "+ui.StyleSuccess.Render(ui.MarkOK+" all modules satisfied."))
+		ui.WriteText(out, "  %s all modules satisfied.\n", ui.StyleSuccess.Render(ui.MarkOK))
 	} else {
 		ui.WriteHint(out, "run 'rootfiles apply' to apply pending changes (exit code 2 = pending).")
 	}

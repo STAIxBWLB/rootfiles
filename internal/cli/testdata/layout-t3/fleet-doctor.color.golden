@@ -1,0 +1,6 @@
+[1;34m rootfiles fleet doctor[m
+  [34mHOST[m   [34mSTATE[m        [34mREASON[m
+  gpu01  ok           [90m-[m
+  gpu02  error        2 module(s) need apply
+  web01  unreachable  connect timed out
+[1;31m✗[m  1 failed  [1;33m⚠[m  1 unreachable  [1;32m✓[m  1 ok

@@ -346,12 +346,32 @@ type gpuSMIInfo struct {
 	Util     string
 }
 
-// ShowGPUStatus shows nvidia-smi output cross-referenced with allocations.
-func ShowGPUStatus(ctx context.Context, rc *RunContext) error {
+// GPUStatusRow is one device in the `gpu status` report. Restricted marks a
+// device this process cannot see through nvidia-smi (a cgroup restriction), so
+// its memory and utilization are unknown rather than zero.
+type GPUStatusRow struct {
+	Index      int
+	Model      string
+	MemUsed    string
+	MemTotal   string
+	Util       string
+	Assigned   string
+	Restricted bool
+}
+
+// GPUStatusReport is what `rootfiles gpu status` reports.
+type GPUStatusReport struct {
+	Rows []GPUStatusRow
+}
+
+// CollectGPUStatus reads the device count, nvidia-smi and the allocation
+// database, so the command renders the report from data instead of printing
+// from the collector.
+func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, error) {
 	WarnUntrustedMetadata(rc)
 	totalGPUs := countGPUDevices()
 	if totalGPUs == 0 {
-		return fmt.Errorf("no NVIDIA GPU devices found in /dev")
+		return nil, fmt.Errorf("no NVIDIA GPU devices found in /dev")
 	}
 
 	// Query nvidia-smi — may only see a subset due to cgroup restrictions.
@@ -382,7 +402,7 @@ func ShowGPUStatus(ctx context.Context, rc *RunContext) error {
 
 	db, err := loadGPUDB(rc)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Build assignment map
@@ -402,38 +422,25 @@ func ShowGPUStatus(ctx context.Context, rc *RunContext) error {
 		}
 	}
 
-	ui.WriteSection(rc.Output(), "GPU Status")
-	ui.WriteLine(rc.Output(), "  "+ui.StyleSection.Render(fmt.Sprintf("%-5s %-25s %-15s %-6s %s", "GPU", "MODEL", "MEMORY", "UTIL", "ASSIGNED TO")))
-	ui.WriteLine(rc.Output(), "  "+ui.StyleHint.Render(fmt.Sprintf("%-5s %-25s %-15s %-6s %s", "---", "-----", "------", "----", "-----------")))
-
+	report := &GPUStatusReport{Rows: make([]GPUStatusRow, 0, totalGPUs)}
 	for i := 0; i < totalGPUs; i++ {
-		assignedLabel := ui.StyleHint.Render("(unassigned)")
-		if u, ok := assignMap[i]; ok {
-			assignedLabel = ui.StyleValue.Render(u)
+		row := GPUStatusRow{Index: i, Model: defaultModel, Assigned: assignMap[i]}
+		if row.Model == "" {
+			row.Model = "NVIDIA GPU"
 		}
-
 		if info, ok := smiData[i]; ok {
-			name := info.Name
-			if len(name) > 24 {
-				name = name[:24]
-			}
-			ui.WriteText(rc.Output(), "  %-5d %-25s %5s/%-5s MB %4s%%  %s\n",
-				i, name, info.MemUsed, info.MemTotal, info.Util, assignedLabel)
+			row.Model = info.Name
+			row.MemUsed, row.MemTotal, row.Util = info.MemUsed, info.MemTotal, info.Util
 		} else {
-			// GPU exists but not visible to nvidia-smi (cgroup restricted)
-			name := defaultModel
-			if name == "" {
-				name = "NVIDIA GPU"
-			}
-			if len(name) > 24 {
-				name = name[:24]
-			}
-			ui.WriteText(rc.Output(), "  %-5d %-25s %s     ---   %s\n",
-				i, name, ui.StyleWarning.Render("(restricted)"), assignedLabel)
+			// The device exists but is not visible to nvidia-smi.
+			row.Restricted = true
 		}
+		if len(row.Model) > 24 {
+			row.Model = row.Model[:24]
+		}
+		report.Rows = append(report.Rows, row)
 	}
-
-	return nil
+	return report, nil
 }
 
 // dockerWrapperPath is overridable in tests, like the GPU env/cgroup directories.

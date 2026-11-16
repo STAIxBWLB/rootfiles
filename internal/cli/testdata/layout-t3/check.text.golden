@@ -1,0 +1,9 @@
+ rootfiles check
+  Config:         site.yaml
+
+▸ Modules (1/2 satisfied)
+  ✓  system          OK  0 change(s)
+  ~  packages        PENDING  1 change(s)
+    ~  Install 1 packages: [fixture-package]
+
+  run 'rootfiles apply' to apply pending changes (exit code 2 = pending).

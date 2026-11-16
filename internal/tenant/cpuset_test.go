@@ -288,25 +288,42 @@ func TestCpusetStatusShowsLiveDriftAndUnmanagedPins(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("CPUSET_INSPECT", "true|"+s.Digest()+"|always|2,3|0-1|1")
-	if err := m.Status(context.Background(), []string{"est"}, true); err != nil {
+	report, err := m.CollectStatus(context.Background(), []string{"est"}, true)
+	if err != nil {
 		t.Fatal(err)
 	}
+	text := tenantStatusText(report)
 	for _, want := range []string{"update", "cpuset spec: cpus=2-3 mems=unmanaged", `cpuset container: cpus="0-1" mems="1"`} {
-		if !strings.Contains(out.String(), want) {
-			t.Errorf("missing %s: %s", want, out)
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %s: %s", want, text)
 		}
 	}
-	out.Reset()
 	s.Cpuset = nil
 	if err := m.SaveSpec(s); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Status(context.Background(), []string{"est"}, true); err != nil {
+	report, err = m.CollectStatus(context.Background(), []string{"est"}, true)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "current") || !strings.Contains(out.String(), `cpus="0-1"`) {
-		t.Fatalf("unmanaged pin not visible/current: %s", out)
+	text = tenantStatusText(report)
+	if !strings.Contains(text, "current") || !strings.Contains(text, `cpus="0-1"`) {
+		t.Fatalf("unmanaged pin not visible/current: %s", text)
 	}
+	_ = out
+}
+
+// tenantStatusText flattens a collected status report into the words the test
+// looks for: the spec drift and the detail lines.
+func tenantStatusText(report *StatusReport) string {
+	var b strings.Builder
+	for _, row := range report.Rows {
+		b.WriteString(row.Tenant + " " + row.State + " " + row.Spec + "\n")
+		for _, line := range row.Detail {
+			b.WriteString(line + "\n")
+		}
+	}
+	return b.String()
 }
 
 func TestImportCarriesCpuset(t *testing.T) {

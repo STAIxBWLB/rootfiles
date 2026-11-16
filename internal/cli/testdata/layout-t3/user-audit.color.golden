@@ -1,0 +1,9 @@
+[1;34m rootfiles user audit[m
+
+[1;35m▸ Users[m
+  [1;33m⚠[m  alice            in users.json but not on this system (rootfiles user
+     restore)
+  [1;33m⚠[m  bob              uid 1002 on system, 1042 in users.json (file ownership may
+     be wrong)
+  [1;33m⚠[m  carol            account under home_base not tracked in users.json
+[1;33m⚠[m  3 findings

@@ -1,0 +1,14 @@
+[1;34m rootfiles status[m
+
+[1;35m▸ Controller[m
+  [34mMode:         [m  controller
+  [34mVersion:      [m  v0.21.0
+  [34mPlatform:     [m  darwin
+  [34mInventory:    [m  /Users/operator/.config/rootfiles/fleet.yaml
+  [34mHosts:        [m  3
+  [34mGroups:       [m  2
+
+[1;35m▸ Recent fleet runs[m
+  [34mHOST[m   [34mTIME[m                  [34mOPERATION[m        [34mSTATE[m
+  gpu01  2026-11-15T04:30:00Z  update           ok
+  gpu02  2026-11-14T22:05:00Z  apply --dry-run  dry-run

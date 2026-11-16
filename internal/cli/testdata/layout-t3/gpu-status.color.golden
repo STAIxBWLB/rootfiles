@@ -1,0 +1,9 @@
+[1;34m rootfiles gpu status[m
+
+[1;35m▸ GPU Status[m
+  [34mGPU[m  [34mMODEL[m                                    [34mMEMORY[m         [34mUTIL[m  [34mASSIGNED TO[m
+  0    NVIDIA A100-SXM4-40GB                    1024/40960 MB  12%   alice
+  1    NVIDIA A100-SXM4-40GB                    [90m-[m              [90m-[m     [90m-[m
+  2    NVIDIA A100-SXM4-40GB                    0/40960 MB     0%    bob
+  [90m1 of 3 devices are not visible through nvidia-smi (cgroup restriction); their
+  memory and utilization are unknown[m

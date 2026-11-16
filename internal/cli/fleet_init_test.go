@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,5 +142,41 @@ func TestFleetOnboardingHelpWidth(t *testing.T) {
 				t.Errorf("%s help exceeds 80 columns (%d): %s", name, len(line), line)
 			}
 		}
+	}
+}
+
+// closedStdout stands in for a pipe the reader closed: every write fails.
+type closedStdout struct{}
+
+func (closedStdout) Write([]byte) (int, error) { return 0, errors.New("fixture: stdout closed") }
+
+// TestFleetInitReportsASuccessWriteFailure keeps the exit code honest when the
+// inventory is created but its confirmation cannot be printed: `fleet init`'s
+// only stdout is that line, so a failed write is the command's error, not 0.
+func TestFleetInitReportsASuccessWriteFailure(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+	path := filepath.Join(home, ".config", "rootfiles", "fleet.yaml")
+	if _, _, err := runFleetOnboarding(t, "init"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"init", "--inventory", filepath.Join(home, "created.yaml")},
+		{"init", "--overwrite"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			cmd := NewRootCmd("test", "test")
+			cmd.SetOut(closedStdout{})
+			cmd.SetErr(io.Discard)
+			cmd.SetArgs(append([]string{"fleet"}, args...))
+			err := cmd.Execute()
+			if err == nil || !strings.Contains(err.Error(), "stdout closed") {
+				t.Fatalf("a failed confirmation write returned %v, want the write error", err)
+			}
+		})
 	}
 }

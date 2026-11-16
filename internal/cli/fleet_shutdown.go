@@ -13,6 +13,7 @@ import (
 
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/STAIxBWLB/rootfiles/internal/shutdown"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // Fleet-wide shutdown: one absolute UTC instant for every selected host, with
@@ -399,8 +400,9 @@ func reportShutdownRollback(c *cobra.Command, results []fleet.Result) {
 	if len(failed) == 0 {
 		return
 	}
-	fmt.Fprintf(c.ErrOrStderr(), "%d host(s) may still have a schedule armed; cancel them with:\n  %s\n",
-		len(failed), fleetCancelRerun(c, failed))
+	ui.WriteWarning(c.ErrOrStderr(),
+		fmt.Sprintf("%d host(s) may still have a schedule armed", len(failed)),
+		fleetCancelRerun(c, failed))
 }
 
 // fleetCancelRerun is the command an operator can paste to clean up hosts whose
@@ -453,7 +455,11 @@ func newFleetShutdownStatusCmd() *cobra.Command {
 				return err
 			}
 			format, _ := outputFormat(c)
-			if err := writeFleetStatusResults(c.OutOrStdout(), results, format); err != nil {
+			out := c.OutOrStdout()
+			if format == "text" {
+				ui.WriteHeader(out, c.CommandPath())
+			}
+			if err := writeFleetStatusResults(out, results, format); err != nil {
 				return err
 			}
 			if !allOK(results) {

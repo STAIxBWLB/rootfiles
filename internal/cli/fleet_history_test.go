@@ -191,8 +191,8 @@ func TestFleetLogMissingAndCorruptLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing log returned an error: %v", err)
 	}
-	if out != "" || errOut != "" {
-		t.Fatalf("missing log printed %q / %q, want nothing", out, errOut)
+	if out != " rootfiles fleet log\n  no recorded rollouts\n" || errOut != "" {
+		t.Fatalf("missing log printed %q / %q, want a header and one empty-log hint", out, errOut)
 	}
 
 	dir := filepath.Join(state, "rootfiles")

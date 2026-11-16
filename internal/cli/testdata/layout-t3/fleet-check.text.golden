@@ -1,0 +1,6 @@
+ rootfiles fleet check
+  HOST   STATE        REASON
+  gpu01  ok           -
+  gpu02  error        2 module(s) need apply
+  web01  unreachable  connect timed out
+✗  1 failed  ⚠  1 unreachable  ✓  1 ok

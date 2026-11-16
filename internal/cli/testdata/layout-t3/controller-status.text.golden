@@ -1,0 +1,14 @@
+ rootfiles status
+
+▸ Controller
+  Mode:           controller
+  Version:        v0.21.0
+  Platform:       darwin
+  Inventory:      /Users/operator/.config/rootfiles/fleet.yaml
+  Hosts:          3
+  Groups:         2
+
+▸ Recent fleet runs
+  HOST   TIME                  OPERATION        STATE
+  gpu01  2026-11-15T04:30:00Z  update           ok
+  gpu02  2026-11-14T22:05:00Z  apply --dry-run  dry-run

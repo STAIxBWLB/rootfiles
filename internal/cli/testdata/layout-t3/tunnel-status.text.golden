@@ -1,0 +1,6 @@
+ rootfiles tunnel status
+
+▸ Tunnel
+  Binary:         not installed
+  Service:        active
+  VLAN (fixture0):  up (no inet)

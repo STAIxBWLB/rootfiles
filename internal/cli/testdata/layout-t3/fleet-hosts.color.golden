@@ -1,0 +1,5 @@
+[1;34m rootfiles fleet hosts[m
+  [34mHOST[m   [34mGROUPS[m  [34mSSH[m    [34mSUDO[m      [34mCONFIG[m
+  gpu01  gpu     gpu01  nopasswd  profiles/dgx.yaml
+  gpu02  gpu     gpu02  nopasswd  profiles/dgx.yaml
+  web01  edge    web01  nopasswd  [90m-[m

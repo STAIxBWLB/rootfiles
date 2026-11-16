@@ -1,0 +1,5 @@
+[1;34m rootfiles fleet shutdown status[m
+  [34mHOST[m   [34mSTATE[m  [34mSHUTDOWN[m                    [34mREASON[m
+  gpu01  ok     2026-11-21T09:00Z poweroff  [90m-[m
+  gpu02  ok     [90m-[m                           [90m-[m
+  web01  error  [90m-[m                           rootfiles is not installed

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -74,7 +75,7 @@ func recordTenant(cmd *cobra.Command, t, action string, err error) {
 		result = "error: " + strings.SplitN(err.Error(), "\n", 2)[0]
 	}
 	if aerr := tenant.Audit(actor, t, action, result); aerr != nil {
-		ui.WriteText(cmd.ErrOrStderr(), ui.MarkWarn+" tenant audit log: %v\n", aerr)
+		ui.WriteWarning(cmd.ErrOrStderr(), "tenant audit log: "+aerr.Error(), "")
 	}
 }
 
@@ -101,10 +102,10 @@ func issuePassword(ctx context.Context, cmd *cobra.Command, m *tenant.Manager, s
 		return err
 	}
 	if pw == "" {
-		fmt.Fprintf(cmd.OutOrStdout(), "[dry-run] would issue a temporary password for %s@%s\n", user, s.Name)
+		ui.WriteText(cmd.OutOrStdout(), "%s would issue a temporary password for %s@%s\n", ui.PendingMark(), user, s.Name)
 		return nil
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "Temporary password for %s@%s: %s (must be changed at first login; not stored or logged)\n", user, s.Name, pw)
+	ui.WriteText(cmd.OutOrStdout(), "Temporary password for %s@%s: %s (must be changed at first login; not stored or logged)\n", user, s.Name, pw)
 	return nil
 }
 
@@ -115,15 +116,25 @@ func newTenantListCmd() *cobra.Command {
 		Example: "  rootfiles tenant list",
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			_, m, err := tenantEnv(cmd)
+			_, m, err := tenantReportEnv(cmd)
 			if err != nil {
 				return err
 			}
-			names, err := tenant.ListSpecs(m.SpecDir)
-			for _, n := range names {
-				fmt.Fprintln(cmd.OutOrStdout(), n)
+			names, err := tenantSpecLister(m.SpecDir)
+			if err != nil {
+				return err
 			}
-			return err
+			out := cmd.OutOrStdout()
+			ui.WriteHeader(out, cmd.CommandPath())
+			ui.WriteSection(out, "Tenants")
+			if len(names) == 0 {
+				ui.WriteHint(out, "no tenant specs; run `rootfiles tenant create <TENANT>`")
+				return nil
+			}
+			for _, n := range names {
+				ui.WriteLine(out, "  "+n)
+			}
+			return nil
 		},
 	}
 }
@@ -135,19 +146,77 @@ func newTenantStatusCmd() *cobra.Command {
 		Example: "  rootfiles tenant status\n  rootfiles tenant status lab",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, m, err := tenantEnv(cmd)
+			_, m, err := tenantReportEnv(cmd)
 			if err != nil {
 				return err
 			}
 			names := args
 			if len(names) == 0 {
-				if names, err = tenant.ListSpecs(m.SpecDir); err != nil {
+				if names, err = tenantSpecLister(m.SpecDir); err != nil {
 					return err
 				}
 			}
-			return m.Status(cmd.Context(), names, len(args) == 1)
+			report, err := tenantStatusCollector(m, cmd.Context(), names, len(args) == 1)
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			ui.WriteHeader(out, cmd.CommandPath())
+			return renderTenantStatus(out, report)
 		},
 	}
+}
+
+// The tenant reports read a root-owned data root and a container runtime, so a
+// test replaces these three seams with fixture data and pins the layout without
+// either. tenantOpsEnv is the ops action's own seam: that path is audited rather
+// than rendered, and its test drives it without root or an applied config.
+var (
+	tenantReportEnv       = tenantEnv
+	tenantSpecLister      = tenant.ListSpecs
+	tenantStatusCollector = (*tenant.Manager).CollectStatus
+	tenantOpsEnv          = tenantEnv
+)
+
+// renderTenantStatus prints one row per tenant, the detail lines the report
+// carries, and the volume commitment last.
+func renderTenantStatus(out io.Writer, report *tenant.StatusReport) error {
+	ui.WriteSection(out, "Tenants")
+	if len(report.Rows) == 0 {
+		ui.WriteHint(out, "no tenant specs yet; run `rootfiles tenant create <TENANT>`")
+		return nil
+	}
+	rows := make([][]string, 0, len(report.Rows))
+	details := make([][]string, 0, len(report.Rows))
+	for _, row := range report.Rows {
+		if row.Error != "" {
+			rows = append(rows, []string{row.Tenant, "error", "-", "-", "-", "-", row.Error})
+			details = append(details, nil)
+			continue
+		}
+		rows = append(rows, []string{
+			row.Tenant, row.State, strconv.Itoa(row.SSHPort), row.GPUs, row.Spec, row.Volume, row.Image,
+		})
+		details = append(details, row.Detail)
+	}
+	if err := ui.WriteTable(out, []string{"TENANT", "STATE", "SSH", "GPUS", "SPEC", "VOLUME", "IMAGE"}, rows, 6); err != nil {
+		return err
+	}
+	for _, lines := range details {
+		for _, line := range lines {
+			ui.WriteHint(out, line)
+		}
+	}
+	if report.Commitment != "" {
+		marker, text := ui.OKMark(), report.Commitment
+		if report.Overcommitted {
+			// The warn marker is a glyph a pipe drops, so the capacity risk has to
+			// be in the words: filling every volume would run out of free space.
+			marker, text = ui.WarnMark(), "overcommitted: "+report.Commitment
+		}
+		ui.WriteBullet(out, marker, text)
+	}
+	return nil
 }
 
 func newTenantCreateCmd() *cobra.Command {
@@ -207,7 +276,7 @@ func newTenantCreateCmd() *cobra.Command {
 					}
 				}
 				for _, r := range m.Routes(s) {
-					fmt.Fprintln(cmd.OutOrStdout(), "Through sshpiper:", r)
+					ui.WriteText(cmd.OutOrStdout(), "Through sshpiper: %s\n", r)
 				}
 				return nil
 			})
@@ -282,7 +351,7 @@ func newTenantApplyCmd() *cobra.Command {
 					recordTenant(cmd, t, "apply", err)
 				}
 				if err != nil {
-					ui.WriteText(cmd.ErrOrStderr(), ui.MarkFail+" %s: %v\n", t, err)
+					ui.WriteText(cmd.ErrOrStderr(), "%s %s: %s\n", ui.FailMark(), t, err.Error())
 					failed = append(failed, t)
 				}
 			}
@@ -596,7 +665,7 @@ Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 			actor, viaSudo := tenant.Actor()
 			refuse := func(err error) error {
 				if aerr := tenant.Audit(actor, t, "ops "+action, "refused: "+err.Error()); aerr != nil {
-					ui.WriteText(cmd.ErrOrStderr(), ui.MarkWarn+" tenant audit log: %v\n", aerr)
+					ui.WriteWarning(cmd.ErrOrStderr(), "tenant audit log: "+aerr.Error(), "")
 				}
 				return err
 			}
@@ -612,7 +681,7 @@ Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 					os.Unsetenv(k)
 				}
 			}
-			_, m, err := tenantEnv(cmd)
+			_, m, err := tenantOpsEnv(cmd)
 			if err != nil {
 				return refuse(err)
 			}
@@ -629,7 +698,11 @@ Actions: ` + strings.Join(tenant.OpsActions, ", ") + ".",
 			ctx := cmd.Context()
 			switch action {
 			case "status":
-				err = m.Status(ctx, []string{t}, true)
+				var report *tenant.StatusReport
+				report, err = tenantStatusCollector(m, ctx, []string{t}, true)
+				if err == nil {
+					err = renderTenantStatus(cmd.OutOrStdout(), report)
+				}
 			case "logs":
 				err = m.Logs(ctx, s, 200)
 			case "gpu-heal":
@@ -673,7 +746,7 @@ running: it only rewrites each tenant's derived files. It still needs root.`,
 					err = m.Sync(cmd.Context(), s)
 				}
 				if err != nil {
-					ui.WriteText(cmd.ErrOrStderr(), ui.MarkFail+" %s: %v\n", t, err)
+					ui.WriteText(cmd.ErrOrStderr(), "%s %s: %s\n", ui.FailMark(), t, err.Error())
 					failed = append(failed, t)
 				}
 			}

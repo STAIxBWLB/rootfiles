@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -28,15 +30,7 @@ func newRollbackCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				ui.WriteSection(out, "Backups")
-				if len(backups) == 0 {
-					ui.WriteHint(out, "no backups recorded")
-					return nil
-				}
-				for _, b := range backups {
-					fmt.Fprintf(out, "  %s  %d path(s) — %s\n", b.ID, len(b.Entries), b.Note)
-				}
-				return nil
+				return renderRollbackList(out, cmd.CommandPath(), backups)
 			}
 
 			dryRun, _ := cmd.Flags().GetBool("dry-run")
@@ -46,7 +40,7 @@ func newRollbackCmd() *cobra.Command {
 				return fmt.Errorf("loading backup %s: %w", args[0], err)
 			}
 			for _, a := range preview {
-				ui.WriteLine(out, "  "+ui.MarkPending+" "+a)
+				ui.WriteBullet(out, ui.PendingMark(), a)
 			}
 			if dryRun {
 				return nil
@@ -63,15 +57,31 @@ func newRollbackCmd() *cobra.Command {
 				return err
 			}
 			if err := forgetRolledBackRun(); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: removing the kept applied config: %v\n", err)
+				ui.WriteWarning(cmd.ErrOrStderr(), "removing the kept applied config: "+err.Error(), "")
 			}
 			auditf(cmd, "rollback", "backup", args[0])
-			fmt.Fprintln(out, ui.StyleSuccess.Render(ui.MarkOK+" restored backup "+args[0]))
-			fmt.Fprintln(out, "Restart affected services (e.g. ssh, docker) for the restored files to take effect.")
+			ui.WriteSuccess(out, "restored backup "+args[0])
+			ui.WriteHint(out, "restart affected services (e.g. ssh, docker) for the restored files to take effect")
 			return nil
 		},
 	}
 	return cmd
+}
+
+// renderRollbackList prints the recorded backups without querying the host, so
+// the layout is pinned by a fixture golden.
+func renderRollbackList(out io.Writer, title string, backups []exec.BackupManifest) error {
+	ui.WriteHeader(out, title)
+	ui.WriteSection(out, "Backups")
+	if len(backups) == 0 {
+		ui.WriteHint(out, "no backups recorded")
+		return nil
+	}
+	rows := make([][]string, 0, len(backups))
+	for _, b := range backups {
+		rows = append(rows, []string{b.ID, strconv.Itoa(len(b.Entries)), b.Note})
+	}
+	return ui.WriteTable(out, []string{"BACKUP", "PATHS", "NOTE"}, rows, 2)
 }
 
 // forgetRolledBackRun removes the config copy the last recorded apply kept:

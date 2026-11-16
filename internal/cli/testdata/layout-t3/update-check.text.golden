@@ -1,0 +1,6 @@
+ rootfiles update
+
+▸ Version
+  Current:        inventory
+  Target:         v0.0.1-fixture
+  an update is available: run `sudo rootfiles update` to install

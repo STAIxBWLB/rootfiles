@@ -33,7 +33,10 @@ else
 fi
 
 echo "--- Step 3: rollback restores the hand-edited file ---"
-id=$(rootfiles rollback 2>/dev/null | awk '/path\(s\)/ {print $1; exit}' || true)
+# The listing is a table: one row per backup, newest first, with the session id
+# in the first column. Take the first cell that has the id shape rather than
+# matching a heading, so the parse survives wording and column changes.
+id=$(rootfiles rollback 2>/dev/null | awk '{print $1}' | grep -Ex '[0-9]{8}-[0-9]{6}' | head -1 || true)
 if [ -n "$id" ]; then pass "backup listed ($id)"; else fail "no backup listed"; fi
 rootfiles rollback "$id" --yes 2>&1 || true
 assert_file_contains "$CONF" "hand edited"

@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -143,22 +145,36 @@ func runControllerStatus(cmd *cobra.Command) error {
 	if format == "json" {
 		return writeJSON(cmd.OutOrStdout(), s)
 	}
-	out := cmd.OutOrStdout()
+	return renderControllerStatus(cmd.OutOrStdout(), s)
+}
+
+// renderControllerStatus prints the controller snapshot without reading the
+// inventory or the run log, so a fixture golden pins the layout.
+func renderControllerStatus(out io.Writer, s controllerSnapshot) error {
 	ui.WriteHeader(out, "rootfiles status")
-	fmt.Fprintf(out, "  Mode: controller\n  Version: %s\n  Platform: %s\n  Inventory: %s\n", s.Version, s.Platform, s.Inventory)
+	ui.WriteSection(out, "Controller")
+	ui.WriteKV(out, "Mode", "controller")
+	ui.WriteKV(out, "Version", s.Version)
+	ui.WriteKV(out, "Platform", s.Platform)
+	ui.WriteKV(out, "Inventory", s.Inventory)
 	if s.InventoryError != "" {
-		fmt.Fprintf(out, "  Inventory error: %s\n", s.InventoryError)
+		ui.WriteKV(out, "Inventory error", s.InventoryError)
 	} else {
-		fmt.Fprintf(out, "  Hosts: %d  Groups: %d\n", s.Hosts, s.Groups)
+		ui.WriteKV(out, "Hosts", strconv.Itoa(s.Hosts))
+		ui.WriteKV(out, "Groups", strconv.Itoa(s.Groups))
 	}
 	if s.LogError != "" {
-		fmt.Fprintf(out, "  Run log error: %s\n", s.LogError)
+		ui.WriteKV(out, "Run log error", s.LogError)
 	}
 	rows := [][]string{}
 	for _, run := range s.Runs {
 		rows = append(rows, []string{run.Host, run.Time.Format(time.RFC3339), run.Operation, run.State})
 	}
-	return ui.WriteTable(out, []string{"host", "time", "operation", "state"}, rows, -1)
+	if len(rows) == 0 {
+		return nil
+	}
+	ui.WriteSection(out, "Recent fleet runs")
+	return ui.WriteTable(out, []string{"HOST", "TIME", "OPERATION", "STATE"}, rows, -1)
 }
 
 func controllerSSH(ctx context.Context, args ...string) ([]byte, error) {
@@ -309,10 +325,15 @@ func runControllerDoctor(cmd *cobra.Command) error {
 			}
 			ui.WriteBullet(out, marker, fmt.Sprintf("%-16s %s", f.Check, f.Detail))
 			if f.Hint != "" {
-				fmt.Fprintf(out, "      %s\n", f.Hint)
+				ui.WriteText(out, "    %s\n", ui.StyleAccent.Render(ui.MarkNext+" "+f.Hint))
 			}
 		}
-		ui.WriteLine(out, fmt.Sprintf("%d failed  %d warnings  %d ok  %d skipped", counts[module.LevelFail], counts[module.LevelWarn], counts[module.LevelOK], counts[module.LevelSkip]))
+		ui.WriteSummary(out, []ui.SummaryCount{
+			{Marker: ui.FailMark(), Count: counts[module.LevelFail], Label: "failed"},
+			{Marker: ui.WarnMark(), Count: counts[module.LevelWarn], Label: "warnings"},
+			{Marker: ui.OKMark(), Count: counts[module.LevelOK], Label: "ok"},
+			{Marker: ui.StyleHint.Render(ui.MarkAbsent), Count: counts[module.LevelSkip], Label: "skipped"},
+		})
 	}
 	if failed > 0 {
 		return &ExitError{Code: exitDrift}

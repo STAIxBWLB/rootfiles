@@ -1,0 +1,6 @@
+ rootfiles fleet ping
+  HOST   STATE        REASON
+  gpu01  ok           -
+  gpu02  ok           -
+  web01  unreachable  connect timed out
+⚠  1 unreachable  ✓  2 ok

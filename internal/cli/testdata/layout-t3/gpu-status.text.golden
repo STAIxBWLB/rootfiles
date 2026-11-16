@@ -1,0 +1,9 @@
+ rootfiles gpu status
+
+▸ GPU Status
+  GPU  MODEL                                    MEMORY         UTIL  ASSIGNED TO
+  0    NVIDIA A100-SXM4-40GB                    1024/40960 MB  12%   alice
+  1    NVIDIA A100-SXM4-40GB                    -              -     -
+  2    NVIDIA A100-SXM4-40GB                    0/40960 MB     0%    bob
+  1 of 3 devices are not visible through nvidia-smi (cgroup restriction); their
+  memory and utilization are unknown

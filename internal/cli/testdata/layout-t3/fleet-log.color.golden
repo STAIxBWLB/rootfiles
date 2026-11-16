@@ -1,0 +1,4 @@
+[1;34m rootfiles fleet log[m
+  [34mTIME[m                  [34mOP[m      [34mHOST[m   [34mSTATE[m  [34mEXIT[m  [34mREASON[m
+  2026-11-15T04:30:00Z  apply   gpu01  ok     0     [90m-[m
+  2026-11-14T22:05:00Z  update  web01  error  1     download failed

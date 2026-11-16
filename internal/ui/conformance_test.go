@@ -189,6 +189,40 @@ func TestPipedErrorAndNextStep(t *testing.T) {
 	}
 }
 
+func TestSuccessAndWarningMessages(t *testing.T) {
+	cleanOutputEnv(t)
+	var out bytes.Buffer
+	WriteSuccess(ConfigureWriter(&out, "never", false, false), "wrote /etc/rootfiles/site.yaml")
+	if out.String() != "✓ wrote /etc/rootfiles/site.yaml\n" {
+		t.Fatalf("success format: %q", out.String())
+	}
+	out.Reset()
+	t.Setenv("LC_ALL", "C")
+	WriteSuccess(&out, "report timer removed")
+	if out.String() != "ok report timer removed\n" {
+		t.Fatalf("success ASCII form: %q", out.String())
+	}
+	t.Setenv("LC_ALL", "C.UTF-8")
+	out.Reset()
+	WriteWarning(ConfigureWriter(&out, "never", false, false), "clock is behind: systemd-timesyncd is inactive", "systemctl enable --now systemd-timesyncd")
+	if out.String() != "rootfiles: warning: clock is behind: systemd-timesyncd is inactive\n  → systemctl enable --now systemd-timesyncd\n" {
+		t.Fatalf("piped warning format: %q", out.String())
+	}
+	out.Reset()
+	WriteWarning(&out, "no fix is known", "")
+	if out.String() != "rootfiles: warning: no fix is known\n" {
+		t.Fatalf("invented warning fix: %q", out.String())
+	}
+	old := terminalFD
+	terminalFD = func(fd uintptr) bool { return fd == 42 }
+	t.Cleanup(func() { terminalFD = old })
+	tty := &testFDWriter{fd: 42}
+	WriteWarning(ConfigureWriter(tty, "never", false, false), "clock is behind", "")
+	if tty.String() != MarkWarn+" rootfiles: warning: clock is behind\n" {
+		t.Fatalf("TTY warning without color: %q", tty.String())
+	}
+}
+
 func TestTableAt80PreservesColumns(t *testing.T) {
 	cleanOutputEnv(t)
 	t.Setenv("COLUMNS", "80")

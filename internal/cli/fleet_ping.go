@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -27,24 +28,20 @@ func newFleetPingCmd() *cobra.Command {
 			if parallel > len(hosts) {
 				parallel = len(hosts)
 			}
-			results := pingFleet(c.Context(), fleet.SSHRunner{Binary: "ssh"}, hosts, parallel, buildVersion)
+			results := pingFleetFn(c.Context(), fleet.SSHRunner{Binary: "ssh"}, hosts, parallel, buildVersion)
 			format, err := outputFormat(c)
 			if err != nil {
 				return err
 			}
-			if err := writeFleetResults(c.OutOrStdout(), results, format); err != nil {
+			out := c.OutOrStdout()
+			if format == "text" {
+				ui.WriteHeader(out, c.CommandPath())
+			}
+			if err := writeFleetResults(out, results, format); err != nil {
 				return err
 			}
 			if format == "text" {
-				ok := 0
-				for _, r := range results {
-					if r.State == "ok" {
-						ok++
-					}
-				}
-				if _, err := fmt.Fprintf(c.OutOrStdout(), "\n%d of %d hosts ready\n", ok, len(results)); err != nil {
-					return err
-				}
+				ui.WriteSummary(out, fleetStateCounts(results))
 			}
 			if !allOK(results) {
 				return &ExitError{Code: exitDrift}
@@ -56,6 +53,10 @@ func newFleetPingCmd() *cobra.Command {
 	addOutputFlag(c)
 	return c
 }
+
+// pingFleetFn renders the connectivity report. A test replaces it with fixture
+// results, so the layout is pinned without opening a connection.
+var pingFleetFn = pingFleet
 
 func pingFleet(ctx context.Context, runner fleet.SSHRunner, hosts []fleet.NamedHost, workers int, version string) []fleet.Result {
 	results := make([]fleet.Result, len(hosts))

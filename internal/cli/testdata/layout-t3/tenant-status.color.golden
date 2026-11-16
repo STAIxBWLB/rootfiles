@@ -1,0 +1,7 @@
+[1;34m rootfiles tenant status[m
+
+[1;35m▸ Tenants[m
+  [34mTENANT[m  [34mSTATE[m    [34mSSH[m   [34mGPUS[m  [34mSPEC[m     [34mVOLUME[m          [34mIMAGE[m
+  lab     running  2201  0,1   current  12G/200G 6%     ubuntu:24.04
+  ml      missing  2202  [90m-[m     current  unmounted/100G  ubuntu:24.04
+  [1;32m✓[m  volumes commit 300G, 12G allocated, 1.2T free on /srv/tenants

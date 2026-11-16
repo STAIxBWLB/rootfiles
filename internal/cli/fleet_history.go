@@ -43,12 +43,20 @@ and skipped.`,
 				return err
 			}
 			for _, warning := range warnings {
-				fmt.Fprintf(c.ErrOrStderr(), "rootfiles: warning: %s\n", warning)
+				ui.WriteWarning(c.ErrOrStderr(), warning, "")
 			}
+			out := c.OutOrStdout()
 			if format == "json" {
-				return writeHistoryJSON(c.OutOrStdout(), entries)
+				return writeHistoryJSON(out, entries)
 			}
-			return writeHistoryTable(c.OutOrStdout(), entries, filters.Host)
+			ui.WriteHeader(out, c.CommandPath())
+			if len(entries) == 0 {
+				// An empty log stays a result, not an error: the header and one
+				// hint line say the file held no rollout yet.
+				ui.WriteHint(out, "no recorded rollouts")
+				return nil
+			}
+			return writeHistoryTable(out, entries, filters.Host)
 		},
 	}
 	c.Flags().String("host", "", "Only runs that touched this host (a filter, not a host selection)")

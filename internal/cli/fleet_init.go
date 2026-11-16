@@ -51,7 +51,7 @@ func newFleetInitCmd() *cobra.Command {
 					return err
 				}
 				for _, skipped := range result.Skipped {
-					fmt.Fprintf(c.ErrOrStderr(), "Skipped %s\n", skipped)
+					ui.WriteHint(c.ErrOrStderr(), "skipped "+skipped)
 				}
 				if len(result.Hosts) == 0 {
 					return fmt.Errorf("no valid SSH aliases matched; check ~/.ssh/config and --match")
@@ -112,17 +112,17 @@ func newFleetInitCmd() *cobra.Command {
 					_ = runner.Remove(tmp)
 					return fmt.Errorf("replace inventory after backup %q: %w", backup, err)
 				}
-				fmt.Fprintf(c.ErrOrStderr(), "Backup: %s\n", backup)
-				_, err = fmt.Fprintf(c.OutOrStdout(), "Created inventory %s\n", path)
-				return err
+				ui.WriteHint(c.ErrOrStderr(), "backup of the previous inventory: "+backup)
+				// The confirmation is the command's only stdout, so its write
+				// error is the exit code's: a closed pipe is not "created".
+				return ui.WriteSuccess(c.OutOrStdout(), "created inventory "+path)
 			} else if !os.IsNotExist(err) {
 				return fmt.Errorf("inspect inventory %q: %w", path, err)
 			}
 			if err := runner.WriteFileExclusive(path, data, 0600); err != nil {
 				return fmt.Errorf("create inventory %q: %w", path, err)
 			}
-			_, err = fmt.Fprintf(c.OutOrStdout(), "Created inventory %s\n", path)
-			return err
+			return ui.WriteSuccess(c.OutOrStdout(), "created inventory "+path)
 		}}
 	c.Flags().String("inventory", "", "Inventory file path")
 	c.Flags().Bool("from-ssh-config", false, "Import aliases from SSH config")
@@ -172,10 +172,12 @@ func newFleetHostsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			out := c.OutOrStdout()
 			if format == "json" {
-				return writeJSON(c.OutOrStdout(), rows)
+				return writeJSON(out, rows)
 			}
-			return ui.WriteTable(c.OutOrStdout(), []string{"host", "groups", "ssh", "sudo", "config"}, table, -1)
+			ui.WriteHeader(out, c.CommandPath())
+			return ui.WriteTable(out, []string{"HOST", "GROUPS", "SSH", "SUDO", "CONFIG"}, table, -1)
 		}}
 	fleetCommonFlags(c)
 	addOutputFlag(c)

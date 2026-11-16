@@ -89,11 +89,12 @@ func TestModuleWriterCapturesGPUAndKeyTables(t *testing.T) {
 		}
 	}
 	out.Reset()
-	if err := ListKeys(rc, "alice"); err != nil {
+	keys, err := AuthorizedKeys(rc, "alice")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "ssh-ed25519 AAAA") || !strings.Contains(out.String(), "test") {
-		t.Fatalf("key table bypassed injected writer: %q", out.String())
+	if len(keys) == 0 || !strings.Contains(keys[0].Blob, "ssh-ed25519 AAAA") || keys[0].Comment != "test" {
+		t.Fatalf("authorized keys lost their blob or comment: %#v", keys)
 	}
 }
 

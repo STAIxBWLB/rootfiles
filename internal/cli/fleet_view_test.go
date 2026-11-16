@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 // The two payloads a host's own `status -o json` returns: one with a GPU
@@ -165,14 +166,17 @@ func TestFleetStatusViewJSONAddsOneKey(t *testing.T) {
 	}
 }
 
-// AC4: the default report keeps the bytes writeFleetResults has always
-// produced, for text and for JSON.
+// AC4: the default report keeps the bytes writeFleetResults produces, under the
+// header line the output standard gives every human report. JSON is unchanged.
 func TestFleetStatusDefaultReportBytesUnchanged(t *testing.T) {
 	inventory := fleetViewFixture(t, nil)
 	results := fleetViewResults()
 
 	for _, format := range []string{"text", "json"} {
 		var want bytes.Buffer
+		if format == "text" {
+			ui.WriteHeader(&want, "rootfiles fleet status")
+		}
 		if err := writeFleetResults(&want, results, format); err != nil {
 			t.Fatal(err)
 		}

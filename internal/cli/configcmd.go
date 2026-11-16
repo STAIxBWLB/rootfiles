@@ -93,7 +93,7 @@ func newConfigValidateCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("%s: %w", source, err)
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), ui.StyleSuccess.Render(ui.MarkOK+" "+source+" is valid"))
+			ui.WriteSuccess(cmd.OutOrStdout(), source+" is valid")
 			return nil
 		},
 	})
@@ -146,7 +146,8 @@ func newConfigInitCmd() *cobra.Command {
 			if err := writePrivateConfig(file, data, overwrite); err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s — check it with: rootfiles config validate --config %s\n", file, file)
+			ui.WriteSuccess(cmd.OutOrStdout(), "wrote "+file)
+			ui.WriteText(cmd.OutOrStdout(), "  %s\n", ui.StyleAccent.Render(ui.MarkNext+" rootfiles config validate --config "+file))
 			return nil
 		},
 	}

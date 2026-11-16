@@ -138,9 +138,9 @@ func runShutdownSchedule(cmd *cobra.Command, _ []string) error {
 	if dryRun {
 		verb = "dry-run: would schedule"
 	}
-	ui.WriteText(cmd.OutOrStdout(), "%s %s %s for %s (%s); notices: %s\n", ui.MarkOK, verb,
+	ui.WriteSuccess(cmd.OutOrStdout(), fmt.Sprintf("%s the %s for %s (%s); notices: %s", verb,
 		shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339),
-		s.At.Local().Format("2006-01-02 15:04 MST"), noticeLeads(s.Notices))
+		s.At.Local().Format("2006-01-02 15:04 MST"), noticeLeads(s.Notices)))
 	return nil
 }
 
@@ -153,14 +153,14 @@ func runShutdownNotify(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if s == nil {
-		ui.WriteText(cmd.OutOrStdout(), "%s no scheduled shutdown; nothing to announce\n", ui.MarkOK)
+		ui.WriteSuccess(cmd.OutOrStdout(), "no scheduled shutdown; nothing to announce")
 		return nil
 	}
 	where := lead
 	if where == "" {
 		where = "manual"
 	}
-	ui.WriteText(cmd.OutOrStdout(), "%s notice sent (%s before %s)\n", ui.MarkOK, where, s.At.UTC().Format(time.RFC3339))
+	ui.WriteSuccess(cmd.OutOrStdout(), fmt.Sprintf("notice sent (%s before %s)", where, s.At.UTC().Format(time.RFC3339)))
 	return nil
 }
 
@@ -172,11 +172,11 @@ func runShutdownBlock(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if s == nil {
-		ui.WriteText(cmd.OutOrStdout(), "%s no scheduled shutdown; logins stay open\n", ui.MarkOK)
+		ui.WriteSuccess(cmd.OutOrStdout(), "no scheduled shutdown; logins stay open")
 		return nil
 	}
-	ui.WriteText(cmd.OutOrStdout(), "%s tenant login block attempted for the %s at %s\n", ui.MarkOK,
-		shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339))
+	ui.WriteSuccess(cmd.OutOrStdout(), fmt.Sprintf("tenant login block attempted for the %s at %s",
+		shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339)))
 	return nil
 }
 
@@ -189,18 +189,18 @@ func runShutdownCancel(cmd *cobra.Command, _ []string) error {
 	}
 	if s == nil {
 		if len(warnings) > 0 {
-			ui.WriteText(cmd.OutOrStdout(), "%s nothing scheduled; leftover units and any login block were removed\n", ui.MarkOK)
+			ui.WriteSuccess(cmd.OutOrStdout(), "nothing scheduled; leftover units and any login block were removed")
 			return nil
 		}
-		ui.WriteText(cmd.OutOrStdout(), "%s nothing scheduled; nothing to cancel\n", ui.MarkOK)
+		ui.WriteSuccess(cmd.OutOrStdout(), "nothing scheduled; nothing to cancel")
 		return nil
 	}
 	verb := "cancelled"
 	if dryRun {
 		verb = "dry-run: would cancel"
 	}
-	ui.WriteText(cmd.OutOrStdout(), "%s %s the %s scheduled for %s; this schedule's tenant login restrictions were removed where possible\n",
-		ui.MarkOK, verb, shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339))
+	ui.WriteSuccess(cmd.OutOrStdout(), fmt.Sprintf("%s the %s scheduled for %s; this schedule's tenant login restrictions were removed where possible",
+		verb, shutdownActionWord(s.Action), s.At.UTC().Format(time.RFC3339)))
 	return nil
 }
 
@@ -242,7 +242,7 @@ func runShutdownStatus(cmd *cobra.Command, _ []string) error {
 	if format == "json" {
 		return writeJSON(cmd.OutOrStdout(), report)
 	}
-	renderShutdownStatusText(cmd.OutOrStdout(), report)
+	renderShutdownStatusText(cmd.OutOrStdout(), cmd.CommandPath(), report)
 	return nil
 }
 
@@ -264,7 +264,8 @@ func shutdownLoginsBlocked(s *shutdown.Schedule) bool {
 	return err == nil && shutdown.WroteNologin(string(data), s.ID)
 }
 
-func renderShutdownStatusText(out io.Writer, report shutdownStatusReport) {
+func renderShutdownStatusText(out io.Writer, title string, report shutdownStatusReport) {
+	ui.WriteHeader(out, title)
 	s := report.Scheduled
 	if s == nil {
 		ui.WriteSection(out, "Scheduled shutdown")
@@ -355,6 +356,6 @@ func firstLineOf(err error) string {
 // schedule or a cancel that already did its work.
 func reportShutdownWarnings(w io.Writer, warnings []string) {
 	for _, warning := range warnings {
-		fmt.Fprintf(w, "%s %s\n", ui.MarkWarn, warning)
+		ui.WriteWarning(w, warning, "")
 	}
 }

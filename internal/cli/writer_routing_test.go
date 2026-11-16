@@ -93,8 +93,8 @@ func TestUpdateCheckKeepsTextAndExitCodeOnCommandWriter(t *testing.T) {
 		version, want string
 		code          int
 	}{
-		{"v1.0.0", "Already at version v1.0.0, nothing to do.\n", 0},
-		{"v2.0.0", "Current: v1.0.0 " + ui.Relation + " Target: v2.0.0\nUpdate available. Run `sudo rootfiles update` to install.\n", exitDrift},
+		{"v1.0.0", " rootfiles update\n\n▸ Version\n  Current:        v1.0.0\n  Target:         v1.0.0\n✓ already at v1.0.0; nothing to do\n", 0},
+		{"v2.0.0", " rootfiles update\n\n▸ Version\n  Current:        v1.0.0\n  Target:         v2.0.0\n  an update is available: run `sudo rootfiles update` to install\n", exitDrift},
 	} {
 		var output bytes.Buffer
 		root := NewRootCmd("v1.0.0", "test")
@@ -134,7 +134,7 @@ func TestTunnelUpdateCheckUsesRunContextWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	for _, want := range []string{"Cloudflared update check", "Current:", "2026.1.0", "Latest:", "v2026.1.0", "up to date."} {
+	for _, want := range []string{"Cloudflared update check", "Current:", "2026.1.0", "Latest:", "v2026.1.0", "up to date"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("tunnel writer missing %q: %s", want, output.String())
 		}

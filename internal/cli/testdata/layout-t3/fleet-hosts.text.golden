@@ -1,0 +1,5 @@
+ rootfiles fleet hosts
+  HOST   GROUPS  SSH    SUDO      CONFIG
+  gpu01  gpu     gpu01  nopasswd  profiles/dgx.yaml
+  gpu02  gpu     gpu02  nopasswd  profiles/dgx.yaml
+  web01  edge    web01  nopasswd  -

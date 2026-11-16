@@ -45,28 +45,34 @@ var ReportInventory = []ReportFacts{
 	{Command: "rootfiles user list", File: "user.go", Seam: "statusContractFixture users DB", State: ReportMeasured},
 	{Command: "rootfiles user du", File: "userlife.go", Seam: "statusContractFixture home base", State: ReportMeasured},
 	{Command: "rootfiles config show", File: "configcmd.go", Seam: "config.LoadWithHomeBase", State: ReportRaw},
+	// A scrape-targets file is consumed by a monitoring hub, so its bytes are a
+	// contract rather than a layout this standard may reflow.
+	{Command: "rootfiles fleet targets", File: "fleet.go", Seam: "fleet.RenderTargets", State: ReportRaw},
 
-	{Command: "rootfiles gpu status", File: "gpu.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles gpu mig status", File: "gpu.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user audit", File: "userlife.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user groups", File: "user.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user id", File: "user.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user key list", File: "userlife.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user quota show", File: "userlife.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles shutdown status", File: "shutdown.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles tunnel status", File: "tunnel.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles update", File: "upgrade.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles tenant list", File: "tenant.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles tenant status", File: "tenant.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles tenant logs", File: "tenant.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet status", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet check", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet doctor", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet hosts", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet log", File: "fleet_history.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet ping", File: "fleet_ping.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet targets", File: "fleet.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles fleet shutdown status", File: "fleet_shutdown.go", Seam: "-", State: ReportOwed},
+	{Command: "rootfiles gpu status", File: "gpu.go", Seam: "gpuStatusCollector fixture", State: ReportMeasured},
+	{Command: "rootfiles gpu mig status", File: "gpu.go", Seam: "migStatusCollector fixture", State: ReportMeasured},
+	{Command: "rootfiles user audit", File: "userlife.go", Seam: "userAuditCollector fixture", State: ReportMeasured},
+	// These three print the tool's own payload: `id` output, and the quota
+	// report xfs_quota or repquota writes. A script greps those bytes, so the
+	// layout grammar does not reflow them.
+	{Command: "rootfiles user groups", File: "user.go", Seam: "id payload", State: ReportRaw},
+	{Command: "rootfiles user id", File: "user.go", Seam: "id payload", State: ReportRaw},
+	{Command: "rootfiles user key list", File: "userlife.go", Seam: "keyListCollector fixture", State: ReportMeasured},
+	{Command: "rootfiles user quota show", File: "userlife.go", Seam: "xfs_quota or repquota payload", State: ReportRaw},
+	{Command: "rootfiles shutdown status", File: "shutdown.go", Seam: "state directory fixture", State: ReportMeasured},
+	{Command: "rootfiles tunnel status", File: "tunnel.go", Seam: "statusContractFixture PATH stubs", State: ReportMeasured},
+	{Command: "rootfiles update", File: "upgrade.go", Seam: "--check --version fixture", State: ReportMeasured},
+	{Command: "rootfiles tenant list", File: "tenant.go", Seam: "tenantSpecLister fixture", State: ReportMeasured},
+	{Command: "rootfiles tenant status", File: "tenant.go", Seam: "tenantStatusCollector fixture", State: ReportMeasured},
+	// The container's own log stream is the payload `docker logs` writes.
+	{Command: "rootfiles tenant logs", File: "tenant.go", Seam: "docker logs payload", State: ReportRaw},
+	{Command: "rootfiles fleet status", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet check", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet doctor", File: "fleet.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet hosts", File: "fleet_init.go", Seam: "inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet log", File: "fleet_history.go", Seam: "run log fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet ping", File: "fleet_ping.go", Seam: "pingFleetFn + inventory fixture", State: ReportMeasured},
+	{Command: "rootfiles fleet shutdown status", File: "fleet_shutdown.go", Seam: "readFleetHost + inventory fixture", State: ReportMeasured},
 }
 
 // LayoutIssues names what a captured report shows against the layout grammar.

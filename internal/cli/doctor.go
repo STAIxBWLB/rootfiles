@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -140,26 +139,19 @@ func runDoctor(cmd *cobra.Command, _ []string) error {
 			}
 			ui.WriteBullet(out, marker, fmt.Sprintf("%-16s %s", f.Check, detail))
 			if f.Hint != "" && f.Level != module.LevelOK {
-				fmt.Fprintf(out, "      %s\n", ui.StyleAccent.Render(ui.MarkNext+" "+f.Hint))
+				ui.WriteText(out, "    %s\n", ui.StyleAccent.Render(ui.MarkNext+" "+f.Hint))
 			}
 		}
 		counts := map[string]int{}
 		for _, f := range findings {
 			counts[f.Level]++
 		}
-		ascii, _ := cmd.Flags().GetBool("ascii")
-		ascii = ui.ASCIIMarkers(ascii)
-		parts := []string{}
-		for _, entry := range []struct{ level, marker, word string }{
-			{module.LevelFail, ui.FailMark(), "failed"}, {module.LevelWarn, ui.WarnMark(), "warnings"}, {module.LevelOK, ui.OKMark(), "ok"}, {module.LevelSkip, ui.StyleHint.Render(ui.MarkAbsent), "skipped"},
-		} {
-			if count := counts[entry.level]; count > 0 {
-				parts = append(parts, fmt.Sprintf("%s %d %s", ui.MarkerCell(entry.marker, ascii), count, entry.word))
-			}
-		}
-		if len(parts) > 0 {
-			ui.WriteLine(out, strings.Join(parts, "  "))
-		}
+		ui.WriteSummary(out, []ui.SummaryCount{
+			{Marker: ui.FailMark(), Count: counts[module.LevelFail], Label: "failed"},
+			{Marker: ui.WarnMark(), Count: counts[module.LevelWarn], Label: "warnings"},
+			{Marker: ui.OKMark(), Count: counts[module.LevelOK], Label: "ok"},
+			{Marker: ui.StyleHint.Render(ui.MarkAbsent), Count: counts[module.LevelSkip], Label: "skipped"},
+		})
 	}
 	if failed > 0 {
 		return &ExitError{Code: exitDrift}

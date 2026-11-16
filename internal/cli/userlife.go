@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
@@ -113,7 +115,13 @@ func newUserKeyCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				return module.ListKeys(rc, args[0])
+				keys, err := keyListCollector(rc, args[0])
+				if err != nil {
+					return err
+				}
+				out := cmd.OutOrStdout()
+				ui.WriteHeader(out, cmd.CommandPath())
+				return renderKeyList(out, args[0], keys)
 			},
 		},
 		&cobra.Command{
@@ -146,6 +154,33 @@ func newUserKeyCmd() *cobra.Command {
 	return cmd
 }
 
+// keyListCollector reads a managed user's authorized keys; a test replaces it
+// with fixture keys so the list layout is pinned without an account.
+var keyListCollector = module.AuthorizedKeys
+
+// renderKeyList prints a user's authorized keys, numbered, with the key blob
+// shortened in the middle so one long key cannot push the comment off the line.
+func renderKeyList(out io.Writer, name string, keys []module.AuthorizedKey) error {
+	ui.WriteSection(out, "Authorized keys")
+	if len(keys) == 0 {
+		ui.WriteHint(out, fmt.Sprintf("%s has no authorized keys", name))
+		return nil
+	}
+	rows := make([][]string, 0, len(keys))
+	for i, key := range keys {
+		rows = append(rows, []string{strconv.Itoa(i + 1), shortenKeyBlob(key.Blob), key.Comment})
+	}
+	return ui.WriteTable(out, []string{"#", "KEY", "COMMENT"}, rows, 2)
+}
+
+// shortenKeyBlob keeps a key's type and its tail, where the fingerprint differs.
+func shortenKeyBlob(blob string) string {
+	if len(blob) <= 40 {
+		return blob
+	}
+	return blob[:25] + "..." + blob[len(blob)-12:]
+}
+
 func newUserDuCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:     "du",
@@ -160,16 +195,27 @@ func newUserDuCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out := cmd.OutOrStdout()
-			var total int64
-			for _, r := range rows {
-				fmt.Fprintf(out, "%10s  %-16s %s\n", humanBytes(r.Bytes), r.User, r.Home)
-				total += r.Bytes
-			}
-			fmt.Fprintf(out, "%10s  total\n", humanBytes(total))
-			return nil
+			return renderHomeUsage(cmd.OutOrStdout(), cmd.CommandPath(), rows)
 		},
 	}
+}
+
+// renderHomeUsage prints the measured home sizes without running du, so a
+// fixture golden pins the layout.
+func renderHomeUsage(out io.Writer, title string, rows []module.HomeUsage) error {
+	ui.WriteHeader(out, title)
+	ui.WriteSection(out, "Home usage")
+	table := make([][]string, 0, len(rows))
+	var total int64
+	for _, r := range rows {
+		table = append(table, []string{humanBytes(r.Bytes), r.User, r.Home})
+		total += r.Bytes
+	}
+	if err := ui.WriteTable(out, []string{"SIZE", "USER", "HOME"}, table, 2); err != nil {
+		return err
+	}
+	ui.WriteKV(out, "Total", humanBytes(total))
+	return nil
 }
 
 func newUserAuditCmd() *cobra.Command {
@@ -182,22 +228,30 @@ func newUserAuditCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			findings, err := module.AuditUsers(cmd.Context(), rc)
+			findings, err := userAuditCollector(cmd.Context(), rc)
 			if err != nil {
 				return err
 			}
 			out := cmd.OutOrStdout()
+			ui.WriteHeader(out, cmd.CommandPath())
 			if len(findings) == 0 {
-				fmt.Fprintln(out, ui.StyleSuccess.Render(ui.MarkOK+" users.json and system accounts agree"))
+				ui.WriteSection(out, "Users")
+				ui.WriteSuccess(out, "users.json and system accounts agree")
 				return nil
 			}
+			ui.WriteSection(out, "Users")
 			for _, f := range findings {
 				ui.WriteBullet(out, ui.WarnMark(), fmt.Sprintf("%-16s %s", f.User, f.Detail))
 			}
+			ui.WriteSummary(out, []ui.SummaryCount{{Marker: ui.WarnMark(), Count: len(findings), Label: "findings"}})
 			return &ExitError{Code: exitDrift}
 		},
 	}
 }
+
+// userAuditCollector compares the metadata with the system accounts; a test
+// replaces it with fixture findings so the report layout is pinned.
+var userAuditCollector = module.AuditUsers
 
 func humanBytes(b int64) string {
 	const unit = 1024
