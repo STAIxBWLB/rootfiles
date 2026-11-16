@@ -49,16 +49,19 @@ var ReportInventory = []ReportFacts{
 	// contract rather than a layout this standard may reflow.
 	{Command: "rootfiles fleet targets", File: "fleet.go", Seam: "fleet.RenderTargets", State: ReportRaw},
 
-	{Command: "rootfiles gpu status", File: "gpu.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles gpu mig status", File: "gpu.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user audit", File: "userlife.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user groups", File: "user.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user id", File: "user.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user key list", File: "userlife.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles user quota show", File: "userlife.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles shutdown status", File: "shutdown.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles tunnel status", File: "tunnel.go", Seam: "-", State: ReportOwed},
-	{Command: "rootfiles update", File: "upgrade.go", Seam: "-", State: ReportOwed},
+	{Command: "rootfiles gpu status", File: "gpu.go", Seam: "gpuStatusCollector fixture", State: ReportMeasured},
+	{Command: "rootfiles gpu mig status", File: "gpu.go", Seam: "migStatusCollector fixture", State: ReportMeasured},
+	{Command: "rootfiles user audit", File: "userlife.go", Seam: "userAuditCollector fixture", State: ReportMeasured},
+	// These three print the tool's own payload: `id` output, and the quota
+	// report xfs_quota or repquota writes. A script greps those bytes, so the
+	// layout grammar does not reflow them.
+	{Command: "rootfiles user groups", File: "user.go", Seam: "id payload", State: ReportRaw},
+	{Command: "rootfiles user id", File: "user.go", Seam: "id payload", State: ReportRaw},
+	{Command: "rootfiles user key list", File: "userlife.go", Seam: "keyListCollector fixture", State: ReportMeasured},
+	{Command: "rootfiles user quota show", File: "userlife.go", Seam: "xfs_quota or repquota payload", State: ReportRaw},
+	{Command: "rootfiles shutdown status", File: "shutdown.go", Seam: "state directory fixture", State: ReportMeasured},
+	{Command: "rootfiles tunnel status", File: "tunnel.go", Seam: "statusContractFixture PATH stubs", State: ReportMeasured},
+	{Command: "rootfiles update", File: "upgrade.go", Seam: "--check --version fixture", State: ReportMeasured},
 	{Command: "rootfiles tenant list", File: "tenant.go", Seam: "-", State: ReportOwed},
 	{Command: "rootfiles tenant status", File: "tenant.go", Seam: "-", State: ReportOwed},
 	{Command: "rootfiles tenant logs", File: "tenant.go", Seam: "-", State: ReportOwed},

@@ -90,7 +90,13 @@ func newGPUCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return module.ShowGPUStatus(cmd.Context(), rc)
+			report, err := gpuStatusCollector(cmd.Context(), rc)
+			if err != nil {
+				return err
+			}
+			out := cmd.OutOrStdout()
+			ui.WriteHeader(out, cmd.CommandPath())
+			return renderGPUStatus(out, report)
 		},
 	})
 
@@ -105,17 +111,57 @@ func newGPUCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			gpus, err := module.MIGStatus(cmd.Context(), rc)
+			gpus, err := migStatusCollector(cmd.Context(), rc)
 			if err != nil {
 				return err
 			}
-			renderMIGStatus(cmd.OutOrStdout(), gpus)
+			out := cmd.OutOrStdout()
+			ui.WriteHeader(out, cmd.CommandPath())
+			renderMIGStatus(out, gpus)
 			return nil
 		},
 	})
 	gpuCmd.AddCommand(migCmd)
 
 	return usesConfigTarget(gpuCmd)
+}
+
+// gpuStatusCollector and migStatusCollector read nvidia-smi and the allocation
+// database. A test replaces them with fixture data, so the report layout is
+// pinned without a GPU on the machine running it.
+var (
+	gpuStatusCollector = module.CollectGPUStatus
+	migStatusCollector = module.MIGStatus
+)
+
+// renderGPUStatus prints the GPU table and says which devices nvidia-smi could
+// not see, so an unknown memory or utilization reading is never mistaken for a
+// measurement of zero.
+func renderGPUStatus(out io.Writer, report *module.GPUStatusReport) error {
+	ui.WriteSection(out, "GPU Status")
+	table := make([][]string, 0, len(report.Rows))
+	restricted := 0
+	for _, row := range report.Rows {
+		memory, util := "-", "-"
+		if row.Restricted {
+			restricted++
+		} else {
+			memory = fmt.Sprintf("%s/%s MB", row.MemUsed, row.MemTotal)
+			util = row.Util + "%"
+		}
+		assigned := row.Assigned
+		if assigned == "" {
+			assigned = "-"
+		}
+		table = append(table, []string{strconv.Itoa(row.Index), row.Model, memory, util, assigned})
+	}
+	if err := ui.WriteTable(out, []string{"GPU", "MODEL", "MEMORY", "UTIL", "ASSIGNED TO"}, table, 1); err != nil {
+		return err
+	}
+	if restricted > 0 {
+		ui.WriteHint(out, fmt.Sprintf("%d of %d devices are not visible through nvidia-smi (cgroup restriction); their memory and utilization are unknown", restricted, len(report.Rows)))
+	}
+	return nil
 }
 
 // renderMIGStatus prints the MIG mode and instances per GPU without querying

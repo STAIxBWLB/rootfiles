@@ -148,6 +148,13 @@ func layoutCases() []layoutCase {
 		{name: "fleet-log", render: layoutCaptured("rootfiles fleet log")},
 		{name: "fleet-ping", render: layoutCaptured("rootfiles fleet ping")},
 		{name: "fleet-shutdown-status", render: layoutCaptured("rootfiles fleet shutdown status")},
+		{name: "gpu-status", render: layoutCaptured("rootfiles gpu status")},
+		{name: "gpu-mig-status", render: layoutCaptured("rootfiles gpu mig status")},
+		{name: "user-audit", render: layoutCaptured("rootfiles user audit")},
+		{name: "user-key-list", render: layoutCaptured("rootfiles user key list")},
+		{name: "shutdown-status", render: layoutCaptured("rootfiles shutdown status")},
+		{name: "tunnel-status", render: layoutCaptured("rootfiles tunnel status")},
+		{name: "update-check", render: layoutCaptured("rootfiles update")},
 	}
 }
 

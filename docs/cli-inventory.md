@@ -183,16 +183,16 @@ its golden belong to the T3 output slice, so this page records the seam each one
 | `rootfiles user du` | userlife.go | statusContractFixture home base | measured | - |
 | `rootfiles config show` | configcmd.go | config.LoadWithHomeBase | raw | - |
 | `rootfiles fleet targets` | fleet.go | fleet.RenderTargets | raw | - |
-| `rootfiles gpu status` | gpu.go | - | owed | - |
-| `rootfiles gpu mig status` | gpu.go | - | owed | - |
-| `rootfiles user audit` | userlife.go | - | owed | - |
-| `rootfiles user groups` | user.go | - | owed | - |
-| `rootfiles user id` | user.go | - | owed | - |
-| `rootfiles user key list` | userlife.go | - | owed | - |
-| `rootfiles user quota show` | userlife.go | - | owed | - |
-| `rootfiles shutdown status` | shutdown.go | - | owed | - |
-| `rootfiles tunnel status` | tunnel.go | - | owed | - |
-| `rootfiles update` | upgrade.go | - | owed | - |
+| `rootfiles gpu status` | gpu.go | gpuStatusCollector fixture | measured | - |
+| `rootfiles gpu mig status` | gpu.go | migStatusCollector fixture | measured | - |
+| `rootfiles user audit` | userlife.go | userAuditCollector fixture | measured | - |
+| `rootfiles user groups` | user.go | id payload | raw | - |
+| `rootfiles user id` | user.go | id payload | raw | - |
+| `rootfiles user key list` | userlife.go | keyListCollector fixture | measured | - |
+| `rootfiles user quota show` | userlife.go | xfs_quota or repquota payload | raw | - |
+| `rootfiles shutdown status` | shutdown.go | state directory fixture | measured | - |
+| `rootfiles tunnel status` | tunnel.go | statusContractFixture PATH stubs | measured | - |
+| `rootfiles update` | upgrade.go | --check --version fixture | measured | - |
 | `rootfiles tenant list` | tenant.go | - | owed | - |
 | `rootfiles tenant status` | tenant.go | - | owed | - |
 | `rootfiles tenant logs` | tenant.go | - | owed | - |

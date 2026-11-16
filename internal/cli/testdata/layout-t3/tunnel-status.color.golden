@@ -1,0 +1,6 @@
+[1;34m rootfiles tunnel status[m
+
+[1;35m▸ Tunnel[m
+  [34mBinary:       [m  [90mnot installed[m
+  [34mService:      [m  [1;32mactive[m
+  [34mVLAN (fixture0):[m  [90mup (no inet)[m

@@ -168,26 +168,27 @@ func authorizedKeysPath(u *user.User) string {
 	return filepath.Join(u.HomeDir, ".ssh", "authorized_keys")
 }
 
-// ListKeys prints a user's authorized keys, numbered.
-func ListKeys(rc *RunContext, name string) error {
+// AuthorizedKey is one line of a managed user's authorized_keys: the key blob
+// and the comment that follows it, if any.
+type AuthorizedKey struct {
+	Blob    string
+	Comment string
+}
+
+// AuthorizedKeys reads a managed user's authorized keys, so the command renders
+// them instead of the collector printing them.
+func AuthorizedKeys(rc *RunContext, name string) ([]AuthorizedKey, error) {
 	u, err := lookupManaged(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	data, _ := rc.Runner.ReadFile(authorizedKeysPath(u))
-	keys := nonEmptyLines(string(data))
-	if len(keys) == 0 {
-		ui.WriteText(rc.Output(), "%s has no authorized keys\n", name)
-		return nil
+	lines := nonEmptyLines(string(data))
+	keys := make([]AuthorizedKey, 0, len(lines))
+	for _, line := range lines {
+		keys = append(keys, AuthorizedKey{Blob: keyID(line), Comment: keyComment(line)})
 	}
-	for i, k := range keys {
-		blob := keyID(k)
-		if len(blob) > 40 {
-			blob = blob[:25] + "…" + blob[len(blob)-12:]
-		}
-		ui.WriteText(rc.Output(), "%2d  %-40s %s\n", i+1, blob, keyComment(k))
-	}
-	return nil
+	return keys, nil
 }
 
 // AddKey appends a public key (no-op if already present).

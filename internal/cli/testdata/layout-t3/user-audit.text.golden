@@ -1,0 +1,9 @@
+ rootfiles user audit
+
+▸ Users
+  ⚠  alice            in users.json but not on this system (rootfiles user
+     restore)
+  ⚠  bob              uid 1002 on system, 1042 in users.json (file ownership may
+     be wrong)
+  ⚠  carol            account under home_base not tracked in users.json
+⚠  3 findings

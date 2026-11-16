@@ -1,0 +1,8 @@
+ rootfiles gpu mig status
+
+▸ MIG
+  GPU 0:          NVIDIA A100-SXM4-40GB  MIG Enabled
+    -  MIG 3g.20gb Device 0 (UUID: MIG-1111)
+    -  MIG 3g.20gb Device 1 (UUID: MIG-2222)
+  GPU 1:          NVIDIA A100-SXM4-40GB  MIG Disabled (pending: Enabled, needs
+                  GPU reset)

@@ -1,0 +1,6 @@
+[1;34m rootfiles update[m
+
+[1;35m▸ Version[m
+  [34mCurrent:      [m  inventory
+  [34mTarget:       [m  v0.0.1-fixture
+  [90man update is available: run `sudo rootfiles update` to install[m

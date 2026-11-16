@@ -23,6 +23,9 @@ func captureReports(t *testing.T) map[string]string {
 	root, _, _ := statusContractFixture(t, "populated")
 	writeBackupManifest(t)
 	pinReportClock(t)
+	// The page records an 80-column budget, and a piped report only wraps when
+	// COLUMNS says so; without it a table would be measured unwrapped.
+	t.Setenv("COLUMNS", "80")
 
 	// `--config site.yaml` is relative because the fixture root is the working
 	// directory: an absolute path would wrap inside a key/value row and make the
@@ -128,6 +131,11 @@ var reportCaptures = map[string]struct {
 	"rootfiles fleet log":             {setup: writeFleetLogFixture},
 	"rootfiles fleet ping":            {args: []string{"--inventory", fleetFixtureInventory, "--all"}, setup: stubFleetPing},
 	"rootfiles fleet shutdown status": {args: []string{"--inventory", fleetFixtureInventory, "--all"}, setup: stubFleetStatusReads},
+	"rootfiles gpu status":            {setup: stubGPUStatus},
+	"rootfiles gpu mig status":        {setup: stubMIGStatus},
+	"rootfiles user audit":            {setup: stubUserAudit},
+	"rootfiles user key list":         {args: []string{"alice"}, setup: stubKeyList},
+	"rootfiles update":                {args: []string{"--check", "--version", "v0.0.1-fixture"}},
 }
 
 // fleetFixtureInventory is relative to the fixture root, so the path the page
@@ -239,6 +247,60 @@ func writeFleetLogFixture(t *testing.T, _ string) {
 		`{"time":"2026-11-14T22:05:00Z","command":"update","hosts":[{"host":"web01","state":"error","exit_code":1,"reason":"download failed"}]}` + "\n"
 	if err := os.WriteFile(filepath.Join(dir, "fleet.jsonl"), []byte(body), 0600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// stubGPUStatus answers the GPU collector with three devices: one measured, one
+// assigned, and one a cgroup restriction hides from nvidia-smi.
+func stubGPUStatus(t *testing.T, _ string) {
+	t.Helper()
+	previous := gpuStatusCollector
+	t.Cleanup(func() { gpuStatusCollector = previous })
+	gpuStatusCollector = func(context.Context, *module.RunContext) (*module.GPUStatusReport, error) {
+		return &module.GPUStatusReport{Rows: []module.GPUStatusRow{
+			{Index: 0, Model: "NVIDIA A100-SXM4-40GB", MemUsed: "1024", MemTotal: "40960", Util: "12", Assigned: "alice"},
+			{Index: 1, Model: "NVIDIA A100-SXM4-40GB", Restricted: true},
+			{Index: 2, Model: "NVIDIA A100-SXM4-40GB", MemUsed: "0", MemTotal: "40960", Util: "0", Assigned: "bob"},
+		}}, nil
+	}
+}
+
+// stubMIGStatus answers the MIG collector with the two fixtures the family
+// golden already uses.
+func stubMIGStatus(t *testing.T, _ string) {
+	t.Helper()
+	previous := migStatusCollector
+	t.Cleanup(func() { migStatusCollector = previous })
+	migStatusCollector = func(context.Context, *module.RunContext) ([]module.MIGGPU, error) {
+		return layoutMIG(), nil
+	}
+}
+
+// stubUserAudit answers the audit collector with the three findings it reports.
+func stubUserAudit(t *testing.T, _ string) {
+	t.Helper()
+	previous := userAuditCollector
+	t.Cleanup(func() { userAuditCollector = previous })
+	userAuditCollector = func(context.Context, *module.RunContext) ([]module.AuditFinding, error) {
+		return []module.AuditFinding{
+			{User: "alice", Detail: "in users.json but not on this system (rootfiles user restore)"},
+			{User: "bob", Detail: "uid 1002 on system, 1042 in users.json (file ownership may be wrong)"},
+			{User: "carol", Detail: "account under home_base not tracked in users.json"},
+		}, nil
+	}
+}
+
+// stubKeyList answers the key collector with a long key and a key without a
+// comment, so the table has to shorten one cell and dash the other.
+func stubKeyList(t *testing.T, _ string) {
+	t.Helper()
+	previous := keyListCollector
+	t.Cleanup(func() { keyListCollector = previous })
+	keyListCollector = func(*module.RunContext, string) ([]module.AuthorizedKey, error) {
+		return []module.AuthorizedKey{
+			{Blob: "AAAAC3NzaC1lZDI1NTE5AAAAIFixtureKeyMaterialForTheGolden", Comment: "alice@laptop"},
+			{Blob: "AAAAB3NzaC1yc2EAAAADAQABAAABAQFixtureKeyMaterial"},
+		}, nil
 	}
 }
 

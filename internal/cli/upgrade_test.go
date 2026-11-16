@@ -454,7 +454,7 @@ func TestUpdateCheckPrintsDarwinNextStep(t *testing.T) {
 	if !errors.As(err, &exit) || exit.Code != exitDrift {
 		t.Fatalf("err=%v", err)
 	}
-	if !strings.Contains(out.String(), "Run `rootfiles update` to install") {
+	if !strings.Contains(out.String(), "run `rootfiles update` to install") {
 		t.Fatalf("missing darwin next step: %q", out.String())
 	}
 	if strings.Contains(out.String(), "sudo rootfiles update") {

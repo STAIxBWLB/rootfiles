@@ -52,6 +52,8 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 2*time.Minute)
 			defer cancel()
 
+			ui.WriteHeader(out, "rootfiles update")
+
 			// Resolve target version
 			if targetVersion == "" {
 				ui.WriteRaw(out, "Checking latest version... ")
@@ -66,14 +68,15 @@ func newUpgradeCmd(currentVersion string) *cobra.Command {
 			current := normalizeVersion(currentVersion)
 			target := normalizeVersion(targetVersion)
 
+			ui.WriteSection(out, "Version")
+			ui.WriteKV(out, "Current", currentVersion)
+			ui.WriteKV(out, "Target", targetVersion)
 			if current == target {
-				ui.WriteText(out, "Already at version %s, nothing to do.\n", targetVersion)
+				ui.WriteSuccess(out, "already at "+targetVersion+"; nothing to do")
 				return nil
 			}
-			ui.WriteText(out, "Current: %s "+ui.Relation+" Target: %s\n", currentVersion, targetVersion)
-
 			if checkOnly {
-				ui.WriteText(out, "Update available. Run `%s` to install.\n", updateCommandHint())
+				ui.WriteHint(out, "an update is available: run `"+updateCommandHint()+"` to install")
 				return &ExitError{Code: exitDrift}
 			}
 

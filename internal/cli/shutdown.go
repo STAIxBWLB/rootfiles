@@ -242,7 +242,7 @@ func runShutdownStatus(cmd *cobra.Command, _ []string) error {
 	if format == "json" {
 		return writeJSON(cmd.OutOrStdout(), report)
 	}
-	renderShutdownStatusText(cmd.OutOrStdout(), report)
+	renderShutdownStatusText(cmd.OutOrStdout(), cmd.CommandPath(), report)
 	return nil
 }
 
@@ -264,7 +264,8 @@ func shutdownLoginsBlocked(s *shutdown.Schedule) bool {
 	return err == nil && shutdown.WroteNologin(string(data), s.ID)
 }
 
-func renderShutdownStatusText(out io.Writer, report shutdownStatusReport) {
+func renderShutdownStatusText(out io.Writer, title string, report shutdownStatusReport) {
+	ui.WriteHeader(out, title)
 	s := report.Scheduled
 	if s == nil {
 		ui.WriteSection(out, "Scheduled shutdown")

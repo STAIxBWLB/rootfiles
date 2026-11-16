@@ -88,6 +88,7 @@ only the binary and any configured VLAN are managed. "install" is an alias.`,
 			if err != nil {
 				return err
 			}
+			ui.WriteHeader(rc.Output(), cmd.CommandPath())
 			return module.TunnelStatus(cmd.Context(), rc)
 		},
 	})
