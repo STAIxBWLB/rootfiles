@@ -118,7 +118,7 @@ func TestDumbTerminalPromptsNeedAnAnswer(t *testing.T) {
 		inputs []string
 		fn     func() error
 	}{
-		{"ConfirmDefault", []string{"", "  ", "y", "maybe", "maybe\n", strings.Repeat("y", 70000)}, func() error { _, err := ConfirmDefault("Apply this configuration?", true, false); return err }},
+		{"ConfirmDefault", []string{"", "  ", "y", "maybe", "maybe\n"}, func() error { _, err := ConfirmDefault("Apply this configuration?", true, false); return err }},
 		{"Select", []string{"", "maybe\n", "99\n", "maybe"}, func() error { _, err := Select("Profile", []string{"minimal", "dgx"}, "dgx", false); return err }},
 		{"Input", []string{"", "lab"}, func() error { _, err := Input("Timezone", "UTC", false); return err }},
 	} {
@@ -128,5 +128,27 @@ func TestDumbTerminalPromptsNeedAnAnswer(t *testing.T) {
 				t.Fatalf("%s with stdin %q: err=%v, want ErrNoAnswer naming --yes", tc.name, input, err)
 			}
 		}
+	}
+}
+
+// An answer over the line limit and a failing stdin each name their own
+// cause instead of "stdin ended".
+func TestDumbTerminalPromptNamesWhyThereIsNoAnswer(t *testing.T) {
+	t.Setenv("TERM", "dumb")
+	feedStdin(t, strings.Repeat("y", 70000)+"\n")
+	if _, err := ConfirmDefault("Apply?", true, false); err == nil || !strings.Contains(err.Error(), "answer longer than 16384 bytes") || errors.Is(err, ErrNoAnswer) {
+		t.Fatalf("overlong answer: err=%v, want the length limit", err)
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+	_ = r.Close() // reads now fail instead of reaching EOF
+	saved := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = saved })
+	if _, err := Input("Token", "", false); err == nil || !strings.Contains(err.Error(), "reading the answer from stdin") || errors.Is(err, ErrNoAnswer) {
+		t.Fatalf("failing stdin: err=%v, want the read error", err)
 	}
 }

@@ -56,46 +56,47 @@ func promptLabel(message string) string {
 // runPrompt runs one field. huh's accessible mode (TERM=dumb) takes EOF,
 // or a line its scanner cannot hold, as the default answer, which would let
 // `apply` proceed with nobody there. There an answer is a full stdin line,
-// and a prompt that runs out of lines fails instead.
+// and a prompt that gets none fails with the reason instead.
 func runPrompt(message string, field huh.Field) (err error) {
 	if os.Getenv("TERM") != "dumb" {
 		return huh.Run(field)
 	}
 	in := &lineReader{r: os.Stdin}
-	noAnswer := fmt.Errorf("%s: %w", promptLabel(message), ErrNoAnswer)
 	defer func() {
 		// ponytail: huh v1.0.0's Select indexes a rejected answer once its
 		// input ends and panics; drop this when huh reports EOF itself.
 		if r := recover(); r != nil {
-			if !in.ended {
+			if in.err == nil {
 				panic(r)
 			}
-			err = noAnswer
+			err = fmt.Errorf("%s: %w", promptLabel(message), in.err)
 		}
 	}()
 	if err := huh.NewForm(huh.NewGroup(field)).WithShowHelp(false).WithInput(in).Run(); err != nil {
 		return err
 	}
-	if in.ended {
-		return noAnswer
+	if in.err != nil {
+		return fmt.Errorf("%s: %w", promptLabel(message), in.err)
 	}
 	return nil
 }
 
-// maxAnswer bounds one answer line, well under huh's scanner buffer.
-const maxAnswer = 1024
+// maxAnswer bounds one answer line, well under huh's 64 KiB scanner limit.
+const maxAnswer = 16 << 10
+
+var errLongAnswer = fmt.Errorf("answer longer than %d bytes; give the value in the config or on the command line instead", maxAnswer)
 
 // lineReader hands huh one stdin line per read, reading byte by byte so a
-// prompt never consumes a later prompt's answer. Stdin ending or failing
-// mid-line, or a line longer than maxAnswer, marks ended and reads as EOF.
+// prompt never consumes a later prompt's answer. Stdin ending, a read error
+// or a line longer than maxAnswer sets err, and huh then reads EOF.
 type lineReader struct {
-	r     io.Reader
-	line  []byte
-	ended bool
+	r    io.Reader
+	line []byte
+	err  error
 }
 
 func (l *lineReader) Read(p []byte) (int, error) {
-	if l.ended {
+	if l.err != nil {
 		return 0, io.EOF
 	}
 	if len(l.line) == 0 {
@@ -103,8 +104,16 @@ func (l *lineReader) Read(p []byte) (int, error) {
 		for len(l.line) == 0 || l.line[len(l.line)-1] != '\n' {
 			n, err := l.r.Read(b[:])
 			l.line = append(l.line, b[:n]...)
-			if err != nil || len(l.line) > maxAnswer {
-				l.ended, l.line = true, nil
+			switch {
+			case errors.Is(err, io.EOF):
+				l.err = ErrNoAnswer
+			case err != nil:
+				l.err = fmt.Errorf("reading the answer from stdin: %w; pass --yes, or run from a terminal", err)
+			case len(l.line) > maxAnswer:
+				l.err = errLongAnswer
+			}
+			if l.err != nil {
+				l.line = nil
 				return 0, io.EOF
 			}
 		}
