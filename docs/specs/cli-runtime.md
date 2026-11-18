@@ -89,4 +89,4 @@ Shared plumbing every native `rootfiles` command runs through: the cobra root an
 
 ## Controller reports
 
-On non-Linux hosts, `doctor` and `status` report controller state without running Linux host checks. Controller JSON includes `mode: controller`; Linux report bytes remain unchanged. Controller reports accept `--inventory`, and a missing inventory points to `fleet init` for the same path.
+On non-Linux hosts, `doctor` and `status` report controller state without running Linux host checks. Controller JSON includes `mode: controller`; Linux report bytes remain unchanged. Controller reports accept `--inventory`, and a missing inventory points to `fleet init` for the same path. Missing means nothing at the path (`os.Lstat`): `fleet init` refuses any existing entry, so a symlink to a missing file instead names the link and its target (`danglingInventoryStep`), in `doctor` and in `monitor`.

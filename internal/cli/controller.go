@@ -57,6 +57,21 @@ func controllerPaths(cmd *cobra.Command) (string, string) {
 	return inventory, filepath.Join(state, "rootfiles", "fleet.jsonl")
 }
 
+// danglingInventoryStep names the fix for an inventory path that is a symlink
+// to nothing. fleet init refuses any existing entry, the link included, so
+// the step is the link itself, not init.
+func danglingInventoryStep(path string) (string, bool) {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return "", false
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		return "", false
+	}
+	target, _ := os.Readlink(path)
+	return fmt.Sprintf("point the symlink %s at an existing inventory, or remove it (it points to %s, which does not exist)", path, target), true
+}
+
 func controllerInventory(path string) (*fleet.Inventory, int, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -258,11 +273,13 @@ func runControllerDoctor(cmd *cobra.Command) error {
 	}
 	if s.InventoryError != "" {
 		hint := "inspect the inventory file and its ownership and permissions"
-		if _, statErr := os.Stat(s.Inventory); os.IsNotExist(statErr) {
+		if _, statErr := os.Lstat(s.Inventory); os.IsNotExist(statErr) {
 			hint = "rootfiles fleet init"
 			if cmd.Flags().Changed("inventory") {
 				hint += " --inventory " + fleet.ShellQuote(s.Inventory)
 			}
+		} else if step, dangling := danglingInventoryStep(s.Inventory); dangling {
+			hint = step
 		}
 		findings = append(findings, module.Finding{Check: "inventory", Level: module.LevelFail, Detail: s.InventoryError, Hint: hint})
 	} else {
