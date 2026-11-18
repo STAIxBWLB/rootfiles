@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -758,6 +759,10 @@ func RunDashboard(ctx context.Context, out io.Writer, cfg DashboardConfig, refre
 	// queries), which Bubble Tea's own context does not reach.
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+	stop := func() {}
+	if refresh != nil {
+		refresh, stop = joinable(refresh)
+	}
 	var initial DashboardSnapshot
 	if refresh != nil {
 		snap, err := refresh(ctx)
@@ -773,7 +778,32 @@ func RunDashboard(ctx context.Context, out io.Writer, cfg DashboardConfig, refre
 	model := NewDashboardModel(ctx, cfg, initial, refresh)
 	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithOutput(teaOutput(out)), tea.WithContext(ctx))
 	_, err := p.Run()
+	// Bubble Tea does not wait for commands at quit: cancel, then wait out a
+	// refresh still in flight, so no collector outlives this call or the
+	// caller's writers.
+	cancel()
+	stop()
 	return err
+}
+
+// joinable wraps refresh so stop returns only once no refresh is running;
+// a refresh that starts after stop returns at once without calling refresh.
+func joinable(refresh RefreshFunc) (RefreshFunc, func()) {
+	var gate sync.RWMutex
+	stopped := false
+	guarded := func(ctx context.Context) (DashboardSnapshot, error) {
+		gate.RLock()
+		defer gate.RUnlock()
+		if stopped {
+			return DashboardSnapshot{}, context.Canceled
+		}
+		return refresh(ctx)
+	}
+	return guarded, func() {
+		gate.Lock()
+		stopped = true
+		gate.Unlock()
+	}
 }
 
 // teaOutput hands Bubble Tea the raw stream: it writes cursor and screen

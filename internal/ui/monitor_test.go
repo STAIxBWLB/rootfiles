@@ -302,3 +302,30 @@ func TestMonitorModel_DiskBarUsesDoctorLevel(t *testing.T) {
 		t.Fatalf("75%% disk at doctor level ok not drawn as ok:\n%q", view)
 	}
 }
+
+// Quitting waits out a refresh still in flight, and a refresh that starts
+// after quit never reaches the collector.
+func TestJoinableRefreshWaitsAndBlocksLateStarts(t *testing.T) {
+	started, release := make(chan struct{}), make(chan struct{})
+	calls := 0
+	guarded, stop := joinable(func(context.Context) (DashboardSnapshot, error) {
+		calls++
+		close(started)
+		<-release
+		return DashboardSnapshot{}, nil
+	})
+	go func() { _, _ = guarded(context.Background()) }()
+	<-started
+	stopped := make(chan struct{})
+	go func() { stop(); close(stopped) }()
+	select {
+	case <-stopped:
+		t.Fatal("stop returned while a refresh was running")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	<-stopped
+	if _, err := guarded(context.Background()); !errors.Is(err, context.Canceled) || calls != 1 {
+		t.Fatalf("refresh after stop: err=%v calls=%d, want canceled and one call", err, calls)
+	}
+}
