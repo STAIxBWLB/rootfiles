@@ -75,6 +75,28 @@ func TestHelpColorASCIIAndPipePolicy(t *testing.T) {
 	}
 }
 
+// Raw-payload and JSON commands keep machine stdout, but their help is human.
+func TestHelpHonorsDisplayFlagsOnMachineCommands(t *testing.T) {
+	for _, args := range [][]string{{"config", "show"}, {"tenant", "logs"}, {"fleet", "targets"}, {"status", "--json"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			pinInventoryPage(t)
+			t.Setenv("LC_ALL", "C.UTF-8")
+			root := NewRootCmd("dev", "test")
+			var out, stderr bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&stderr)
+			root.SetArgs(append(args, "--help", "--ascii", "--color=always"))
+			if err := executeCommand(context.Background(), root); err != nil {
+				t.Fatalf("help: %v (stderr=%q)", err, stderr.String())
+			}
+			plain := ansi.Strip(out.String())
+			if !strings.ContainsRune(out.String(), 27) || !strings.Contains(plain, "> Usage") || strings.Contains(plain, ui.MarkSection) {
+				t.Fatalf("help ignored --ascii/--color=always:\n%q", out.String())
+			}
+		})
+	}
+}
+
 func TestThemeWarningOnInvalidEnv(t *testing.T) {
 	pinInventoryPage(t)
 	t.Setenv("LC_ALL", "C.UTF-8")

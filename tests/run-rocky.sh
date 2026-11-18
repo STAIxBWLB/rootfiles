@@ -129,7 +129,7 @@ TRAP
 done
 rm -f /tmp/rootfiles-forbidden-command.log
 PATH="$trap_bin:$PATH" /usr/local/bin/rootfiles apply --config /tmp/rocky-users.yaml --dry-run --yes >/tmp/rootfiles-dry-run.txt
-grep -q 'Mode: dry-run' /tmp/rootfiles-dry-run.txt || fail "dry-run mode was not reported"
+grep -Eq 'Mode: +dry-run' /tmp/rootfiles-dry-run.txt || fail "dry-run mode was not reported"
 if [[ -e /tmp/rootfiles-forbidden-command.log ]]; then
     cat /tmp/rootfiles-forbidden-command.log >&2
     fail "Rocky dry-run invoked an Ubuntu APT/dpkg/locale-gen command"
