@@ -38,7 +38,7 @@ The flags of `### rootfiles` below are accepted on every command, but each comma
 | Readers | Root flags they read |
 |---|---|
 | `apply`, `check`, `config show`, `config validate` | `--profile`, `--config`, `--home-base`, `--user`, `--ssh-pubkey`, `--tunnel-token`, `--vlan-address` |
-| `backup`, `doctor`, `status`, `gpu ...`, `schedule enable`, `schedule disable`, `tenant ...` (not `tenant ops`), `tunnel ...`, `user ...` | `--profile`, `--config`, `--home-base` |
+| `backup`, `doctor`, `monitor`, `status`, `gpu ...`, `schedule enable`, `schedule disable`, `tenant ...` (not `tenant ops`), `tunnel ...`, `user ...` | `--profile`, `--config`, `--home-base` |
 | `tunnel setup` | also `--tunnel-token`, `--vlan-address` |
 | `user add` | also `--user`, `--ssh-pubkey` |
 | `config init`, `rollback`, `schedule status`, `update` | none of them |
@@ -63,6 +63,7 @@ Commands that change the host need root on Linux and take the global lock (`/run
 | `rootfiles upgrade` | `rootfiles update` | Command alias. |
 | `rootfiles tunnel install` | `rootfiles tunnel setup` | Command alias. |
 | `rootfiles tenant reset` | `rootfiles tenant passwd` | Command alias. |
+| `rootfiles top` | `rootfiles monitor` | Command alias. |
 
 ## Environment variables
 
@@ -405,7 +406,7 @@ Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host
 ### rootfiles fleet status
 
 Run a read-only fleet status report.
-Run `rootfiles status -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`.
+Run `rootfiles status -o json` on the selected hosts in parallel. Flags as [rootfiles fleet check](#rootfiles-fleet-check): `--inventory`, `--host`, `--group`, `--all`, `--parallel`, `-o`/`--output`, `--json`, plus `-w`/`--watch` and `--interval` (`5s` default, at least `500ms`) for live terminal monitoring.
 
 `--view gpu` or `--view users` adds a fleet-wide section rendered from that same remote report: GPU allocations, or the managed and system account counts, per host. A host that did not report the section shows `-` instead of failing the run. With `--json` the section is added beside `hosts` under its own key (`gpu` or `users`, keyed by host name); without `--view` the report is byte-for-byte what it was.
 
@@ -474,7 +475,17 @@ Revoke GPU allocation from a user.
 ### rootfiles gpu status
 
 Show GPU status with allocation info.
-Show each GPU with its owner.
+Show each GPU with its owner. Pass `-w`/`--watch` and `--interval` (`2s` default, at least `500ms`) for a live terminal dashboard.
+
+### rootfiles monitor
+
+Watch live system, GPU, tenant and health status.
+Interactive live terminal dashboard for host vitals, GPUs, tenant containers and doctor findings (alias `top`). On a non-Linux controller, `--inventory` selects the fleet inventory to monitor.
+
+| Flag | Default | Purpose |
+|---|---|---|
+| `--module` | all enabled | Report only these modules. |
+| `--interval` | `2s` (`5s` on a controller) | Refresh interval, at least `500ms`. |
 
 ### rootfiles rollback
 
@@ -550,6 +561,8 @@ Read-only overview: system, profile, last apply, module satisfaction, GPU alloca
 | `--module` | all enabled | Report only these modules; also limits the GPU (`gpu`), tunnel (`cloudflared`) and users (`users`) sections. |
 | `-o`, `--output` | `text` | `text` or `json`. |
 | `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
+| `-w`, `--watch` | `false` | Refresh the report continuously in an interactive terminal. |
+| `--interval` | `2s` | Refresh interval for `--watch`, at least `500ms`. |
 
 Exit code 0 for the overview, including reported findings; 2 for argument/flag parsing errors, and 1 for other invocation errors. When the config does not load, `status` reports the error and skips the user and GPU databases unless an absolute home base is known.
 
@@ -665,7 +678,7 @@ Restart a tenant container.
 ### rootfiles tenant status
 
 Show tenant containers, spec drift and volume use.
-`rootfiles tenant status [TENANT]`. Show state, spec drift and volume use; with a name also the writable-layer size.
+`rootfiles tenant status [TENANT]`. Show state, spec drift and volume use; with a name also the writable-layer size. Pass `-w`/`--watch` and `--interval` (`2s` default, at least `500ms`) for live terminal monitoring.
 
 ### rootfiles tenant sync
 

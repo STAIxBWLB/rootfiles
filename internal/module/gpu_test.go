@@ -1039,3 +1039,46 @@ func TestDockerWrapperIntegration_ApplyIncludesWrapper(t *testing.T) {
 		t.Error("Apply messages should mention Docker wrapper")
 	}
 }
+
+func TestCollectGPUStatus_ParsesTempAndPower(t *testing.T) {
+	devDir := t.TempDir()
+	savedDevDir := gpuDeviceDir
+	gpuDeviceDir = devDir
+	t.Cleanup(func() { gpuDeviceDir = savedDevDir })
+	for _, name := range []string{"nvidia0", "nvidia1"} {
+		if err := os.WriteFile(filepath.Join(devDir, name), nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	binDir := t.TempDir()
+	smi := "#!/bin/sh\nprintf '0, NVIDIA H100 80GB HBM3, 20480, 81920, 75, 62, 310.5\\n1, NVIDIA H100 80GB HBM3, 0, 81920, 0, [N/A], [Not Supported]\\n'\n"
+	if err := os.WriteFile(filepath.Join(binDir, "nvidia-smi"), []byte(smi), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	homeBase := t.TempDir()
+	rc := testRunContext(t, homeBase, "env")
+	setupDBWithAllocations(t, homeBase, &GPUAllocationsDB{
+		Version:   1,
+		TotalGPUs: 2,
+		Allocations: []GPUAllocation{
+			{Username: "alice", GPUs: []int{0}, Method: "env"},
+		},
+	})
+
+	report, err := CollectGPUStatus(context.Background(), rc)
+	if err != nil {
+		t.Fatalf("CollectGPUStatus: %v", err)
+	}
+	if len(report.Rows) != 2 {
+		t.Fatalf("rows=%d, want 2", len(report.Rows))
+	}
+	if r0 := report.Rows[0]; r0.TempC != "62" || r0.PowerW != "310.5" || r0.Assigned != "alice" || r0.Util != "75" {
+		t.Fatalf("row 0 unexpected: %+v", r0)
+	}
+	if r1 := report.Rows[1]; r1.TempC != "" || r1.PowerW != "" || r1.Assigned != "" {
+		t.Fatalf("row 1 unexpected: %+v", r1)
+	}
+}

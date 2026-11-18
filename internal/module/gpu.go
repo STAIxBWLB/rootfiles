@@ -344,6 +344,8 @@ type gpuSMIInfo struct {
 	MemUsed  string
 	MemTotal string
 	Util     string
+	TempC    string
+	PowerW   string
 }
 
 // GPUStatusRow is one device in the `gpu status` report. Restricted marks a
@@ -355,6 +357,8 @@ type GPUStatusRow struct {
 	MemUsed    string
 	MemTotal   string
 	Util       string
+	TempC      string
+	PowerW     string
 	Assigned   string
 	Restricted bool
 }
@@ -378,7 +382,7 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 	// We parse what's visible and leave the rest as "N/A".
 	smiData := make(map[int]*gpuSMIInfo)
 	result, err := rc.Runner.Query(ctx, "nvidia-smi",
-		"--query-gpu=index,name,memory.used,memory.total,utilization.gpu",
+		"--query-gpu=index,name,memory.used,memory.total,utilization.gpu,temperature.gpu,power.draw",
 		"--format=csv,noheader,nounits")
 	if err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
@@ -391,12 +395,19 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 				continue
 			}
 			idx, _ := strconv.Atoi(strings.TrimSpace(fields[0]))
-			smiData[idx] = &gpuSMIInfo{
+			info := &gpuSMIInfo{
 				Name:     strings.TrimSpace(fields[1]),
 				MemUsed:  strings.TrimSpace(fields[2]),
 				MemTotal: strings.TrimSpace(fields[3]),
 				Util:     strings.TrimSpace(fields[4]),
 			}
+			if len(fields) >= 6 {
+				info.TempC = cleanSMIMetric(fields[5])
+			}
+			if len(fields) >= 7 {
+				info.PowerW = cleanSMIMetric(fields[6])
+			}
+			smiData[idx] = info
 		}
 	}
 
@@ -431,6 +442,7 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 		if info, ok := smiData[i]; ok {
 			row.Model = info.Name
 			row.MemUsed, row.MemTotal, row.Util = info.MemUsed, info.MemTotal, info.Util
+			row.TempC, row.PowerW = info.TempC, info.PowerW
 		} else {
 			// The device exists but is not visible to nvidia-smi.
 			row.Restricted = true
@@ -441,6 +453,14 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 		report.Rows = append(report.Rows, row)
 	}
 	return report, nil
+}
+
+func cleanSMIMetric(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" || strings.Contains(strings.ToUpper(v), "N/A") || strings.Contains(strings.ToUpper(v), "NOT SUPPORTED") {
+		return ""
+	}
+	return v
 }
 
 // dockerWrapperPath is overridable in tests, like the GPU env/cgroup directories.

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"strconv"
@@ -81,14 +82,24 @@ func newGPUCmd() *cobra.Command {
 	})
 
 	// rootfiles gpu status
-	gpuCmd.AddCommand(&cobra.Command{
+	gpuStatusCmd := &cobra.Command{
 		Use:     "status",
 		Short:   "Show GPU status with allocation info",
-		Example: "  rootfiles gpu status",
+		Example: "  rootfiles gpu status\n  rootfiles gpu status --watch",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			watch, interval, err := watchOptions(cmd, false)
+			if err != nil {
+				return err
+			}
 			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
 				return err
+			}
+			if watch {
+				cfg := dashboardConfigFor(cmd, ui.ModeGPU, interval)
+				return runDashboard(cmd.Context(), cmd.OutOrStdout(), cfg, func(ctx context.Context) (ui.DashboardSnapshot, error) {
+					return collectGPUDashboardSnapshot(ctx, rc)
+				})
 			}
 			report, err := gpuStatusCollector(cmd.Context(), rc)
 			if err != nil {
@@ -98,7 +109,9 @@ func newGPUCmd() *cobra.Command {
 			ui.WriteHeader(out, cmd.CommandPath())
 			return renderGPUStatus(out, report)
 		},
-	})
+	}
+	addWatchFlags(gpuStatusCmd, defaultHostWatchInterval)
+	gpuCmd.AddCommand(gpuStatusCmd)
 
 	migCmd := &cobra.Command{Use: "mig", Short: "Show Multi-Instance GPU mode and instances",
 		Example: "  rootfiles gpu mig status"}

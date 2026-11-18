@@ -18,7 +18,7 @@ const helpWidth = 80
 
 func configureRootGroups(root *cobra.Command) {
 	groups := []struct{ id, title, commands string }{
-		{"setup", "Setup", "apply check status doctor config schedule shutdown backup rollback update"},
+		{"setup", "Setup", "apply check status monitor doctor config schedule shutdown backup rollback update"},
 		{"resources", "Users, GPUs and tenants", "user gpu tenant tunnel"},
 		{"fleet", "Fleet", "fleet"},
 		{"help", "Help", "help completion"},

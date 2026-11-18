@@ -41,6 +41,7 @@ func newStatusCmd() *cobra.Command {
 		_ = cmd.Flags().MarkHidden("inventory")
 	}
 	addOutputFlag(cmd)
+	addWatchFlags(cmd, defaultHostWatchInterval)
 	cmd = usesConfigTarget(cmd)
 	if nativeHostOS != "linux" {
 		// A controller report reads no profile, config file or home base. The
@@ -52,11 +53,25 @@ func newStatusCmd() *cobra.Command {
 }
 
 func runStatus(cmd *cobra.Command, _ []string) error {
+	watch, interval, err := watchOptions(cmd, false)
+	if err != nil {
+		return err
+	}
 	if nativeHostOS != "linux" {
+		if watch {
+			return runControllerMonitor(cmd, interval)
+		}
 		return runControllerStatus(cmd)
 	}
 	if cmd.Flags().Changed("inventory") {
 		return fmt.Errorf("--inventory is only used on a controller; omit it on Linux")
+	}
+	if watch {
+		moduleFilter, _ := cmd.Flags().GetStringSlice("module")
+		cfg := dashboardConfigFor(cmd, ui.ModeHost, interval)
+		return runDashboard(cmd.Context(), cmd.OutOrStdout(), cfg, func(ctx context.Context) (ui.DashboardSnapshot, error) {
+			return collectHostDashboardSnapshot(ctx, cmd, moduleFilter)
+		})
 	}
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()

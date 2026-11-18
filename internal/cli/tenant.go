@@ -140,15 +140,25 @@ func newTenantListCmd() *cobra.Command {
 }
 
 func newTenantStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "status [TENANT]",
 		Short:   "Show tenant containers, spec drift and volume use",
 		Example: "  rootfiles tenant status\n  rootfiles tenant status lab",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			watch, interval, err := watchOptions(cmd, false)
+			if err != nil {
+				return err
+			}
 			_, m, err := tenantReportEnv(cmd)
 			if err != nil {
 				return err
+			}
+			if watch {
+				cfg := dashboardConfigFor(cmd, ui.ModeTenant, interval)
+				return runDashboard(cmd.Context(), cmd.OutOrStdout(), cfg, func(ctx context.Context) (ui.DashboardSnapshot, error) {
+					return collectTenantDashboardSnapshot(ctx, m, args, len(args) == 1)
+				})
 			}
 			names := args
 			if len(names) == 0 {
@@ -165,6 +175,8 @@ func newTenantStatusCmd() *cobra.Command {
 			return renderTenantStatus(out, report)
 		},
 	}
+	addWatchFlags(cmd, defaultHostWatchInterval)
+	return cmd
 }
 
 // The tenant reports read a root-owned data root and a container runtime, so a
