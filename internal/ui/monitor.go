@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +38,9 @@ type DashboardConfig struct {
 	Height   int
 	Color    bool
 	ASCII    bool
+	// OpenHost returns the command that opens a fleet host's own dashboard in
+	// this terminal; nil leaves Enter unbound.
+	OpenHost func(host string) *exec.Cmd
 }
 
 // VitalSummary holds host-level load, memory, uptime and shutdown state.
@@ -108,6 +113,9 @@ type FleetDashRow struct {
 	Shutdown string
 	GPUs     string
 	Users    string
+	Load     string
+	Mem      string
+	Disk     string
 }
 
 // DashboardSnapshot holds one point-in-time read-only snapshot for the TUI.
@@ -154,6 +162,51 @@ type snapshotMsg struct {
 	err  error
 }
 
+// hostClosedMsg reports how a host dashboard opened with Enter ended.
+type hostClosedMsg struct {
+	host string
+	err  error
+}
+
+// hostSession runs a host dashboard for tea.Exec. ssh -t carries remote
+// errors through the PTY to stdout, so a failed session keeps the terminal
+// on that output until Enter instead of covering it with the fleet list.
+type hostSession struct {
+	host string
+	cmd  *exec.Cmd
+	in   io.Reader
+	out  io.Writer
+}
+
+func (s *hostSession) SetStdin(r io.Reader) {
+	s.in = r
+	if s.cmd.Stdin == nil {
+		s.cmd.Stdin = r
+	}
+}
+
+func (s *hostSession) SetStdout(w io.Writer) {
+	s.out = w
+	if s.cmd.Stdout == nil {
+		s.cmd.Stdout = w
+	}
+}
+
+func (s *hostSession) SetStderr(w io.Writer) {
+	if s.cmd.Stderr == nil {
+		s.cmd.Stderr = w
+	}
+}
+
+func (s *hostSession) Run() error {
+	err := s.cmd.Run()
+	if err != nil && s.in != nil && s.out != nil {
+		fmt.Fprintf(s.out, "\r\n%s: host dashboard exited: %v; press Enter to return to the fleet ", s.host, err)
+		_, _ = bufio.NewReader(s.in).ReadString('\n')
+	}
+	return err
+}
+
 // DashboardModel is the Bubble Tea model for live server and fleet monitoring.
 type DashboardModel struct {
 	ctx        context.Context
@@ -164,6 +217,7 @@ type DashboardModel struct {
 	activePane int
 	cursor     int
 	showHelp   bool
+	notice     string       // a failed host dashboard, until the next Enter or r
 	lines      *lineCounter // set during View
 	focusLine  int          // output line fitHeight keeps on screen
 }
@@ -247,7 +301,10 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "esc", "ctrl+c":
 			return m, tea.Quit
 		case "r":
+			m.notice = ""
 			return m, m.triggerRefresh()
+		case "enter":
+			return m, m.openHost()
 		case "tab":
 			m.activePane = (m.activePane + 1) % m.paneCount()
 			m.cursor = 0
@@ -275,6 +332,11 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.scheduleTick()
 		}
 		return m, tea.Batch(m.scheduleTick(), m.triggerRefresh())
+	case hostClosedMsg:
+		if msg.err != nil {
+			m.notice = fmt.Sprintf("%s: host dashboard exited: %v (its output was shown before Enter; Enter opens it again)", msg.host, msg.err)
+		}
+		return m, m.triggerRefresh()
 	case snapshotMsg:
 		m.inFlight = false
 		if msg.err != nil {
@@ -292,6 +354,23 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// openHost suspends the dashboard and runs the selected fleet host's own
+// dashboard in this terminal; the fleet list returns when it exits.
+func (m *DashboardModel) openHost() tea.Cmd {
+	if m.cfg.Mode != ModeFleet || m.cfg.OpenHost == nil || m.cursor >= len(m.snap.Fleet) {
+		return nil
+	}
+	m.notice = ""
+	host := m.snap.Fleet[m.cursor].Host
+	c := m.cfg.OpenHost(host)
+	if c == nil {
+		return nil
+	}
+	return tea.Exec(&hostSession{host: host, cmd: c}, func(err error) tea.Msg {
+		return hostClosedMsg{host: host, err: err}
+	})
 }
 
 func (m *DashboardModel) paneCount() int {
@@ -350,6 +429,9 @@ func (m *DashboardModel) View() string {
 		// Wrapped here, since clampLinesWidth would cut the cause and next step.
 		writeBullet(w, width, WarnMark(), m.snap.Err)
 	}
+	if m.notice != "" {
+		writeBullet(w, width, WarnMark(), m.notice)
+	}
 
 	switch m.cfg.Mode {
 	case ModeGPU:
@@ -367,10 +449,16 @@ func (m *DashboardModel) View() string {
 	}
 
 	WriteLine(w)
+	pane, short := "", ""
+	if m.paneCount() > 1 {
+		pane, short = "  tab switch pane", ", tab pane"
+	} else if m.cfg.Mode == ModeFleet && m.cfg.OpenHost != nil {
+		pane, short = "  enter open host", ", enter host"
+	}
 	if m.showHelp {
-		WriteHint(w, "keys: q/esc quit  r refresh  tab switch pane  j/k or up/down select  ? hide help")
+		WriteHint(w, "keys: q/esc quit  r refresh"+pane+"  j/k or up/down select  ? hide help")
 	} else {
-		WriteHint(w, fmt.Sprintf("every %s  (q quit, r refresh, tab pane, ? keys)", m.cfg.Interval))
+		WriteHint(w, fmt.Sprintf("every %s  (q quit, r refresh%s, ? keys)", m.cfg.Interval, short))
 	}
 	return fitHeight(clampLinesWidth(raw.String(), width), m.cfg.Height, m.focusLine)
 }
@@ -648,7 +736,9 @@ func (m *DashboardModel) renderFleetSection(w io.Writer, _ int) {
 		case "users":
 			rows = append(rows, []string{host, h.State, FirstNonEmpty(h.Users, "-"), FirstNonEmpty(h.Reason, "-")})
 		default:
-			rows = append(rows, []string{host, h.State, FirstNonEmpty(h.Shutdown, "-"), FirstNonEmpty(h.Reason, "-")})
+			// Failure reasons and shutdowns first: a narrow terminal cuts the vitals instead.
+			rows = append(rows, []string{host, h.State, FirstNonEmpty(h.Shutdown, "-"), FirstNonEmpty(h.Reason, "-"),
+				FirstNonEmpty(h.Load, "-"), FirstNonEmpty(h.Mem, "-"), FirstNonEmpty(h.Disk, "-"), FirstNonEmpty(h.GPUs, "-")})
 		}
 	}
 	m.markFocus(1 + m.cursor)
@@ -658,7 +748,7 @@ func (m *DashboardModel) renderFleetSection(w io.Writer, _ int) {
 	case "users":
 		_ = WriteTable(w, []string{"HOST", "STATE", "USERS", "REASON"}, rows, noWrap)
 	default:
-		_ = WriteTable(w, []string{"HOST", "STATE", "SHUTDOWN", "REASON"}, rows, noWrap)
+		_ = WriteTable(w, []string{"HOST", "STATE", "SHUTDOWN", "REASON", "LOAD", "MEM", "DISK", "GPUS"}, rows, noWrap)
 	}
 	WriteSummary(w, []SummaryCount{
 		{Marker: FailMark(), Count: counts["fail"], Label: "error"},

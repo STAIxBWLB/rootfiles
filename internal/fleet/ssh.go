@@ -70,6 +70,21 @@ type Result struct {
 	ExitCode    int             `json:"exit_code"`
 }
 
+// sshOptions keep every connection non-interactive: keys only, bounded connect.
+var sshOptions = []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=15"}
+
+// MonitorCommand opens the host's own dashboard in this terminal. It runs as
+// the SSH user without sudo: the read-only sudoers rule does not cover
+// monitor, and the host dashboard reports the reads it cannot make.
+func (r SSHRunner) MonitorCommand(h NamedHost) *exec.Cmd {
+	name := r.Binary
+	if name == "" {
+		name = "ssh"
+	}
+	args := append(append([]string{"-t"}, sshOptions...), "--", h.Host.SSH, remoteBinary+" monitor")
+	return exec.Command(name, args...)
+}
+
 func readOnlyRemoteCommand(op string) string {
 	return remoteBinary + " " + op + " -o json"
 }
@@ -211,7 +226,7 @@ func (r SSHRunner) runWithTimeout(ctx context.Context, h NamedHost, op, remote s
 	}
 	cctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	args := []string{"-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", h.Host.SSH, remote}
+	args := append(append([]string{}, sshOptions...), "--", h.Host.SSH, remote)
 	cmd := exec.CommandContext(cctx, name, args...)
 	if input != nil {
 		cmd.Stdin = bytes.NewReader(input)

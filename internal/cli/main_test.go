@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 )
 
 // TestMain pins the home base so config loading in these tests never runs
@@ -26,6 +27,8 @@ func TestMain(m *testing.M) {
 	configTrustRoot, configOwnerUID = tmp, uint32(os.Getuid())
 	// Keep system detection (os-release, /proc/mounts, nvidia-smi) off the host.
 	detectSystem = func() (*config.SystemInfo, error) { return &config.SystemInfo{OS: "ubuntu", Version: "22.04"}, nil }
+	// Status reports carry vitals; keep /proc and statfs reads off the host.
+	hostVitalsCollector = func(*module.RunContext) module.HostVitals { return module.HostVitals{} }
 	os.Setenv("ROOTFILES_HOME_BASE", "/home")
 	// Config selection falls back to the last applied run; keep it off the host.
 	stateDir, err := os.MkdirTemp("", "rootfiles-cli-state")

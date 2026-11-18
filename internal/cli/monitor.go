@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -159,6 +160,7 @@ func runControllerMonitor(cmd *cobra.Command, interval time.Duration) error {
 		return err
 	}
 	cfg := dashboardConfigFor(cmd, ui.ModeFleet, interval)
+	cfg.OpenHost = fleetOpenHost(hosts)
 	return runDashboard(cmd.Context(), cmd.OutOrStdout(), cfg, func(ctx context.Context) (ui.DashboardSnapshot, error) {
 		return collectFleetDashboardSnapshot(ctx, inv, hosts, inv.Defaults.Parallel, "")
 	})
@@ -468,14 +470,13 @@ func collectFleetDashboardSnapshot(ctx context.Context, _ *fleet.Inventory, host
 			Shutdown: shutdownCell(r.Remote),
 		}
 		if payload, ok := decodeGPUView(r); ok {
-			gpuText := strconv.Itoa(payload.TotalGPUs)
-			if payload.GPUModel != "" {
-				gpuText += "x " + payload.GPUModel
-			}
-			if allocs := allocationsCell(payload); allocs != "" {
-				gpuText += " (" + allocs + ")"
-			}
-			row.GPUs = gpuText
+			row.GPUs = gpuDashCell(payload, view)
+		} else if count, model, ok := decodeSystemGPUs(r); ok && view != "gpu" {
+			// A host without the allocation ledger still reports what it detected.
+			row.GPUs = gpuSummary(count, model, 0)
+		}
+		if v, ok := decodeVitalsView(r); ok {
+			row.Load, row.Mem, row.Disk = vitalsCells(v)
 		}
 		if payload, ok := decodeUsersView(r); ok {
 			row.Users = fmt.Sprintf("managed=%d system=%d (%s)", payload.Managed, payload.System, payload.HomeBase)
@@ -495,6 +496,71 @@ func collectFleetDashboardSnapshot(ctx context.Context, _ *fleet.Inventory, host
 		snap.Err = fmt.Sprintf("%d of %d host reads failed; see the REASON column", failed, len(rows))
 	}
 	return snap, nil
+}
+
+// gpuDashCell names the GPUs: with their holders in the gpu view, with the
+// assigned count in the default view, where it shares the row with vitals.
+func gpuDashCell(payload *fleetGPUView, view string) string {
+	if view != "gpu" {
+		assigned := 0
+		for _, a := range payload.Allocations {
+			assigned += len(a.GPUs)
+		}
+		return gpuSummary(payload.TotalGPUs, payload.GPUModel, assigned)
+	}
+	text := strconv.Itoa(payload.TotalGPUs)
+	if payload.GPUModel != "" {
+		text += "x " + payload.GPUModel
+	}
+	if allocs := allocationsCell(payload); allocs != "" {
+		text += " (" + allocs + ")"
+	}
+	return text
+}
+
+// gpuSummary is the short GPU cell that shares a row with vitals.
+func gpuSummary(count int, model string, assigned int) string {
+	text := strconv.Itoa(count)
+	if model = strings.TrimPrefix(model, "NVIDIA "); model != "" {
+		text += "x " + model
+	}
+	if assigned > 0 {
+		text += fmt.Sprintf(", %d assigned", assigned)
+	}
+	return text
+}
+
+// vitalsCells renders a host's 1-minute load, memory use and fullest mount;
+// a value the host could not read stays empty and renders as "-".
+func vitalsCells(v *module.HostVitals) (load, mem, disk string) {
+	if v.LoadKnown {
+		load = strconv.FormatFloat(v.Load1, 'f', 1, 64)
+	}
+	if v.MemTotalMiB > 0 {
+		mem = fmt.Sprintf("%.0f%%", v.MemUsedPct)
+	}
+	var fullest *module.MountUsage
+	for i := range v.Mounts {
+		if fullest == nil || v.Mounts[i].UsedPct > fullest.UsedPct {
+			fullest = &v.Mounts[i]
+		}
+	}
+	if fullest != nil {
+		disk = fmt.Sprintf("%.0f%% %s", fullest.UsedPct, fullest.Path)
+	}
+	return load, mem, disk
+}
+
+// fleetOpenHost opens a selected host's own dashboard over SSH.
+func fleetOpenHost(hosts []fleet.NamedHost) func(string) *exec.Cmd {
+	return func(name string) *exec.Cmd {
+		for _, h := range hosts {
+			if h.Name == name {
+				return fleet.SSHRunner{Binary: "ssh"}.MonitorCommand(h)
+			}
+		}
+		return nil
+	}
 }
 
 func toGPUDashRows(rows []module.GPUStatusRow) []ui.GPUDashRow {

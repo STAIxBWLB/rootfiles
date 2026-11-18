@@ -35,5 +35,27 @@
     "home_base": "",
     "managed": 0,
     "system": 0
+  },
+  "vitals": {
+    "load_1": 0.5,
+    "load_5": 0.25,
+    "load_15": 0.125,
+    "load_known": true,
+    "mem_total_mib": 1024,
+    "mem_used_mib": 512,
+    "mem_used_pct": 50,
+    "swap_total_mib": 0,
+    "swap_used_mib": 0,
+    "uptime": 0,
+    "mounts": [
+      {
+        "path": "/",
+        "used_pct": 50,
+        "free_bytes": 1073741824,
+        "total_gib": 2,
+        "free_gib": 1,
+        "level": "ok"
+      }
+    ]
   }
 }

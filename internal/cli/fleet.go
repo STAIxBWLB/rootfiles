@@ -169,6 +169,7 @@ func newFleetReadCmd(op string) *cobra.Command {
 				parallel = inv.Defaults.Parallel
 			}
 			cfg := dashboardConfigFor(c, ui.ModeFleet, interval)
+			cfg.OpenHost = fleetOpenHost(hosts)
 			return runDashboard(c.Context(), c.OutOrStdout(), cfg, func(ctx context.Context) (ui.DashboardSnapshot, error) {
 				return collectFleetDashboardSnapshot(ctx, inv, hosts, parallel, view)
 			})

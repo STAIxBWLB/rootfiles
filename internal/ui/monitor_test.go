@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os/exec"
 	"strconv"
 	"strings"
 	"testing"
@@ -343,5 +344,98 @@ func TestJoinableRefreshWaitsAndBlocksLateStarts(t *testing.T) {
 	<-stopped
 	if _, err := guarded(context.Background()); !errors.Is(err, context.Canceled) || calls != 1 {
 		t.Fatalf("refresh after stop: err=%v calls=%d, want canceled and one call", err, calls)
+	}
+}
+
+// #201: the default fleet table shows the vitals and GPU columns a host
+// reports, Enter opens the selected host through OpenHost, a failed host
+// dashboard stays on the warning line until r, and the footer names the key.
+func TestMonitorModel_FleetVitalsAndOpenHost(t *testing.T) {
+	cleanOutputEnv(t)
+	snap := DashboardSnapshot{Fleet: []FleetDashRow{
+		{Host: "gpu01", State: "ok", Load: "2.1", Mem: "34%", Disk: "61% /data", GPUs: "8x H100, 3 assigned"},
+		{Host: "gpu02", State: "ok"},
+	}}
+	var opened []string
+	var cmd *exec.Cmd
+	cfg := DashboardConfig{Mode: ModeFleet, Width: 120, Height: 24, OpenHost: func(host string) *exec.Cmd {
+		opened = append(opened, host)
+		cmd = exec.Command("true")
+		return cmd
+	}}
+	var m tea.Model = NewDashboardModel(context.Background(), cfg, snap, nil)
+	view := ansi.Strip(m.View())
+	for _, want := range []string{"LOAD", "MEM", "DISK", "GPUS", "61% /data", "8x H100, 3 assigned", "enter host"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("fleet view lacks %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "tab pane") || strings.Contains(view, "SHUTDOWN") {
+		t.Fatalf("fleet view offers a second pane or an empty column:\n%s", view)
+	}
+
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if _, run := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); run == nil || len(opened) != 1 || opened[0] != "gpu02" {
+		t.Fatalf("enter: cmd=%v opened=%v", run, opened)
+	}
+	m, _ = m.Update(hostClosedMsg{host: "gpu02", err: errors.New("exit status 255")})
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "gpu02: host dashboard exited: exit status 255") {
+		t.Fatalf("failed host dashboard not on the warning line:\n%s", view)
+	}
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
+	if view := ansi.Strip(m.View()); strings.Contains(view, "host dashboard exited") {
+		t.Fatalf("r kept the stale warning:\n%s", view)
+	}
+
+	// Without OpenHost, Enter does nothing; the host dashboard keeps its panes.
+	bare := NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeFleet, Width: 120}, DashboardSnapshot{Fleet: []FleetDashRow{{Host: "gpu02", State: "ok"}}}, nil)
+	if _, run := bare.Update(tea.KeyMsg{Type: tea.KeyEnter}); run != nil {
+		t.Fatal("enter without OpenHost returned a command")
+	}
+	if view := ansi.Strip(bare.View()); strings.Contains(view, "enter") || strings.Contains(view, "LOAD") {
+		t.Fatalf("bare fleet view offers enter or an empty vitals column:\n%s", view)
+	}
+	if view := ansi.Strip(NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeHost, Width: 120}, sampleSnapshot(), nil).View()); !strings.Contains(view, "tab pane") {
+		t.Fatalf("host view lost the pane key:\n%s", view)
+	}
+}
+
+// #201 review: in 80 columns a failure reason stays whole beside long vitals
+// and GPU cells, which are what the terminal edge cuts instead.
+func TestMonitorModel_FleetReasonSurvivesNarrowTerminal(t *testing.T) {
+	cleanOutputEnv(t)
+	snap := DashboardSnapshot{Fleet: []FleetDashRow{
+		{Host: "gpu01", State: "ok", Load: "212.4", Mem: "97%", Disk: "93% /srv/tenants/data", GPUs: "3x RTX PRO 6000 Blackwell Server Edition, 2 assigned"},
+		{Host: "gpu02", State: "unreachable", Reason: "ssh connection failed"},
+	}}
+	view := ansi.Strip(NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeFleet, Width: 80, Height: 24}, snap, nil).View())
+	if !strings.Contains(view, "ssh connection failed") {
+		t.Fatalf("80-column fleet view cut the failure reason:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > 80 {
+			t.Fatalf("line wider than 80 columns: %q", line)
+		}
+	}
+}
+
+// #201 review: a failed host session keeps the remote output on screen until
+// Enter; a session that ends cleanly returns at once.
+func TestHostSessionHoldsFailedOutput(t *testing.T) {
+	for _, tc := range []struct {
+		script  string
+		wantErr bool
+	}{{"echo remote cause; exit 3", true}, {"echo fine", false}} {
+		var out bytes.Buffer
+		input := strings.NewReader("\n")
+		s := &hostSession{host: "gpu01", cmd: exec.Command("sh", "-c", tc.script)}
+		s.SetStdin(input)
+		s.SetStdout(&out)
+		s.SetStderr(&out)
+		err := s.Run()
+		held := strings.Contains(out.String(), "gpu01: host dashboard exited: exit status 3; press Enter to return to the fleet")
+		if (err != nil) != tc.wantErr || held != tc.wantErr {
+			t.Fatalf("%q: err=%v held=%v out=%q", tc.script, err, held, out.String())
+		}
 	}
 }

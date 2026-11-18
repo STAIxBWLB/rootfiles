@@ -3,16 +3,19 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/STAIxBWLB/rootfiles/internal/fleet"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/tenant"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
@@ -347,5 +350,91 @@ func TestTenantDashboardCountsFailedReads(t *testing.T) {
 	want := "2 of 3 tenant reads failed; first, ml: docker inspect tenant-ml: permission denied; run `docker inspect tenant-ml` for the full Docker error"
 	if err != nil || snap.Err != want || snap.Tenants[1].State != "error: docker inspect tenant-ml: permission denied" {
 		t.Fatalf("err=%v warning=%q rows=%+v", err, snap.Err, snap.Tenants)
+	}
+}
+
+// #201: the default fleet dashboard renders load, memory, the fullest mount
+// and a GPU summary from each host's status payload; a host on a release
+// without vitals keeps those cells empty, and the gpu view keeps its holders.
+func TestFleetDashboardVitalsAndGPUCells(t *testing.T) {
+	const withVitals = `{"gpu":{"total_gpus":8,"gpu_model":"NVIDIA H100 80GB HBM3","allocations":[{"username":"alice","gpus":[0,1],"method":"env"},{"username":"bob","gpus":[2]}]},` +
+		`"vitals":{"load_1":2.14,"load_known":true,"mem_total_mib":1024,"mem_used_mib":348,"mem_used_pct":34,"mounts":[{"path":"/","used_pct":12},{"path":"/data","used_pct":61.2}]}}`
+	previous := readFleetHost
+	t.Cleanup(func() { readFleetHost = previous })
+	readFleetHost = func(_ fleet.SSHRunner, _ context.Context, h fleet.NamedHost, op string) fleet.Result {
+		remote := map[string]string{
+			"gpu01": withVitals,
+			"gpu02": `{"hostname":"gpu02"}`,
+			"gpu03": `{"system":{"gpu_count":4,"gpu_model":"NVIDIA A100-SXM4-40GB"}}`,
+		}[h.Name]
+		return fleet.Result{Host: h.Name, Command: op, State: "ok", Remote: json.RawMessage(remote)}
+	}
+	hosts := []fleet.NamedHost{{Name: "gpu01", Host: fleet.Host{SSH: "ops@gpu01"}}, {Name: "gpu02", Host: fleet.Host{SSH: "gpu02"}}, {Name: "gpu03", Host: fleet.Host{SSH: "gpu03"}}}
+
+	snap, err := collectFleetDashboardSnapshot(context.Background(), nil, hosts, 2, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, want := snap.Fleet[0], ui.FleetDashRow{Host: "gpu01", State: "ok", Shutdown: "-", Load: "2.1", Mem: "34%", Disk: "61% /data", GPUs: "8x H100 80GB HBM3, 3 assigned"}
+	if got != want {
+		t.Fatalf("row with vitals = %+v, want %+v", got, want)
+	}
+	if bare := snap.Fleet[1]; bare.Load != "" || bare.Mem != "" || bare.Disk != "" || bare.GPUs != "" {
+		t.Fatalf("a payload without vitals or gpu filled cells: %+v", bare)
+	}
+	// Without a ledger, the GPUs the host detected; the gpu view stays ledger-only.
+	if cell := snap.Fleet[2].GPUs; cell != "4x A100-SXM4-40GB" {
+		t.Fatalf("detected GPUs cell = %q", cell)
+	}
+	snap, err = collectFleetDashboardSnapshot(context.Background(), nil, hosts, 2, "gpu")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cell := snap.Fleet[0].GPUs; cell != "8x NVIDIA H100 80GB HBM3 (alice:0,1 (env); bob:2)" || snap.Fleet[2].GPUs != "" {
+		t.Fatalf("gpu view cells = %q, %q", cell, snap.Fleet[2].GPUs)
+	}
+
+	open := fleetOpenHost(hosts)
+	if c := open("gpu01"); c == nil || !strings.Contains(strings.Join(c.Args, " "), "-- ops@gpu01 /usr/local/bin/rootfiles monitor") {
+		t.Fatalf("open gpu01 = %v", c)
+	}
+	if c := open("absent"); c != nil {
+		t.Fatalf("an unknown host opened %v", c.Args)
+	}
+}
+
+// #201 review: vitals are read for -o json only and within the bound, so a
+// mount that does not answer cannot stall status; text never reads them.
+func TestStatusVitalsJSONOnlyAndBounded(t *testing.T) {
+	_, site, _ := statusContractFixture(t, "populated")
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	var calls atomic.Int32
+	hostVitalsCollector = func(*module.RunContext) module.HostVitals {
+		calls.Add(1)
+		<-release // a statfs that never returns
+		return module.HostVitals{LoadKnown: true}
+	}
+	saved := statusVitalsTimeout
+	statusVitalsTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { statusVitalsTimeout = saved })
+	for _, tc := range []struct {
+		format string
+		calls  int32
+	}{{"text", 0}, {"json", 1}} {
+		var out bytes.Buffer
+		root := NewRootCmd("test", "test")
+		root.SetOut(&out)
+		root.SetErr(io.Discard)
+		root.SetArgs([]string{"status", "--config", site, "--output", tc.format})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%s status: %v", tc.format, err)
+		}
+		if calls.Load() != tc.calls {
+			t.Fatalf("after %s status the collector ran %d times, want %d", tc.format, calls.Load(), tc.calls)
+		}
+		if tc.format == "json" && !strings.Contains(out.String(), `"load_known": false`) {
+			t.Fatalf("a stalled vitals read was not left empty:\n%s", out.String())
+		}
 	}
 }

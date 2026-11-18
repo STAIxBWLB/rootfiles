@@ -146,11 +146,16 @@ func statusContractFixture(t *testing.T, name string) (string, string, string) {
 		t.Setenv(key, "")
 	}
 	oldDetect, oldUID, oldBinary := detectSystem, geteuid, cloudflaredStatusBinary
-	oldScan, oldWarn, oldVersion := scanStatusUsers, warnStatusMetadata, buildVersion
+	oldScan, oldWarn, oldVersion, oldVitals := scanStatusUsers, warnStatusMetadata, buildVersion, hostVitalsCollector
 	t.Cleanup(func() {
 		detectSystem, geteuid, cloudflaredStatusBinary = oldDetect, oldUID, oldBinary
-		scanStatusUsers, warnStatusMetadata, buildVersion = oldScan, oldWarn, oldVersion
+		scanStatusUsers, warnStatusMetadata, buildVersion, hostVitalsCollector = oldScan, oldWarn, oldVersion, oldVitals
 	})
+	// Vitals read the test host's /proc and filesystems; pin them.
+	hostVitalsCollector = func(*module.RunContext) module.HostVitals {
+		return module.HostVitals{Load1: 0.5, Load5: 0.25, Load15: 0.125, LoadKnown: true, MemTotalMiB: 1024, MemUsedMiB: 512, MemUsedPct: 50,
+			Mounts: []module.MountUsage{{Path: "/", UsedPct: 50, FreeBytes: 1 << 30, TotalGiB: 2, FreeGiB: 1, Level: "ok"}}}
+	}
 	sys := &config.SystemInfo{OS: "ubuntu", Version: "24.04", Codename: "noble", Arch: "amd64", CPUCores: 8, MemoryGB: 32, StorageLayout: []config.MountPoint{}}
 	if name == "unsupported-os" {
 		sys.OS = "fixture-unsupported"
