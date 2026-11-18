@@ -111,7 +111,7 @@ rootfiles update --version v0.20.0
 ```
 
 - `update` downloads the release archive for this OS and architecture, verifies its SHA-256 checksum, and replaces the running binary atomically. On a macOS controller run it without sudo: it replaces the binary only when the running user owns both the binary and its directory, and otherwise prints the `scripts/install.sh --prefix "$HOME/.local"` reinstall command instead.
-- When the binary is in `/usr/local/bin` or `/usr/bin`, it also points `root` next to it at the binary, replacing any other file or symlink named `root` there; a failure there does not fail the update. Other locations, such as `$HOME/.local/bin`, get no `root` symlink.
+- When the binary is `/usr/local/bin/rootfiles` or `/usr/bin/rootfiles`, it also points `root` in that directory at it, replacing any other file or symlink named `root` there; a failure there does not fail the update. Any other path, such as `$HOME/.local/bin/rootfiles`, gets no `root` symlink.
 - On Linux, after replacing the binary it runs `rootfiles check`. When the new release plans changes on this host, it prints an "Apply pending" hint; nothing is applied automatically.
 - `update --check` and `tunnel update --check` need neither root nor the lock. Exit codes: 0 when current, 2 when an update (or, for the tunnel, a missing cloudflared) is available, 1 on a lookup error.
 - `rootfiles upgrade` is an alias of `update`.
