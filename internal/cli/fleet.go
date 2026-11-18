@@ -141,16 +141,43 @@ func newFleetReadCmd(op string) *cobra.Command {
 		example = "  rootfiles fleet status --all\n  rootfiles fleet status --all --view gpu"
 	}
 	c := &cobra.Command{Use: op, Short: "Run a read-only fleet " + op + " report", Args: cobra.NoArgs, Example: example, RunE: func(c *cobra.Command, _ []string) error {
+		var watch bool
+		var interval time.Duration
+		if op == "status" {
+			var err error
+			watch, interval, err = watchOptions(c, false)
+			if err != nil {
+				return err
+			}
+		}
 		inv, hosts, err := loadFleetSelection(c, false)
 		if err != nil {
 			return err
+		}
+		view, _ := c.Flags().GetString("view")
+		if watch {
+			if view != "" && !knownFleetView(view) {
+				return withNext(
+					fmt.Errorf("--view %q is not a known fleet view", view),
+					"choose "+fleetViewHelp+" (rootfiles fleet status --help)")
+			}
+			parallel, _ := c.Flags().GetInt("parallel")
+			if parallel < 0 || parallel > 128 || (c.Flags().Lookup("parallel").Changed && parallel == 0) {
+				return fmt.Errorf("--parallel must be between 1 and 128")
+			}
+			if !c.Flags().Lookup("parallel").Changed {
+				parallel = inv.Defaults.Parallel
+			}
+			cfg := dashboardConfigFor(c, ui.ModeFleet, interval)
+			return runDashboard(c.Context(), c.OutOrStdout(), cfg, func(ctx context.Context) (ui.DashboardSnapshot, error) {
+				return collectFleetDashboardSnapshot(ctx, inv, hosts, parallel, view)
+			})
 		}
 		results, err := fleetReadPool(c, inv, hosts, op)
 		if err != nil {
 			return err
 		}
 		format, _ := outputFormat(c)
-		view, _ := c.Flags().GetString("view")
 		out := c.OutOrStdout()
 		if format == "text" {
 			ui.WriteHeader(out, c.CommandPath())
@@ -185,6 +212,7 @@ func newFleetReadCmd(op string) *cobra.Command {
 	addOutputFlag(c)
 	if op == "status" {
 		c.Flags().String("view", "", "Add a fleet-wide section read from the same report: "+fleetViewHelp)
+		addWatchFlags(c, defaultFleetWatchInterval)
 	}
 	return c
 }

@@ -12,7 +12,7 @@ The platform is pinned to `linux`, the host this binary configures: help that di
 between a Linux server and a controller (which flags exist, which report is read) is
 recorded here as the server sees it.
 
-## Commands (97)
+## Commands (98)
 
 | command | kind | usage | summary | chars | example | widest | issues |
 |---|---|---|---|---|---|---|---|
@@ -49,7 +49,8 @@ recorded here as the server sees it.
 | `rootfiles gpu mig` | runnable | - | Show Multi-Instance GPU mode and instances | 42 | yes | 70 | - |
 | `rootfiles gpu mig status` | runnable | - | Show MIG mode and instances per GPU | 35 | yes | 70 | - |
 | `rootfiles gpu revoke` | runnable | <USERNAME> | Revoke GPU allocation from a user | 33 | yes | 70 | - |
-| `rootfiles gpu status` | runnable | - | Show GPU status with allocation info | 36 | yes | 70 | - |
+| `rootfiles gpu status` | runnable | - | Show GPU status with allocation info | 36 | yes | 77 | - |
+| `rootfiles monitor` | runnable | - | Watch live system, GPU, tenant and health status | 48 | yes | 79 | - |
 | `rootfiles rollback` | runnable | [BACKUP_ID] | Restore files changed by an earlier run | 39 | yes | 77 | - |
 | `rootfiles schedule` | runnable | - | Install check and doctor report timers | 38 | yes | 80 | - |
 | `rootfiles schedule disable` | runnable | - | Stop and remove the report timer | 32 | yes | 70 | - |
@@ -75,7 +76,7 @@ recorded here as the server sees it.
 | `rootfiles tenant passwd` | runnable | <TENANT> <USER> | Issue a temporary password for a tenant user | 44 | yes | 78 | - |
 | `rootfiles tenant port` | runnable | <TENANT> <SSH_PORT> | Change a tenant's SSH host port (recreates the container) | 57 | yes | 70 | - |
 | `rootfiles tenant restart` | runnable | <TENANT> | Restart a tenant container | 26 | yes | 70 | - |
-| `rootfiles tenant status` | runnable | [TENANT] | Show tenant containers, spec drift and volume use | 49 | yes | 70 | - |
+| `rootfiles tenant status` | runnable | [TENANT] | Show tenant containers, spec drift and volume use | 49 | yes | 77 | - |
 | `rootfiles tenant sync` | runnable | - | Refresh tenant password hashes and sshpiper keys | 48 | yes | 77 | - |
 | `rootfiles tenant user` | runnable | - | Manage tenant accounts | 22 | yes | 70 | - |
 | `rootfiles tenant user add` | runnable | <TENANT> <NAME> | Add an account and issue its temporary password | 47 | yes | 70 | - |
@@ -161,6 +162,7 @@ The audit has to settle one form for every summary, so the first word of each is
 - `Update`: rootfiles fleet update, rootfiles update
 - `Upgrade`: rootfiles tunnel update
 - `Validate`: rootfiles config validate
+- `Watch`: rootfiles monitor
 
 ## Report outputs (30)
 
@@ -362,11 +364,13 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet status` | `--all` | bool | false | - | no |
 | `rootfiles fleet status` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet status` | `--host` | stringSlice | [] | - | no |
+| `rootfiles fleet status` | `--interval` | duration | 5s | - | no |
 | `rootfiles fleet status` | `--inventory` | string | - | - | no |
 | `rootfiles fleet status` | `--json` | bool | false | - | no |
 | `rootfiles fleet status` | `-o, --output` | string | text | o | no |
 | `rootfiles fleet status` | `--parallel` | int | 0 | - | no |
 | `rootfiles fleet status` | `--view` | string | - | - | no |
+| `rootfiles fleet status` | `-w, --watch` | bool | false | w | no |
 | `rootfiles fleet targets` | `--all` | bool | false | - | no |
 | `rootfiles fleet targets` | `--group` | stringSlice | [] | - | no |
 | `rootfiles fleet targets` | `--host` | stringSlice | [] | - | no |
@@ -384,6 +388,11 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles fleet update` | `--version` | string | - | - | no |
 | `rootfiles gpu assign` | `--gpus` | string | - | - | no |
 | `rootfiles gpu assign` | `--method` | string | - | - | no |
+| `rootfiles gpu status` | `--interval` | duration | 2s | - | no |
+| `rootfiles gpu status` | `-w, --watch` | bool | false | w | no |
+| `rootfiles monitor` | `--interval` | duration | 2s | - | no |
+| `rootfiles monitor` | `--inventory` | string | - | - | yes |
+| `rootfiles monitor` | `--module` | stringSlice | [] | - | no |
 | `rootfiles schedule enable` | `--on-calendar` | string | daily | - | no |
 | `rootfiles shutdown notify` | `--notice` | string | - | - | no |
 | `rootfiles shutdown schedule` | `--at` | string | - | - | no |
@@ -394,10 +403,12 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles shutdown schedule` | `--replace` | bool | false | - | no |
 | `rootfiles shutdown status` | `--json` | bool | false | - | no |
 | `rootfiles shutdown status` | `-o, --output` | string | text | o | no |
+| `rootfiles status` | `--interval` | duration | 2s | - | no |
 | `rootfiles status` | `--inventory` | string | - | - | yes |
 | `rootfiles status` | `--json` | bool | false | - | no |
 | `rootfiles status` | `--module` | stringSlice | [] | - | no |
 | `rootfiles status` | `-o, --output` | string | text | o | no |
+| `rootfiles status` | `-w, --watch` | bool | false | w | no |
 | `rootfiles tenant apply` | `--all` | bool | false | - | no |
 | `rootfiles tenant cpuset` | `--clear` | bool | false | - | no |
 | `rootfiles tenant cpuset` | `--cpus` | string | - | - | no |
@@ -422,6 +433,8 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles tenant import` | `--operator` | stringArray | [] | - | no |
 | `rootfiles tenant import` | `--size` | string | - | - | no |
 | `rootfiles tenant logs` | `--tail` | int | 200 | - | no |
+| `rootfiles tenant status` | `--interval` | duration | 2s | - | no |
+| `rootfiles tenant status` | `-w, --watch` | bool | false | w | no |
 | `rootfiles tenant user add` | `--gid` | int | 0 | - | no |
 | `rootfiles tenant user add` | `--sudo` | bool | false | - | no |
 | `rootfiles tenant user add` | `--uid` | int | 0 | - | no |

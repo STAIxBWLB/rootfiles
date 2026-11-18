@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -344,6 +345,8 @@ type gpuSMIInfo struct {
 	MemUsed  string
 	MemTotal string
 	Util     string
+	TempC    string
+	PowerW   string
 }
 
 // GPUStatusRow is one device in the `gpu status` report. Restricted marks a
@@ -355,6 +358,8 @@ type GPUStatusRow struct {
 	MemUsed    string
 	MemTotal   string
 	Util       string
+	TempC      string
+	PowerW     string
 	Assigned   string
 	Restricted bool
 }
@@ -364,6 +369,10 @@ type GPUStatusReport struct {
 	Rows []GPUStatusRow
 }
 
+// ErrNoGPUDevices is what CollectGPUStatus returns on a host without NVIDIA
+// device nodes, so callers can tell a GPU-less host from a failed read.
+var ErrNoGPUDevices = errors.New("no NVIDIA GPU devices found in /dev")
+
 // CollectGPUStatus reads the device count, nvidia-smi and the allocation
 // database, so the command renders the report from data instead of printing
 // from the collector.
@@ -371,15 +380,18 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 	WarnUntrustedMetadata(rc)
 	totalGPUs := countGPUDevices()
 	if totalGPUs == 0 {
-		return nil, fmt.Errorf("no NVIDIA GPU devices found in /dev")
+		return nil, ErrNoGPUDevices
 	}
 
 	// Query nvidia-smi — may only see a subset due to cgroup restrictions.
 	// We parse what's visible and leave the rest as "N/A".
 	smiData := make(map[int]*gpuSMIInfo)
-	result, err := rc.Runner.Query(ctx, "nvidia-smi",
-		"--query-gpu=index,name,memory.used,memory.total,utilization.gpu",
-		"--format=csv,noheader,nounits")
+	core := "index,name,memory.used,memory.total,utilization.gpu"
+	result, err := rc.Runner.Query(ctx, "nvidia-smi", "--query-gpu="+core+",temperature.gpu,power.draw", "--format=csv,noheader,nounits")
+	if err != nil {
+		// A driver that rejects the optional properties still reports the core columns.
+		result, err = rc.Runner.Query(ctx, "nvidia-smi", "--query-gpu="+core, "--format=csv,noheader,nounits")
+	}
 	if err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
 			line = strings.TrimSpace(line)
@@ -391,12 +403,19 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 				continue
 			}
 			idx, _ := strconv.Atoi(strings.TrimSpace(fields[0]))
-			smiData[idx] = &gpuSMIInfo{
+			info := &gpuSMIInfo{
 				Name:     strings.TrimSpace(fields[1]),
 				MemUsed:  strings.TrimSpace(fields[2]),
 				MemTotal: strings.TrimSpace(fields[3]),
 				Util:     strings.TrimSpace(fields[4]),
 			}
+			if len(fields) >= 6 {
+				info.TempC = cleanSMIMetric(fields[5])
+			}
+			if len(fields) >= 7 {
+				info.PowerW = cleanSMIMetric(fields[6])
+			}
+			smiData[idx] = info
 		}
 	}
 
@@ -431,6 +450,7 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 		if info, ok := smiData[i]; ok {
 			row.Model = info.Name
 			row.MemUsed, row.MemTotal, row.Util = info.MemUsed, info.MemTotal, info.Util
+			row.TempC, row.PowerW = info.TempC, info.PowerW
 		} else {
 			// The device exists but is not visible to nvidia-smi.
 			row.Restricted = true
@@ -441,6 +461,14 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 		report.Rows = append(report.Rows, row)
 	}
 	return report, nil
+}
+
+func cleanSMIMetric(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" || strings.Contains(strings.ToUpper(v), "N/A") || strings.Contains(strings.ToUpper(v), "NOT SUPPORTED") {
+		return ""
+	}
+	return v
 }
 
 // dockerWrapperPath is overridable in tests, like the GPU env/cgroup directories.

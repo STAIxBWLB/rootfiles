@@ -9,6 +9,7 @@ depends-on:
 paths:
   - internal/module/gpu.go
   - internal/module/mig.go
+  - internal/module/vitals.go
   - internal/cli/gpu.go
 ---
 

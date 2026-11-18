@@ -45,14 +45,23 @@ func tenantEnv(cmd *cobra.Command) (*module.RunContext, *tenant.Manager, error) 
 	if config.IsRocky(rc.Config.System) {
 		return nil, nil, fmt.Errorf("tenant containers are not supported on Rocky Linux")
 	}
-	if err := module.RequireTrustedMetadata(rc); err != nil {
+	if err := checkTenantTrust(rc); err != nil {
 		return nil, nil, err
+	}
+	return rc, module.NewTenantManager(rc, cmd.OutOrStdout()), nil
+}
+
+// checkTenantTrust refuses tenant data that root does not control; every
+// reader of tenant specs and status goes through it.
+func checkTenantTrust(rc *module.RunContext) error {
+	if err := module.RequireTrustedMetadata(rc); err != nil {
+		return err
 	}
 	root := rc.Config.Modules.Tenant.DataRoot()
 	if err := config.RootOnlyHomeBase("/", root, 0); err != nil {
-		return nil, nil, fmt.Errorf("refusing tenant root %s: %w", root, err)
+		return fmt.Errorf("refusing tenant root %s: %w", root, err)
 	}
-	return rc, module.NewTenantManager(rc, cmd.OutOrStdout()), nil
+	return nil
 }
 
 // tenantDo runs fn for tenant t and records a real run in the audit log.
@@ -140,12 +149,32 @@ func newTenantListCmd() *cobra.Command {
 }
 
 func newTenantStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:     "status [TENANT]",
 		Short:   "Show tenant containers, spec drift and volume use",
 		Example: "  rootfiles tenant status\n  rootfiles tenant status lab",
 		Args:    cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			watch, interval, err := watchOptions(cmd, false)
+			if err != nil {
+				return err
+			}
+			if watch {
+				return watchDashboard(cmd, ui.ModeTenant, interval, func() (ui.RefreshFunc, error) {
+					if _, _, err := tenantReportEnv(cmd); err != nil {
+						return nil, err
+					}
+					// Every refresh re-resolves the tenant environment, so the
+					// trust check runs again before each read.
+					return func(ctx context.Context) (ui.DashboardSnapshot, error) {
+						_, m, err := tenantReportEnv(cmd)
+						if err != nil {
+							return ui.DashboardSnapshot{}, err
+						}
+						return collectTenantDashboardSnapshot(ctx, m, args, len(args) == 1)
+					}, nil
+				})
+			}
 			_, m, err := tenantReportEnv(cmd)
 			if err != nil {
 				return err
@@ -165,6 +194,8 @@ func newTenantStatusCmd() *cobra.Command {
 			return renderTenantStatus(out, report)
 		},
 	}
+	addWatchFlags(cmd, defaultHostWatchInterval)
+	return cmd
 }
 
 // The tenant reports read a root-owned data root and a container runtime, so a
