@@ -80,6 +80,13 @@ func ParseInventory(data []byte, path string) (*Inventory, error) {
 		return nil, err
 	}
 	inv.Path = abs
+	// Relative configs sit next to the inventory file itself, so a symlinked
+	// inventory resolves them beside its target. A path that does not exist
+	// yet (fleet init validating new bytes) keeps the given directory.
+	configDir := filepath.Dir(abs)
+	if real, err := filepath.EvalSymlinks(abs); err == nil {
+		configDir = filepath.Dir(real)
+	}
 	if len(inv.Hosts) == 0 {
 		return nil, fmt.Errorf("inventory has no hosts")
 	}
@@ -117,7 +124,7 @@ func ParseInventory(data []byte, path string) (*Inventory, error) {
 		if h.Config != "" {
 			p := h.Config
 			if !filepath.IsAbs(p) {
-				p = filepath.Join(filepath.Dir(abs), p)
+				p = filepath.Join(configDir, p)
 			}
 			cfg, err := config.LoadSite(p)
 			if err != nil {
