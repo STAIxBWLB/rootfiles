@@ -402,5 +402,8 @@ func TestStatusReportsInspectFailures(t *testing.T) {
 		if row.State != tc.state || !strings.HasPrefix(row.Error, tc.errText) || (tc.errText == "") != (row.Error == "") {
 			t.Fatalf("stderr %q: state=%q error=%q, want state %q error %q", tc.stderr, row.State, row.Error, tc.state, tc.errText)
 		}
+		if next := "est: run `docker inspect tenant-est`"; tc.errText != "" && (len(row.Detail) != 1 || !strings.HasPrefix(row.Detail[0], next)) {
+			t.Fatalf("detail = %q, want the next step %q", row.Detail, next)
+		}
 	}
 }

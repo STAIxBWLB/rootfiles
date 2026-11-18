@@ -691,7 +691,8 @@ func (m *Manager) CollectStatus(ctx context.Context, names []string, detail bool
 		st := m.inspect(ctx, ContainerName(n))
 		if st.Err != nil {
 			// A failed read is not a missing container.
-			report.Rows = append(report.Rows, StatusRow{Tenant: n, Error: fmt.Sprintf("error: %v", st.Err)})
+			report.Rows = append(report.Rows, StatusRow{Tenant: n, Error: fmt.Sprintf("error: %v", st.Err),
+				Detail: []string{fmt.Sprintf("%s: run `docker inspect %s` for the full Docker error", n, ContainerName(n))}})
 			continue
 		}
 		state := "missing"
