@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/STAIxBWLB/rootfiles/internal/fleet"
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -48,6 +49,39 @@ func decodeGPUView(result fleet.Result) (*fleetGPUView, bool) {
 		return nil, false
 	}
 	return payload.GPU, true
+}
+
+// decodeVitalsView reads a host's vitals; a host on a release before they
+// joined the status report has none.
+func decodeVitalsView(result fleet.Result) (*module.HostVitals, bool) {
+	if len(result.Remote) == 0 {
+		return nil, false
+	}
+	var payload struct {
+		Vitals *module.HostVitals `json:"vitals"`
+	}
+	if err := json.Unmarshal(result.Remote, &payload); err != nil || payload.Vitals == nil {
+		return nil, false
+	}
+	return payload.Vitals, true
+}
+
+// decodeSystemGPUs reads the GPUs a host detected, which its status report
+// carries whether or not the host keeps an allocation ledger.
+func decodeSystemGPUs(result fleet.Result) (int, string, bool) {
+	if len(result.Remote) == 0 {
+		return 0, "", false
+	}
+	var payload struct {
+		System *struct {
+			GPUCount int    `json:"gpu_count"`
+			GPUModel string `json:"gpu_model"`
+		} `json:"system"`
+	}
+	if err := json.Unmarshal(result.Remote, &payload); err != nil || payload.System == nil || payload.System.GPUCount == 0 {
+		return 0, "", false
+	}
+	return payload.System.GPUCount, payload.System.GPUModel, true
 }
 
 func decodeUsersView(result fleet.Result) (*fleetUsersView, bool) {

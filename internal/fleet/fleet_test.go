@@ -617,3 +617,14 @@ printf '%s\n' 'Updated to v1.2.3'
 		t.Fatalf("rollout continued past failed check: %#v", results)
 	}
 }
+
+// #201: the drill-down opens the host's own dashboard over an interactive
+// SSH session with the read options, and without sudo.
+func TestMonitorCommandArgs(t *testing.T) {
+	h := NamedHost{Name: "gpu01", Host: Host{SSH: "ops@gpu01", Sudo: "nopasswd"}}
+	got := SSHRunner{Binary: "ssh"}.MonitorCommand(h).Args
+	want := []string{"ssh", "-t", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", "ops@gpu01", "/usr/local/bin/rootfiles monitor"}
+	if strings.Join(got, "\x00") != strings.Join(want, "\x00") {
+		t.Fatalf("args = %q, want %q", got, want)
+	}
+}

@@ -239,6 +239,8 @@ type statusReport struct {
 	GPU                    *module.GPUAllocationsDB `json:"gpu,omitempty"`
 	Tunnel                 statusTunnel             `json:"tunnel"`
 	Users                  statusUsers              `json:"users"`
+	// Vitals is JSON-only: the fleet dashboard reads it from this payload.
+	Vitals module.HostVitals `json:"vitals"`
 }
 
 type statusTunnel struct {
@@ -264,6 +266,7 @@ func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.Syste
 	}
 	r.Version = buildVersion
 	r.Hostname, _ = os.Hostname()
+	r.Vitals = hostVitalsCollector(rc)
 	if scheduled, err := shutdown.LoadForReport(time.Now()); err == nil {
 		r.ScheduledShutdown = scheduled
 	} else {

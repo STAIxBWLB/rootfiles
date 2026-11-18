@@ -86,6 +86,7 @@ rootfiles fleet doctor --host gpu01 --parallel 4
 - Host states: `ok`, `drift` (pending changes, or a host that applied a different config than the inventory resolves), `findings` (doctor), `needs-privilege`, `unreachable`, `missing` (status only: rootfiles is not installed), and `error`. A host that never recorded the inventory's config is `error` ("inventory configuration is unverified"), never `ok`.
 - Exit codes: 0 when every host is `ok`, 2 otherwise, 1 for controller or inventory errors.
 - `--view gpu` or `--view users` adds a fleet-wide section rendered from that same `status` report: GPU allocations, or managed and system account counts, per host. No extra remote command is sent, so the sudoers rule is unchanged, and a host that did not report the section shows `-` instead of failing the run. `--json` adds the section beside `hosts` under the view's own key; without `--view` the report is unchanged.
+- `fleet status --watch` (and `rootfiles monitor` on the controller) shows the same table with each host's load, memory, fullest mount and GPUs from that `status` report, and Enter opens the selected host's own dashboard over `ssh -t`. With `--view gpu` or `--view users` the watch shows that view instead.
 - The text report gains a `SHUTDOWN` column when any selected host has a [scheduled shutdown](#shutdown). A fleet with nothing scheduled prints exactly the table it printed before, and the JSON report is unchanged either way: each host's schedule already travels inside its own `status -o json` payload.
 
 ## Shutdown
