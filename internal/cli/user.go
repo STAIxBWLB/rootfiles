@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 
@@ -75,7 +76,11 @@ func newUserAddCmd() *cobra.Command {
 				var err error
 				username, err = ui.Input("Username", "", rc.Yes)
 				if err != nil || username == "" {
-					return fmt.Errorf("username is required")
+					msg := "username is required"
+					if errors.Is(err, ui.ErrNoTerminal) {
+						msg += " and there is no terminal to prompt for it"
+					}
+					return withNext(errors.New(msg), "pass the username as an argument, with --user, or in ROOTFILES_USER")
 				}
 			}
 
