@@ -105,9 +105,9 @@ sudo rootfiles update --version v0.20.0  # a specific release
 sudo rootfiles update --dry-run          # download and verify, do not replace
 ```
 
-- `update` downloads the release archive for this OS and architecture, verifies its SHA-256 checksum, and replaces the running binary atomically. It works on Linux only.
+- `update` downloads the release archive for this OS and architecture, verifies its SHA-256 checksum, and replaces the running binary atomically. On a macOS controller it runs without sudo and replaces only a binary you own; for a root-owned one it prints the `scripts/install.sh --prefix "$HOME/.local"` reinstall command instead.
 - It also creates the `root` symlink next to the binary when it is missing.
-- After replacing the binary it runs `rootfiles check`. When the new release plans changes on this host, it prints an "Apply pending" hint; nothing is applied automatically.
+- On Linux, after replacing the binary it runs `rootfiles check`. When the new release plans changes on this host, it prints an "Apply pending" hint; nothing is applied automatically.
 - `update --check` and `tunnel update --check` need neither root nor the lock. Exit codes: 0 when current, 2 when an update (or, for the tunnel, a missing cloudflared) is available, 1 on a lookup error.
 - `rootfiles upgrade` is an alias of `update`.
-- For a fleet, use `rootfiles fleet update --version vX.Y.Z` ([fleet.md](fleet.md#rollouts)).
+- For a fleet, use `rootfiles fleet update --all --version vX.Y.Z --yes`, or `--host`/`--group` instead of `--all` ([fleet.md](fleet.md#rollouts)).
