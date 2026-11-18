@@ -150,6 +150,12 @@ func TestDisplayFlagsAfterAFlagError(t *testing.T) {
 		{[]string{"--color=always", "status", "--zzz-unknown", "--ascii=false", "--color=never"}, `"bad` + ui.Relation + `theme"`, "never"},
 		{[]string{"status", "--profile", "--ascii", "--zzz-unknown"}, `"bad` + ui.Relation + `theme"`, "auto"},
 		{[]string{"status", "--zzz-unknown", "--", "--ascii"}, `"bad` + ui.Relation + `theme"`, "auto"},
+		{[]string{"status", "-o", "--ascii", "--zzz-unknown"}, `"bad` + ui.Relation + `theme"`, "auto"},
+		{[]string{"status", "-wo", "--ascii", "--zzz-unknown"}, `"bad` + ui.Relation + `theme"`, "auto"},
+		{[]string{"status", "-vo", "--ascii"}, `"bad->theme"`, "auto"},
+		{[]string{"status", "-ojson", "--zzz-unknown", "--ascii"}, `"bad->theme"`, "auto"},
+		{[]string{"status", "--zzz-unknown", "--ascii", "--color=bad"}, `"bad->theme"`, "bad"},
+		{[]string{"status", "--ascii", "--color=bad"}, `"bad->theme"`, "bad"},
 	} {
 		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
 			os.Args = append([]string{"rootfiles"}, tc.args...)
@@ -162,7 +168,7 @@ func TestDisplayFlagsAfterAFlagError(t *testing.T) {
 			if err := executeCommand(context.Background(), root); !errors.As(err, &exit) || exit.Code != 2 {
 				t.Fatalf("err = %v, want a usage error", err)
 			}
-			if !strings.Contains(stderr.String(), "unknown flag: --zzz-unknown") || !strings.Contains(stderr.String(), "unknown ROOTFILES_COLOR_THEME "+tc.theme) {
+			if !strings.Contains(stderr.String(), "unknown ") || !strings.Contains(stderr.String(), "unknown ROOTFILES_COLOR_THEME "+tc.theme) {
 				t.Fatalf("want the usage error and theme %s on stderr, got %q", tc.theme, stderr.String())
 			}
 			if color, _ := root.PersistentFlags().GetString("color"); color != tc.color {
