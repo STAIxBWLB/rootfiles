@@ -113,15 +113,18 @@ func configureWriters(cmd *cobra.Command, machine bool) error {
 	if mode == "" {
 		mode, _ = cmd.Root().PersistentFlags().GetString("color")
 	}
+	var err error
 	switch mode {
 	case "auto", "always", "never":
 	default:
-		return usageError(fmt.Errorf("invalid --color %q: choose auto, always or never", mode))
+		// The refusal is still written with --ascii and the default color.
+		err = usageError(fmt.Errorf("invalid --color %q: choose auto, always or never", mode))
+		mode = "auto"
 	}
 	ascii, _ := cmd.Flags().GetBool("ascii")
 	cmd.SetOut(ui.ConfigureWriter(cmd.OutOrStdout(), mode, ascii, machine))
 	cmd.SetErr(ui.ConfigureWriter(cmd.ErrOrStderr(), mode, ascii, false))
-	return nil
+	return err
 }
 
 // Raw payloads use the same undecorated stdout path as JSON. Diagnostics keep
@@ -166,7 +169,10 @@ func installOutputBoundary(cmd *cobra.Command) {
 		}
 		return nil
 	}
-	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error { return usageError(err) })
+	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		applyDisplayFlags(c, os.Args[1:])
+		return usageError(err)
+	})
 	for _, child := range cmd.Commands() {
 		installOutputBoundary(child)
 	}
@@ -186,6 +192,53 @@ func installOutputBoundary(cmd *cobra.Command) {
 			defer restore()
 			writeHelpPage(c)
 		})
+	}
+}
+
+// applyDisplayFlags sets --color and --ascii from the invocation once flag
+// parsing has stopped at a bad flag, so the refusal and the theme warning
+// follow display flags written after it. Execute runs Cobra on os.Args[1:].
+// Other flags keep their arity as pflag reads it (a value flag takes the rest
+// of a shorthand group or the next argument), and the last value wins.
+func applyDisplayFlags(c *cobra.Command, args []string) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return
+		}
+		if len(arg) > 1 && arg[0] == '-' && arg[1] != '-' {
+			for j := 1; j < len(arg); j++ {
+				flag := c.Flags().ShorthandLookup(arg[j : j+1])
+				if flag == nil || flag.NoOptDefVal == "" {
+					if flag != nil && j+1 == len(arg) && i+1 < len(args) {
+						i++ // its value is the next argument
+					}
+					break
+				}
+			}
+			continue
+		}
+		if !strings.HasPrefix(arg, "--") {
+			continue
+		}
+		name, value, inline := strings.Cut(arg[2:], "=")
+		flag := c.Flags().Lookup(name)
+		if flag == nil {
+			continue
+		}
+		switch {
+		case inline:
+		case flag.NoOptDefVal != "":
+			value = flag.NoOptDefVal
+		case i+1 < len(args):
+			i++
+			value = args[i]
+		default:
+			return
+		}
+		if name == "color" || name == "ascii" {
+			_ = c.Flags().Set(name, value)
+		}
 	}
 }
 
