@@ -2,6 +2,20 @@
 
 Generated from docs/releases/ by scripts/gen-changelog.sh; edit the release notes, not this file.
 
+## v0.23.0
+
+The fleet dashboard on a controller now shows each host's load, memory, disk and GPUs, and Enter opens a host's own dashboard.
+
+### New
+- `rootfiles monitor` on a fleet controller, and `rootfiles fleet status --watch`, show each host's 1-minute load, memory use, fullest mount and GPUs beside its state, with scheduled shutdowns and failure reasons first. Before, a healthy fleet showed only the host names and states. (#202)
+- In that dashboard, Enter on a host opens the host's own `rootfiles monitor` over SSH as your SSH user, without sudo; quitting it returns to the fleet list. If the session fails, its output stays on screen until you press Enter. (#202)
+- `rootfiles status -o json` includes `vitals`: load, memory, swap, uptime and mount usage. It is left empty when a filesystem does not answer within 3 seconds; the text report is unchanged. (#202)
+
+### Action needed
+- Update the fleet controller with `rootfiles update` on macOS, or `sudo rootfiles update` on a Linux controller, and the hosts with `rootfiles fleet update --all --version v0.23.0 --yes` (`--host` or `--group` to narrow it). A host still on an older release shows `-` for load, memory and disk. (#203)
+
+**Full changelog**: https://github.com/STAIxBWLB/rootfiles/compare/v0.22.2...v0.23.0
+
 ## v0.22.2
 
 This release fixes two misleading controller reports: a false update warning in `rootfiles doctor` and a `fleet init` suggestion from `rootfiles monitor`.
