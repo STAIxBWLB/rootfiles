@@ -37,7 +37,7 @@ func cpusetManager(t *testing.T) (*Manager, string, *bytes.Buffer) {
 printf '%s\n' "$*" >> "$CPUSET_CALLS"
 case "$1" in
 inspect)
-    [ -n "$CPUSET_INSPECT" ] || { echo 'container missing' >&2; exit 1; }
+    [ -n "$CPUSET_INSPECT" ] || { echo "${CPUSET_INSPECT_ERR:-Error: No such object: tenant}" >&2; exit 1; }
     printf '%s\n' "$CPUSET_INSPECT" ;;
 update)
     if [ "$CPUSET_FAIL" = 1 ]; then echo 'cpuset update rejected by fixture' >&2; exit 1; fi ;;
@@ -378,5 +378,29 @@ func TestRecreateWarnsBeforeLosingUnmanagedPin(t *testing.T) {
 	}
 	if strings.Contains(calls(t, log), "run -d") {
 		t.Fatal("fixture reached docker run")
+	}
+}
+
+// A docker inspect failure is a failed read, not a missing container; a
+// container docker does not know is still missing.
+func TestStatusReportsInspectFailures(t *testing.T) {
+	m, _, _ := cpusetManager(t)
+	if err := m.SaveSpec(validSpec()); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ stderr, state, errText string }{
+		{"Error: No such object: tenant-est", "missing", ""},
+		{"Error response from daemon: No such container: tenant-est", "missing", ""},
+		{"Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?", "", "error: docker inspect tenant-est: Cannot connect to the Docker daemon"},
+	} {
+		t.Setenv("CPUSET_INSPECT_ERR", tc.stderr)
+		report, err := m.CollectStatus(context.Background(), []string{"est"}, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		row := report.Rows[0]
+		if row.State != tc.state || !strings.HasPrefix(row.Error, tc.errText) || (tc.errText == "") != (row.Error == "") {
+			t.Fatalf("stderr %q: state=%q error=%q, want state %q error %q", tc.stderr, row.State, row.Error, tc.state, tc.errText)
+		}
 	}
 }

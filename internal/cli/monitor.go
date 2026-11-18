@@ -274,6 +274,9 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 				snap.Tenants = toTenantDashRows(tRep.Rows)
 				snap.Commitment = tRep.Commitment
 				snap.Overcommitted = tRep.Overcommitted
+				if problem := tenantRowProblem(tRep.Rows); problem != "" {
+					problems = append(problems, problem)
+				}
 			}
 		}
 		if err != nil {
@@ -417,7 +420,23 @@ func collectTenantDashboardSnapshot(ctx context.Context, m *tenant.Manager, name
 		Tenants:       toTenantDashRows(report.Rows),
 		Commitment:    report.Commitment,
 		Overcommitted: report.Overcommitted,
+		Err:           tenantRowProblem(report.Rows),
 	}, nil
+}
+
+// tenantRowProblem counts failed tenant reads for the warning line; each row
+// carries its own cause.
+func tenantRowProblem(rows []tenant.StatusRow) string {
+	failed := 0
+	for _, r := range rows {
+		if r.Error != "" {
+			failed++
+		}
+	}
+	if failed == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d of %d tenant reads failed; see the STATE column", failed, len(rows))
 }
 
 func collectFleetDashboardSnapshot(ctx context.Context, _ *fleet.Inventory, hosts []fleet.NamedHost, parallel int, view string) (ui.DashboardSnapshot, error) {

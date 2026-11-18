@@ -297,3 +297,19 @@ func TestControllerMonitorRefusesModuleFilter(t *testing.T) {
 		t.Fatalf("err=%v, want the controller refusal", err)
 	}
 }
+
+// A failed tenant read is counted on the warning line; its row keeps the cause.
+func TestTenantDashboardCountsFailedReads(t *testing.T) {
+	saved := tenantStatusCollector
+	t.Cleanup(func() { tenantStatusCollector = saved })
+	tenantStatusCollector = func(*tenant.Manager, context.Context, []string, bool) (*tenant.StatusReport, error) {
+		return &tenant.StatusReport{Rows: []tenant.StatusRow{
+			{Tenant: "lab", State: "running"},
+			{Tenant: "ml", Error: "error: docker inspect tenant-ml: permission denied"},
+		}}, nil
+	}
+	snap, err := collectTenantDashboardSnapshot(context.Background(), &tenant.Manager{}, []string{"lab", "ml"}, false)
+	if err != nil || snap.Err != "1 of 2 tenant reads failed; see the STATE column" || snap.Tenants[1].State != "error: docker inspect tenant-ml: permission denied" {
+		t.Fatalf("err=%v warning=%q rows=%+v", err, snap.Err, snap.Tenants)
+	}
+}
