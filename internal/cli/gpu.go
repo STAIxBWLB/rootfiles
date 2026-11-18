@@ -91,15 +91,20 @@ func newGPUCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if watch {
+				return watchDashboard(cmd, ui.ModeGPU, interval, func() (ui.RefreshFunc, error) {
+					rc, err := buildRunContext(cmd, "gpu")
+					if err != nil {
+						return nil, err
+					}
+					return func(ctx context.Context) (ui.DashboardSnapshot, error) {
+						return collectGPUDashboardSnapshot(ctx, rc)
+					}, nil
+				})
+			}
 			rc, err := buildRunContext(cmd, "gpu")
 			if err != nil {
 				return err
-			}
-			if watch {
-				cfg := dashboardConfigFor(cmd, ui.ModeGPU, interval)
-				return runDashboard(cmd.Context(), cmd.OutOrStdout(), cfg, func(ctx context.Context) (ui.DashboardSnapshot, error) {
-					return collectGPUDashboardSnapshot(ctx, rc)
-				})
 			}
 			report, err := gpuStatusCollector(cmd.Context(), rc)
 			if err != nil {

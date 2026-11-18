@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -282,13 +283,79 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 			Detail: f.Detail,
 		})
 	}
-	for _, line := range strings.Split(ansi.Strip(diagnostics.String()), "\n") {
-		if line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "rootfiles:")); line != "" {
-			problems = append(problems, line)
-		}
-	}
+	problems = append(problems, diagnosticLines(diagnostics.String())...)
 	snap.Err = strings.Join(problems, "; ")
 	return snap, nil
+}
+
+// diagnosticLines turns captured stderr into warning-line entries. Runner
+// log records below WARN are progress, not problems, and are dropped.
+func diagnosticLines(text string) []string {
+	var lines []string
+	for _, line := range strings.Split(ansi.Strip(text), "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "rootfiles:"))
+		// ponytail: matches slog's text format; a structured handler if the log format changes.
+		if line == "" || strings.Contains(line, " level=INFO ") || strings.Contains(line, " level=DEBUG ") {
+			continue
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// stderrBuffer collects stderr while a dashboard owns the terminal; a refresh
+// still running after quit may write to it, so access is locked.
+type stderrBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *stderrBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *stderrBuffer) take() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	s := b.buf.String()
+	b.buf.Reset()
+	return s
+}
+
+// watchDashboard runs a single-resource dashboard. Stderr (run-context
+// diagnostics and the runner's log) is redirected before start builds the
+// run context and reaches the warning line on each refresh, since writing it
+// to the terminal would tear the alternate screen. Whatever is left when the
+// dashboard exits or start fails is written to stderr afterwards.
+func watchDashboard(cmd *cobra.Command, mode ui.DashboardMode, interval time.Duration, start func() (ui.RefreshFunc, error)) error {
+	stderr := cmd.ErrOrStderr()
+	captured := &stderrBuffer{}
+	cmd.SetErr(captured)
+	defer func() {
+		cmd.SetErr(stderr)
+		_, _ = io.WriteString(stderr, captured.take())
+	}()
+	refresh, err := start()
+	if err != nil {
+		return err
+	}
+	return runDashboard(cmd.Context(), cmd.OutOrStdout(), dashboardConfigFor(cmd, mode, interval), func(ctx context.Context) (ui.DashboardSnapshot, error) {
+		snap, err := refresh(ctx)
+		lines := diagnosticLines(captured.take())
+		if len(lines) == 0 {
+			return snap, err
+		}
+		if err != nil {
+			return snap, fmt.Errorf("%w; %s", err, strings.Join(lines, "; "))
+		}
+		if snap.Err != "" {
+			lines = append([]string{snap.Err}, lines...)
+		}
+		snap.Err = strings.Join(lines, "; ")
+		return snap, nil
+	})
 }
 
 func collectGPUDashboardSnapshot(ctx context.Context, rc *module.RunContext) (ui.DashboardSnapshot, error) {

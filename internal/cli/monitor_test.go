@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/tenant"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
@@ -219,5 +221,64 @@ func TestTenantDashRowsKeepCollectorErrorText(t *testing.T) {
 	rows := toTenantDashRows([]tenant.StatusRow{{Tenant: "lab", Error: "error: spec unreadable"}})
 	if rows[0].State != "error: spec unreadable" {
 		t.Fatalf("state=%q", rows[0].State)
+	}
+}
+
+// Single-resource watches keep stderr off the alternate screen: diagnostics
+// reach the warning line, and the tenant trust check runs on every refresh.
+func TestWatchCapturesStderrAndRechecksTenantTrust(t *testing.T) {
+	pinInventoryPage(t)
+	rootDir, site, _ := statusContractFixture(t, "populated")
+	t.Chdir(rootDir)
+	stubMIGStatus(t, rootDir)
+	stubTenantReports(t, rootDir)
+	savedRun, savedGPU := runDashboard, gpuStatusCollector
+	t.Cleanup(func() { runDashboard, gpuStatusCollector = savedRun, savedGPU })
+	gpuStatusCollector = func(_ context.Context, rc *module.RunContext) (*module.GPUStatusReport, error) {
+		_, _ = io.WriteString(rc.Err, "rootfiles: warning: fixture metadata is not root-owned\n")
+		return &module.GPUStatusReport{}, nil
+	}
+	var snap ui.DashboardSnapshot
+	var refreshErr error
+	runDashboard = func(ctx context.Context, _ io.Writer, _ ui.DashboardConfig, refresh ui.RefreshFunc) error {
+		snap, refreshErr = refresh(ctx)
+		return nil
+	}
+
+	run := func(args ...string) string {
+		t.Helper()
+		root := NewRootCmd("test", "test")
+		var stderr bytes.Buffer
+		root.SetOut(io.Discard)
+		root.SetErr(&stderr)
+		root.SetArgs(args)
+		if err := executeCommand(context.Background(), root); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		return stderr.String()
+	}
+
+	if stderr := run("gpu", "status", "--config", site, "--watch"); strings.Contains(stderr, "fixture metadata") {
+		t.Fatalf("diagnostic reached the terminal: %q", stderr)
+	}
+	if !strings.Contains(snap.Err, "warning: fixture metadata is not root-owned") {
+		t.Fatalf("warning line=%q, want the captured diagnostic", snap.Err)
+	}
+
+	calls := 0
+	tenantReportEnv = func(*cobra.Command) (*module.RunContext, *tenant.Manager, error) {
+		if calls++; calls > 1 {
+			return nil, nil, errors.New("refusing tenant root fixture")
+		}
+		return nil, &tenant.Manager{}, nil
+	}
+	run("tenant", "status", "--config", site, "--watch")
+	if refreshErr == nil || !strings.Contains(refreshErr.Error(), "refusing tenant root fixture") {
+		t.Fatalf("refresh error=%v, want the trust refusal", refreshErr)
+	}
+
+	got := diagnosticLines("time=t level=INFO msg=exec\nrootfiles: warning: kept\n")
+	if len(got) != 1 || got[0] != "warning: kept" {
+		t.Fatalf("diagnosticLines=%q, want only the warning", got)
 	}
 }

@@ -159,15 +159,25 @@ func newTenantStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if watch {
+				return watchDashboard(cmd, ui.ModeTenant, interval, func() (ui.RefreshFunc, error) {
+					if _, _, err := tenantReportEnv(cmd); err != nil {
+						return nil, err
+					}
+					// Every refresh re-resolves the tenant environment, so the
+					// trust check runs again before each read.
+					return func(ctx context.Context) (ui.DashboardSnapshot, error) {
+						_, m, err := tenantReportEnv(cmd)
+						if err != nil {
+							return ui.DashboardSnapshot{}, err
+						}
+						return collectTenantDashboardSnapshot(ctx, m, args, len(args) == 1)
+					}, nil
+				})
+			}
 			_, m, err := tenantReportEnv(cmd)
 			if err != nil {
 				return err
-			}
-			if watch {
-				cfg := dashboardConfigFor(cmd, ui.ModeTenant, interval)
-				return runDashboard(cmd.Context(), cmd.OutOrStdout(), cfg, func(ctx context.Context) (ui.DashboardSnapshot, error) {
-					return collectTenantDashboardSnapshot(ctx, m, args, len(args) == 1)
-				})
 			}
 			names := args
 			if len(names) == 0 {
