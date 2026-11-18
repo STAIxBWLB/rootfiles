@@ -417,7 +417,7 @@ func TunnelUpdate(ctx context.Context, rc *RunContext, version string) error {
 	if target == "" {
 		latest, err := FetchLatestCloudflaredVersion(ctx)
 		if err != nil {
-			ui.WriteText(rc.Output(), "Warning: could not resolve latest cloudflared release (%v); using /latest/download/ alias.\n", err)
+			ui.WriteWarning(rc.Output(), fmt.Sprintf("could not resolve latest cloudflared release (%v); using /latest/download/ alias.", err), "")
 		} else {
 			target = latest
 		}

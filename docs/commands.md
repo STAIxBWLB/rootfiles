@@ -84,6 +84,7 @@ Only these variables are read. Flags win over the environment.
 | `ROOTFILES_STATE_DIR` | every command | State, history, applied-config copy, file backups, scheduled reports | `/var/lib/rootfiles` |
 | `ROOTFILES_LOG_FILE` | mutating commands | JSON audit log | `/var/log/rootfiles.log` |
 | `ROOTFILES_LOCK_FILE` | mutating commands | Global lock file | `/run/rootfiles.lock` |
+| `ROOTFILES_COLOR_THEME` | human output | Color theme palette: `ansi`, `tokyo-night-dark`, `tokyo-night-light` (falls back to `DOT_COLOR_THEME`, then `ansi`) | `ansi` |
 | `NO_COLOR` | human output | Nonempty disables color unless `--color=always` overrides it | unset |
 | `FORCE_COLOR` | human output | Nonempty other than `0` requests color; `0` requests no color, subject to the precedence below | unset |
 | `CLICOLOR_FORCE` | human output | Nonempty other than `0` requests color; `0` does not force color off | unset |

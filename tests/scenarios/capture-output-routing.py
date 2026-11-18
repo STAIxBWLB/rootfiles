@@ -55,9 +55,10 @@ def capture(before, after, destination, host_fixture):
                 errors = run.stderr.replace(str(fixture), '<fixture>').replace(str(host_fixture), '<fixture>')
                 # Query logs carry the live clock; retain every other stderr byte.
                 errors = re.sub(r'(?m)^time=[^ ]+ ', 'time=<clock> ', errors)
-                if f'Profile: {profile}\n' not in text or 'Modules: ' not in text:
+                plan = dict(re.findall(r'(?m)^ *(Profile|Modules): +(.*)$', text))
+                if plan.get('Profile') != profile or 'Modules' not in plan:
                     raise SystemExit(f'{profile}: preview never reached the module plan; inspect the controlled detector fixture: {errors}')
-                selected = next(line.removeprefix('Modules: ') for line in text.splitlines() if line.startswith('Modules: ')).split(', ')
+                selected = plan['Modules'].split(', ')
                 for name in selected:
                     if not any(line.startswith('  ') and f'{name}:' in line for line in text.splitlines()):
                         raise SystemExit(f'{profile}: {name} never reached RunAll; inspect the fixture')

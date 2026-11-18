@@ -82,6 +82,10 @@ jobs:
           fi
       - name: go vet
         run: go vet ./...
+      - name: Output literals gate
+        run: |
+          go run scripts/check-output-literals.go
+          bash scripts/check-output-literals-selftest.sh
       - name: darwin build (read-only commands on operator laptops)
         run: |
           GOOS=darwin GOARCH=arm64 go vet ./...

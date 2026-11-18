@@ -192,7 +192,7 @@ func finishUpdate(cmd *cobra.Command, binary, version string) error {
 	if detail != "" {
 		diagnostic += ": " + detail
 	}
-	ui.WriteText(cmd.ErrOrStderr(), "rootfiles: warning: post-update check could not run: %q; inspect with %s check --help.\n", diagnostic, fleet.ShellQuote(binary))
+	ui.WriteWarning(cmd.ErrOrStderr(), fmt.Sprintf("post-update check could not run: %q; inspect with %s check --help.", diagnostic, fleet.ShellQuote(binary)), "")
 	return nil
 }
 

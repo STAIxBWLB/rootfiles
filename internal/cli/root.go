@@ -1,11 +1,10 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -36,7 +35,6 @@ func NewRootCmd(version, commit string) *cobra.Command {
 		SilenceErrors:     true, // main prints the error once
 	}
 	root.Version = version + " (" + commit + ")"
-	root.SetUsageTemplate(usageTemplate)
 
 	root.PersistentFlags().AddFlagSet(newRootFlags())
 
@@ -56,6 +54,7 @@ func NewRootCmd(version, commit string) *cobra.Command {
 	root.AddCommand(newFleetCmd())
 	root.AddCommand(newTenantCmd())
 
+	configureRootGroups(root)
 	markMutating(root)
 	installOutputBoundary(root)
 	return root
@@ -98,6 +97,17 @@ func usageError(err error) error {
 }
 
 func configureOutput(cmd *cobra.Command, args ...string) error {
+	machine, _ := cmd.Flags().GetBool("json")
+	machine = machine || rawPassthroughOutput(cmd, args)
+	if f := cmd.Flags().Lookup("output"); cmd.Flags().Lookup("json") != nil && f != nil && (f.Value.String() == "json" || f.Value.String() == "prometheus") {
+		machine = true
+	}
+	return configureWriters(cmd, machine)
+}
+
+// configureWriters applies the parsed --color and --ascii to both streams;
+// machine leaves stdout undecorated.
+func configureWriters(cmd *cobra.Command, machine bool) error {
 	mode, _ := cmd.Flags().GetString("color")
 	if mode == "" {
 		mode, _ = cmd.Root().PersistentFlags().GetString("color")
@@ -108,11 +118,6 @@ func configureOutput(cmd *cobra.Command, args ...string) error {
 		return usageError(fmt.Errorf("invalid --color %q: choose auto, always or never", mode))
 	}
 	ascii, _ := cmd.Flags().GetBool("ascii")
-	machine, _ := cmd.Flags().GetBool("json")
-	machine = machine || rawPassthroughOutput(cmd, args)
-	if f := cmd.Flags().Lookup("output"); cmd.Flags().Lookup("json") != nil && f != nil && (f.Value.String() == "json" || f.Value.String() == "prometheus") {
-		machine = true
-	}
 	cmd.SetOut(ui.ConfigureWriter(cmd.OutOrStdout(), mode, ascii, machine))
 	cmd.SetErr(ui.ConfigureWriter(cmd.ErrOrStderr(), mode, ascii, false))
 	return nil
@@ -165,21 +170,18 @@ func installOutputBoundary(cmd *cobra.Command) {
 	}
 	if cmd.Parent() == nil {
 		// Every help path (--help, `help <command>`, a group's own page) runs
-		// through this one function, so the inherited inputs are scoped and the
-		// bool value hint is dropped here rather than in each command's help.
-		help := cmd.HelpFunc()
-		cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
-			_ = configureOutput(c)
+		// through this one function, so the inherited inputs are scoped and
+		// rendered with shared styles.
+		cmd.SetHelpFunc(func(c *cobra.Command, _ []string) {
+			restoreTheme, _ := ui.SetPresentation(os.Getenv)
+			defer restoreTheme()
+			if !ui.Configured(c.OutOrStdout()) || c.Flags().Changed("color") || c.Root().PersistentFlags().Changed("color") || c.Flags().Changed("ascii") || c.Root().PersistentFlags().Changed("ascii") {
+				// Help is a human page even on raw-payload and JSON commands.
+				_ = configureWriters(c, false)
+			}
 			restore := scopeInheritedHelpFlags(c)
 			defer restore()
-			var page bytes.Buffer
-			out, errOut := c.OutOrStdout(), c.ErrOrStderr()
-			c.SetOut(&page)
-			c.SetErr(&page)
-			help(c, args)
-			c.SetOut(out)
-			c.SetErr(errOut)
-			_, _ = io.WriteString(out, withoutBoolValueHint(page.String()))
+			writeHelpPage(c)
 		})
 	}
 }
@@ -208,6 +210,7 @@ func prepareCompletionBoundary(root *cobra.Command) {
 	root.InitDefaultCompletionCmd()
 	for _, command := range root.Commands() {
 		if command.Name() == "completion" {
+			command.GroupID = "help"
 			installOutputBoundary(command)
 			return
 		}
@@ -217,7 +220,13 @@ func prepareCompletionBoundary(root *cobra.Command) {
 // executeCommand owns diagnostics so the writer and parsed display flags are
 // the same for successful reports, usage failures and operational failures.
 func executeCommand(ctx context.Context, root *cobra.Command) error {
+	restoreTheme, themeWarning := ui.SetPresentation(os.Getenv)
+	defer restoreTheme()
 	prepareCompletionBoundary(root)
+	if themeWarning != "" {
+		_ = configureOutput(root)
+		ui.WriteWarning(root.ErrOrStderr(), themeWarning, "")
+	}
 	cmd, err := root.ExecuteContextC(ctx)
 	if err == nil {
 		return nil

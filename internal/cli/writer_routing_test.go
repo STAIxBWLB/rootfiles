@@ -42,6 +42,7 @@ func unexpectedProcessStdout(t *testing.T, run func()) string {
 }
 
 func TestApplySummaryWritesOnlyToExplicitWriter(t *testing.T) {
+	t.Setenv("LC_ALL", "C.UTF-8")
 	var output bytes.Buffer
 	cfg := &config.Config{Timezone: "UTC"}
 	leaked := unexpectedProcessStdout(t, func() {
@@ -50,7 +51,7 @@ func TestApplySummaryWritesOnlyToExplicitWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if got, want := output.String(), "\n=== Summary ===\n  Timezone: UTC\n"; got != want || leaked != "" {
+	if got, want := output.String(), "\n▸ Summary\n  Timezone:       UTC\n"; got != want || leaked != "" {
 		t.Fatalf("summary=%q want=%q process stdout=%q", got, want, leaked)
 	}
 }
@@ -71,7 +72,7 @@ func TestApplyRoutesCommandAndModuleOutput(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	for _, want := range []string{"Profile: minimal\n", "Mode: dry-run (no changes will be made)\n", "Modules: packages\n", "packages: already satisfied"} {
+	for _, want := range []string{" rootfiles apply\n", "  Profile:        minimal\n", "  Mode:           dry-run (no changes will be made)\n", "  Modules:        packages\n", "packages: already satisfied"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("command writer missing %q: %s", want, output.String())
 		}

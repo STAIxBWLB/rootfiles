@@ -116,8 +116,43 @@ func WriteWarning(w io.Writer, msg, next string) {
 	}
 	fmt.Fprintln(displayWriter(w), prefix+"rootfiles: warning: "+msg)
 	if next != "" {
-		fmt.Fprintln(displayWriter(w), "  "+StyleAccent.Render(MarkNext+" "+next))
+		WriteNext(w, next)
 	}
+}
+
+// WriteNext writes a complete command or setting in the accent role at the
+// two-space top-level indent.
+func WriteNext(w io.Writer, command string) {
+	WriteNextIndented(w, 2, command)
+}
+
+// WriteNextIndented writes a next step with indent leading spaces. Report rows
+// use four spaces below a bullet; WriteNext uses two for a top-level step.
+func WriteNextIndented(w io.Writer, indent int, command string) {
+	if command == "" {
+		return
+	}
+	fmt.Fprintln(displayWriter(w), strings.Repeat(" ", max(0, indent))+StyleAccent.Render(MarkNext+" "+command))
+}
+
+// WriteDryRun writes an action that would run, without performing it.
+// action omits the "would" prefix so every caller uses the same grammar.
+func WriteDryRun(w io.Writer, action string) {
+	WriteBullet(w, PendingMark(), "would "+action)
+}
+
+// WriteNote writes an informational diagnostic without a level word.
+func WriteNote(w io.Writer, msg string) {
+	fmt.Fprintln(displayWriter(w), "rootfiles: "+msg)
+}
+
+// FormatBool returns a styled enabled/disabled indicator using the shared
+// marker alphabet (MarkOK / MarkAbsent) so color and glyph stay paired.
+func FormatBool(v bool) string {
+	if v {
+		return StyleSuccess.Render(MarkOK) + " enabled"
+	}
+	return StyleHint.Render(MarkAbsent + " disabled")
 }
 
 // WriteText writes formatted plain text without adding styling or a newline.

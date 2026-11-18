@@ -120,7 +120,7 @@ func TestBareParentsStillPrintHelp(t *testing.T) {
 		if err := executeCommand(context.Background(), root); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
-		if !strings.Contains(out.String(), "Usage:") || stderr.Len() != 0 {
+		if !strings.Contains(out.String(), "Usage") || stderr.Len() != 0 {
 			t.Fatalf("%v: stdout=%q stderr=%q", args, out.String(), stderr.String())
 		}
 	}

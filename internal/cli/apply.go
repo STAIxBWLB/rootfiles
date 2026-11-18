@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -89,18 +90,16 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Show plan
-	ui.WriteText(out, "Profile: %s\n", profileName)
+	ui.WriteHeader(out, cmd.CommandPath())
+	ui.WriteKV(out, "Profile", profileName)
 	if dryRun {
-		ui.WriteLine(out, "Mode: dry-run (no changes will be made)")
+		ui.WriteKV(out, "Mode", "dry-run (no changes will be made)")
 	}
-	ui.WriteText(out, "Modules: ")
+	names := make([]string, len(modules))
 	for i, m := range modules {
-		if i > 0 {
-			ui.WriteRaw(out, ", ")
-		}
-		ui.WriteRaw(out, m.Name())
+		names[i] = m.Name()
 	}
-	ui.WriteLine(out)
+	ui.WriteKV(out, "Modules", strings.Join(names, ", "))
 
 	// Interactive configuration preview & edit
 	if err := configureInteractive(out, cfg, yes, dryRun); err != nil {
@@ -158,7 +157,7 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	if runner.Backup.Used() {
 		run.BackupID = runner.Backup.ID
 		ui.WriteSuccess(out, "changed files backed up as "+run.BackupID)
-		ui.WriteText(out, "  %s\n", ui.StyleAccent.Render(ui.MarkNext+" rootfiles rollback "+run.BackupID))
+		ui.WriteNext(out, "rootfiles rollback "+run.BackupID)
 	}
 	if err := state.Record(run); err != nil {
 		ui.WriteWarning(cmd.ErrOrStderr(), "recording apply state: "+err.Error(), "")
@@ -256,7 +255,7 @@ func configureInteractive(out io.Writer, cfg *config.Config, yes, dryRun bool) e
 		return nil
 	}
 
-	ui.WriteLine(out, "\n=== Configuration ===")
+	ui.WriteSection(out, "Configuration")
 
 	// Snapshot the profile values so the summary can flag any setting the
 	// operator made less secure than the profile intends.
@@ -272,7 +271,7 @@ func configureInteractive(out io.Writer, cfg *config.Config, yes, dryRun bool) e
 
 	// --- SSH ---
 	if cfg.IsModuleEnabled("ssh") {
-		ui.WriteLine(out, "\n--- SSH ---")
+		ui.WriteSection(out, "SSH")
 		cfg.SSH.DisableRootLogin, err = ui.ConfirmDefault("Disable root login?", cfg.SSH.DisableRootLogin, false)
 		if err != nil {
 			return err
@@ -296,7 +295,7 @@ func configureInteractive(out io.Writer, cfg *config.Config, yes, dryRun bool) e
 
 	// --- Users ---
 	if cfg.IsModuleEnabled("users") {
-		ui.WriteLine(out, "\n--- Users ---")
+		ui.WriteSection(out, "Users")
 		if cfg.Users.HomeBase != "" {
 			cfg.Users.HomeBase, err = ui.Input("Home base directory", cfg.Users.HomeBase, false)
 			if err != nil {
@@ -311,7 +310,7 @@ func configureInteractive(out io.Writer, cfg *config.Config, yes, dryRun bool) e
 
 	// --- Docker ---
 	if cfg.IsModuleEnabled("docker") {
-		ui.WriteLine(out, "\n--- Docker ---")
+		ui.WriteSection(out, "Docker")
 		if cfg.Modules.Docker.StorageDir != "" {
 			cfg.Modules.Docker.StorageDir, err = ui.Input("Docker storage directory", cfg.Modules.Docker.StorageDir, false)
 			if err != nil {
@@ -322,9 +321,9 @@ func configureInteractive(out io.Writer, cfg *config.Config, yes, dryRun bool) e
 
 	// --- Cloudflared ---
 	if cfg.IsModuleEnabled("cloudflared") {
-		ui.WriteLine(out, "\n--- Cloudflared ---")
+		ui.WriteSection(out, "Cloudflared")
 		if f := cfg.Modules.Cloudflared.TunnelTokenFile; f != "" && cfg.Modules.Cloudflared.TunnelToken == "" {
-			ui.WriteText(out, "  Tunnel token: read from %s\n", f)
+			ui.WriteKV(out, "Tunnel token", "read from "+f)
 		} else {
 			cfg.Modules.Cloudflared.TunnelToken, err = ui.Input("Tunnel token (empty to skip)", cfg.Modules.Cloudflared.TunnelToken, false)
 			if err != nil {
@@ -345,7 +344,7 @@ func configureInteractive(out io.Writer, cfg *config.Config, yes, dryRun bool) e
 
 	// --- Network ---
 	if cfg.IsModuleEnabled("network") {
-		ui.WriteLine(out, "\n--- Network ---")
+		ui.WriteSection(out, "Network")
 		cfg.Modules.Network.UFW, err = ui.ConfirmDefault("Enable UFW firewall?", cfg.Modules.Network.UFW, false)
 		if err != nil {
 			return err
@@ -360,7 +359,7 @@ func configureInteractive(out io.Writer, cfg *config.Config, yes, dryRun bool) e
 
 	// --- Storage ---
 	if cfg.IsModuleEnabled("storage") {
-		ui.WriteLine(out, "\n--- Storage ---")
+		ui.WriteSection(out, "Storage")
 		if cfg.Modules.Storage.DataDir != "" {
 			cfg.Modules.Storage.DataDir, err = ui.Input("Data directory", cfg.Modules.Storage.DataDir, false)
 			if err != nil {
@@ -374,7 +373,7 @@ func configureInteractive(out io.Writer, cfg *config.Config, yes, dryRun bool) e
 
 	downgrades := securityDowngrades(&profile, cfg)
 	for _, d := range downgrades {
-		ui.WriteLine(out, "  "+ui.StyleWarning.Render(ui.MarkWarn+" weaker than profile: "+d))
+		ui.WriteBullet(out, ui.WarnMark(), "weaker than profile: "+d)
 	}
 
 	if dryRun {
@@ -413,33 +412,33 @@ func securityDowngrades(before, after *config.Config) []string {
 // printApplySummary is kept separate from prompts so its secret handling can
 // be checked without an interactive terminal.
 func printApplySummary(out io.Writer, cfg *config.Config) {
-	ui.WriteLine(out, "\n=== Summary ===")
-	ui.WriteText(out, "  Timezone: %s\n", cfg.Timezone)
+	ui.WriteSection(out, "Summary")
+	ui.WriteKV(out, "Timezone", cfg.Timezone)
 	if cfg.IsModuleEnabled("ssh") {
-		ui.WriteText(out, "  SSH: root_login=%v, password_auth=%v, port=%d\n",
-			!cfg.SSH.DisableRootLogin, !cfg.SSH.DisablePasswordAuth, cfg.SSH.Port)
+		ui.WriteKV(out, "SSH", fmt.Sprintf("root_login=%v, password_auth=%v, port=%d",
+			!cfg.SSH.DisableRootLogin, !cfg.SSH.DisablePasswordAuth, cfg.SSH.Port))
 	}
 	if cfg.IsModuleEnabled("users") && cfg.Users.HomeBase != "" {
-		ui.WriteText(out, "  Users: home_base=%s, sudo_nopasswd=%v\n", cfg.Users.HomeBase, cfg.Users.SudoNopasswd)
+		ui.WriteKV(out, "Users", fmt.Sprintf("home_base=%s, sudo_nopasswd=%v", cfg.Users.HomeBase, cfg.Users.SudoNopasswd))
 	}
 	if cfg.IsModuleEnabled("docker") && cfg.Modules.Docker.StorageDir != "" {
-		ui.WriteText(out, "  Docker: storage=%s\n", cfg.Modules.Docker.StorageDir)
+		ui.WriteKV(out, "Docker", fmt.Sprintf("storage=%s", cfg.Modules.Docker.StorageDir))
 	}
 	if cfg.IsModuleEnabled("cloudflared") {
 		token := maskSecret(cfg.Modules.Cloudflared.TunnelToken)
 		if token == "" && cfg.Modules.Cloudflared.TunnelTokenFile != "" {
 			token = "file:" + cfg.Modules.Cloudflared.TunnelTokenFile
 		}
-		ui.WriteText(out, "  Cloudflared: token=%s, vlan=%v", token, cfg.Modules.Cloudflared.PrivateNetwork.Enabled)
+		cfVal := fmt.Sprintf("token=%s, vlan=%v", token, cfg.Modules.Cloudflared.PrivateNetwork.Enabled)
 		if cfg.Modules.Cloudflared.PrivateNetwork.Enabled {
-			ui.WriteText(out, " (%s)", cfg.Modules.Cloudflared.PrivateNetwork.Address)
+			cfVal += fmt.Sprintf(" (%s)", cfg.Modules.Cloudflared.PrivateNetwork.Address)
 		}
-		ui.WriteLine(out)
+		ui.WriteKV(out, "Cloudflared", cfVal)
 	}
 	if cfg.IsModuleEnabled("network") {
-		ui.WriteText(out, "  Network: ufw=%v, ports=%v\n", cfg.Modules.Network.UFW, cfg.Modules.Network.AllowedPorts)
+		ui.WriteKV(out, "Network", fmt.Sprintf("ufw=%v, ports=%v", cfg.Modules.Network.UFW, cfg.Modules.Network.AllowedPorts))
 	}
 	if cfg.IsModuleEnabled("storage") && cfg.Modules.Storage.DataDir != "" {
-		ui.WriteText(out, "  Storage: data_dir=%s\n", cfg.Modules.Storage.DataDir)
+		ui.WriteKV(out, "Storage", fmt.Sprintf("data_dir=%s", cfg.Modules.Storage.DataDir))
 	}
 }
