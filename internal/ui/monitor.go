@@ -305,7 +305,7 @@ func (m *DashboardModel) paneCount() int {
 func (m *DashboardModel) activeRowCount() int {
 	switch m.cfg.Mode {
 	case ModeGPU:
-		return len(m.snap.GPUs)
+		return len(m.snap.GPUs) + m.migLineCount()
 	case ModeTenant:
 		return len(m.snap.Tenants)
 	case ModeFleet:
@@ -496,12 +496,31 @@ func (m *DashboardModel) renderMIGSection(w io.Writer) {
 		return
 	}
 	WriteSection(w, "MIG")
+	// MIG lines follow the GPU rows in the selection order, so content
+	// taller than the terminal scrolls into view.
+	sel, n := m.cursor-len(m.snap.GPUs), 0
+	mark := func(text string) string {
+		n++
+		if n-1 != sel {
+			return text
+		}
+		m.markFocus(0)
+		return ">" + text
+	}
 	for _, g := range m.snap.MIG {
-		WriteKV(w, "GPU "+g.Index, g.Name+"  MIG "+g.Mode)
+		WriteKV(w, mark("GPU "+g.Index), g.Name+"  MIG "+g.Mode)
 		for _, inst := range g.Instances {
-			WriteBullet(w, StyleHint.Render(MarkAbsent), inst)
+			WriteBullet(w, StyleHint.Render(MarkAbsent), mark(inst))
 		}
 	}
+}
+
+func (m *DashboardModel) migLineCount() int {
+	n := 0
+	for _, g := range m.snap.MIG {
+		n += 1 + len(g.Instances)
+	}
+	return n
 }
 
 func (m *DashboardModel) renderTenantSection(w io.Writer, _ int, focused bool) {

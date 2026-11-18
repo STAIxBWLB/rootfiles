@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -121,6 +122,28 @@ func TestMonitorModel_FitsHeightAndFollowsSelection(t *testing.T) {
 				m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 			}
 		}
+	}
+}
+
+// MIG lines follow the GPU rows in the selection order, so MIG content
+// taller than the terminal can be scrolled into view.
+func TestMonitorModel_MIGLinesAreSelectable(t *testing.T) {
+	cleanOutputEnv(t)
+	snap := DashboardSnapshot{GPUState: SectionRead, GPUs: []GPUDashRow{{Index: 0, Model: "A100"}, {Index: 1, Model: "A100"}}}
+	for g := 0; g < 2; g++ {
+		mig := MIGDashRow{Index: strconv.Itoa(g), Name: "A100", Mode: "Enabled"}
+		for i := 0; i < 7; i++ {
+			mig.Instances = append(mig.Instances, fmt.Sprintf("gpu%d-instance%d", g, i))
+		}
+		snap.MIG = append(snap.MIG, mig)
+	}
+	var m tea.Model = NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeGPU, Width: 80, Height: 12}, snap, nil)
+	for i := 0; i < 40; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	lines := strings.Split(ansi.Strip(m.View()), "\n")
+	if view := strings.Join(lines, "\n"); len(lines) > 12 || !strings.Contains(view, ">gpu1-instance6") {
+		t.Fatalf("%d lines, want <= 12 with the last MIG instance selected:\n%s", len(lines), view)
 	}
 }
 

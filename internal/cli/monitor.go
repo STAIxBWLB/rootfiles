@@ -107,6 +107,8 @@ func newMonitorCmd() *cobra.Command {
 	cmd.Flags().String("inventory", "", "Controller inventory file")
 	if nativeHostOS == "linux" {
 		_ = cmd.Flags().MarkHidden("inventory")
+	} else {
+		_ = cmd.Flags().MarkHidden("module")
 	}
 	cmd = usesConfigTarget(cmd)
 	if nativeHostOS != "linux" {
@@ -121,6 +123,9 @@ func runMonitor(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if nativeHostOS != "linux" {
+		if cmd.Flags().Changed("module") {
+			return fmt.Errorf("--module is only used on a Linux host; omit it on a controller")
+		}
 		if !cmd.Flags().Changed("interval") {
 			interval = defaultFleetWatchInterval
 		}
@@ -292,12 +297,14 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 // log records below WARN are progress, not problems, and are dropped.
 func diagnosticLines(text string) []string {
 	var lines []string
+	seen := map[string]bool{} // several collectors may report the same metadata warning
 	for _, line := range strings.Split(ansi.Strip(text), "\n") {
 		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "rootfiles:"))
 		// ponytail: matches slog's text format; a structured handler if the log format changes.
-		if line == "" || strings.Contains(line, " level=INFO ") || strings.Contains(line, " level=DEBUG ") {
+		if line == "" || seen[line] || strings.Contains(line, " level=INFO ") || strings.Contains(line, " level=DEBUG ") {
 			continue
 		}
+		seen[line] = true
 		lines = append(lines, line)
 	}
 	return lines

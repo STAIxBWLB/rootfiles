@@ -277,8 +277,23 @@ func TestWatchCapturesStderrAndRechecksTenantTrust(t *testing.T) {
 		t.Fatalf("refresh error=%v, want the trust refusal", refreshErr)
 	}
 
-	got := diagnosticLines("time=t level=INFO msg=exec\nrootfiles: warning: kept\n")
+	got := diagnosticLines("time=t level=INFO msg=exec\nrootfiles: warning: kept\nrootfiles: warning: kept\n")
 	if len(got) != 1 || got[0] != "warning: kept" {
 		t.Fatalf("diagnosticLines=%q, want only the warning", got)
+	}
+}
+
+// A controller monitors the fleet, so the host-only --module filter is refused
+// instead of silently ignored.
+func TestControllerMonitorRefusesModuleFilter(t *testing.T) {
+	saved := nativeHostOS
+	nativeHostOS = "darwin"
+	t.Cleanup(func() { nativeHostOS = saved })
+	root := NewRootCmd("test", "test")
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"monitor", "--module", "gpu"})
+	if err := executeCommand(context.Background(), root); err == nil || !strings.Contains(err.Error(), "--module is only used on a Linux host") {
+		t.Fatalf("err=%v, want the controller refusal", err)
 	}
 }
