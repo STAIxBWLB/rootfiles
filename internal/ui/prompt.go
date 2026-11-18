@@ -3,6 +3,7 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strconv"
@@ -35,14 +36,91 @@ var TerminalAttached = func() bool {
 // ErrNoTerminal is what a prompt returns when it has no terminal to run on.
 var ErrNoTerminal = errors.New("no terminal for an interactive prompt; pass --yes, or run from a terminal")
 
+// ErrNoAnswer is what a TERM=dumb prompt returns when stdin ends before the
+// prompt is answered.
+var ErrNoAnswer = errors.New("stdin ended before an answer; pass --yes, or answer the prompt")
+
 var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 func noTerminal(message string) error {
 	if TerminalAttached() {
 		return nil
 	}
-	clean := strings.TrimSpace(ansiRe.ReplaceAllString(message, ""))
-	return fmt.Errorf("%s: %w", clean, ErrNoTerminal)
+	return fmt.Errorf("%s: %w", promptLabel(message), ErrNoTerminal)
+}
+
+func promptLabel(message string) string {
+	return strings.TrimSpace(ansiRe.ReplaceAllString(message, ""))
+}
+
+// runPrompt runs one field. huh's accessible mode (TERM=dumb) takes EOF,
+// or a line its scanner cannot hold, as the default answer, which would let
+// `apply` proceed with nobody there. There an answer is a full stdin line,
+// and a prompt that gets none fails with the reason instead.
+func runPrompt(message string, field huh.Field) (err error) {
+	if os.Getenv("TERM") != "dumb" {
+		return huh.Run(field)
+	}
+	in := &lineReader{r: os.Stdin}
+	defer func() {
+		// ponytail: huh v1.0.0's Select indexes a rejected answer once its
+		// input ends and panics; drop this when huh reports EOF itself.
+		if r := recover(); r != nil {
+			if in.err == nil {
+				panic(r)
+			}
+			err = fmt.Errorf("%s: %w", promptLabel(message), in.err)
+		}
+	}()
+	if err := huh.NewForm(huh.NewGroup(field)).WithShowHelp(false).WithInput(in).Run(); err != nil {
+		return err
+	}
+	if in.err != nil {
+		return fmt.Errorf("%s: %w", promptLabel(message), in.err)
+	}
+	return nil
+}
+
+// maxAnswer bounds one answer line, well under huh's 64 KiB scanner limit.
+const maxAnswer = 16 << 10
+
+var errLongAnswer = fmt.Errorf("answer longer than %d bytes; pass --yes, or answer with a shorter line", maxAnswer)
+
+// lineReader hands huh one stdin line per read, reading byte by byte so a
+// prompt never consumes a later prompt's answer. Stdin ending, a read error
+// or a line longer than maxAnswer sets err, and huh then reads EOF.
+type lineReader struct {
+	r    io.Reader
+	line []byte
+	err  error
+}
+
+func (l *lineReader) Read(p []byte) (int, error) {
+	if l.err != nil {
+		return 0, io.EOF
+	}
+	if len(l.line) == 0 {
+		var b [1]byte
+		for len(l.line) == 0 || l.line[len(l.line)-1] != '\n' {
+			n, err := l.r.Read(b[:])
+			l.line = append(l.line, b[:n]...)
+			switch {
+			case errors.Is(err, io.EOF):
+				l.err = ErrNoAnswer
+			case err != nil:
+				l.err = fmt.Errorf("reading the answer from stdin: %w; pass --yes, or run from a terminal", err)
+			case len(l.line) > maxAnswer:
+				l.err = errLongAnswer
+			}
+			if l.err != nil {
+				l.line = nil
+				return 0, io.EOF
+			}
+		}
+	}
+	n := copy(p, l.line)
+	l.line = l.line[n:]
+	return n, nil
 }
 
 // Confirm asks for yes/no. Returns true immediately if unattended.
@@ -54,10 +132,9 @@ func Confirm(message string, unattended bool) (bool, error) {
 		return false, err
 	}
 	var confirmed bool
-	err := huh.NewConfirm().
+	err := runPrompt(message, huh.NewConfirm().
 		Title(message).
-		Value(&confirmed).
-		Run()
+		Value(&confirmed))
 	return confirmed, err
 }
 
@@ -71,11 +148,13 @@ func ConfirmDefault(message string, def, unattended bool) (bool, error) {
 		return def, err
 	}
 	confirmed := def
-	err := huh.NewConfirm().
+	err := runPrompt(message, huh.NewConfirm().
 		Title(message).
-		Value(&confirmed).
-		Run()
-	return confirmed, err
+		Value(&confirmed))
+	if err != nil {
+		return def, err
+	}
+	return confirmed, nil
 }
 
 // Select presents a choice. Returns defaultVal if unattended.
@@ -91,11 +170,10 @@ func Select(message string, options []string, defaultVal string, unattended bool
 	for i, o := range options {
 		opts[i] = huh.NewOption(o, o)
 	}
-	err := huh.NewSelect[string]().
+	err := runPrompt(message, huh.NewSelect[string]().
 		Title(message).
 		Options(opts...).
-		Value(&selected).
-		Run()
+		Value(&selected))
 	if err != nil {
 		return defaultVal, err
 	}
@@ -111,11 +189,10 @@ func Input(message, defaultVal string, unattended bool) (string, error) {
 		return defaultVal, err
 	}
 	var value string
-	err := huh.NewInput().
+	err := runPrompt(message, huh.NewInput().
 		Title(message).
 		Value(&value).
-		Placeholder(defaultVal).
-		Run()
+		Placeholder(defaultVal))
 	if err != nil {
 		return defaultVal, err
 	}
