@@ -347,7 +347,8 @@ func (m *DashboardModel) View() string {
 	WriteHeader(w, title+stamp)
 
 	if m.snap.Err != "" {
-		WriteBullet(w, WarnMark(), m.snap.Err)
+		// Wrapped here, since clampLinesWidth would cut the cause and next step.
+		writeBullet(w, width, WarnMark(), m.snap.Err)
 	}
 
 	switch m.cfg.Mode {
