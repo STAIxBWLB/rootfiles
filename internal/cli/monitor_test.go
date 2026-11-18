@@ -289,7 +289,9 @@ func TestWatchCapturesStderrAndRechecksTenantTrust(t *testing.T) {
 }
 
 // #196: only a missing inventory gets the fleet init step; a missing host
-// config inside an existing inventory must not suggest replacing it.
+// config inside an existing inventory must not suggest replacing it. #199: a
+// symlink to a missing file is an existing entry init refuses, so its step
+// names the link instead.
 func TestControllerMonitorInitHintOnlyForMissingInventory(t *testing.T) {
 	saved := nativeHostOS
 	nativeHostOS = "darwin"
@@ -299,10 +301,15 @@ func TestControllerMonitorInitHintOnlyForMissingInventory(t *testing.T) {
 	if err := os.WriteFile(existing, []byte("hosts:\n  gpu01:\n    ssh: gpu01\n    config: fleet/gpu01.yaml\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	dangling := filepath.Join(dir, "linked.yaml")
+	if err := os.Symlink(filepath.Join(dir, "moved", "fleet.yaml"), dangling); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		inventory string
 		wantInit  bool
-	}{{filepath.Join(dir, "missing.yaml"), true}, {existing, false}} {
+		wantLink  bool
+	}{{filepath.Join(dir, "missing.yaml"), true, false}, {existing, false, false}, {dangling, false, true}} {
 		root := NewRootCmd("test", "test")
 		root.SetOut(io.Discard)
 		root.SetErr(io.Discard)
@@ -312,8 +319,8 @@ func TestControllerMonitorInitHintOnlyForMissingInventory(t *testing.T) {
 		if exit := (*ExitError)(nil); errors.As(err, &exit) {
 			next = exit.Next
 		}
-		if err == nil || strings.Contains(next, "fleet init") != tc.wantInit {
-			t.Fatalf("%s: err=%v next=%q, want init step %v", tc.inventory, err, next, tc.wantInit)
+		if err == nil || strings.Contains(next, "fleet init") != tc.wantInit || strings.Contains(next, "point the symlink "+dangling) != tc.wantLink {
+			t.Fatalf("%s: err=%v next=%q, want init step %v, link step %v", tc.inventory, err, next, tc.wantInit, tc.wantLink)
 		}
 	}
 }

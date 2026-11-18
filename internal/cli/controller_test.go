@@ -113,6 +113,15 @@ func TestControllerDoctorMissingInventoryAndIdentity(t *testing.T) {
 	if !errors.As(err, &exit) || exit.Code != 2 || !strings.Contains(out, "rootfiles fleet init --inventory") {
 		t.Fatalf("doctor: %s %v", out, err)
 	}
+	// #199: init refuses a dangling inventory symlink, so doctor names the link.
+	dangling := filepath.Join(home, "linked.yaml")
+	if err := os.Symlink(filepath.Join(home, "moved", "fleet.yaml"), dangling); err != nil {
+		t.Fatal(err)
+	}
+	out, err = runControllerTest(t, "doctor", "--inventory", dangling, "--json")
+	if !errors.As(err, &exit) || exit.Code != 2 || strings.Contains(out, "fleet init") || !strings.Contains(out, "point the symlink "+dangling) {
+		t.Fatalf("doctor on a dangling link: %s %v", out, err)
+	}
 }
 
 // TestControllerExplicitEmptyInventoryKeepsTheDefault pins the controller half

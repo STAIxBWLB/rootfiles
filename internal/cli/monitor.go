@@ -150,8 +150,11 @@ func runControllerMonitor(cmd *cobra.Command, interval time.Duration) error {
 		// Only a missing inventory file gets the init step: a missing host
 		// config inside an existing inventory wraps the same not-exist error,
 		// and init would replace that inventory.
-		if _, statErr := os.Stat(invPath); errors.Is(statErr, fs.ErrNotExist) {
+		if _, statErr := os.Lstat(invPath); errors.Is(statErr, fs.ErrNotExist) {
 			return withNext(err, "rootfiles fleet init --inventory "+fleet.ShellQuote(invPath))
+		}
+		if step, dangling := danglingInventoryStep(invPath); dangling {
+			return withNext(err, step)
 		}
 		return err
 	}
