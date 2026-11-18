@@ -255,7 +255,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 			snap.GPUs = toGPUDashRows(gpuRep.Rows)
 		case err != nil && !errors.Is(err, module.ErrNoGPUDevices):
 			snap.GPUState = ui.SectionFailed
-			problems = append(problems, "GPU status unavailable: "+err.Error()+" (run 'rootfiles gpu status' for details)")
+			problems = append(problems, "GPU status unavailable: "+err.Error())
 		}
 	}
 	if statusModuleSelected(moduleFilter, "tenant") && homeBase == "" && !config.IsRocky(rc.Config.System) {
@@ -278,7 +278,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 		}
 		if err != nil {
 			snap.TenantState = ui.SectionFailed
-			problems = append(problems, "tenant status unavailable: "+err.Error()+" (run 'rootfiles tenant status' for details)")
+			problems = append(problems, "tenant status unavailable: "+err.Error())
 		}
 	}
 	for _, f := range doctorChecks(ctx, rc) {
@@ -380,7 +380,7 @@ func collectGPUDashboardSnapshot(ctx context.Context, rc *module.RunContext) (ui
 	}
 	migs, err := migStatusCollector(ctx, rc)
 	if err != nil {
-		snap.Err = "MIG status unavailable: " + err.Error() + " (run 'rootfiles gpu mig status' for details)"
+		snap.Err = "MIG status unavailable: " + err.Error()
 	}
 	if err == nil {
 		for _, g := range migs {

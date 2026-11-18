@@ -26,7 +26,7 @@ func (m *NvidiaModule) needsRuntime(rc *RunContext) (bool, error) {
 	return !hasNvidiaRuntime(daemon), nil
 }
 
-func (m *NvidiaModule) Check(_ context.Context, rc *RunContext) (*CheckResult, error) {
+func (m *NvidiaModule) Check(ctx context.Context, rc *RunContext) (*CheckResult, error) {
 	var changes []Change
 
 	if !rc.APT.IsInstalled("nvidia-container-toolkit") {
@@ -47,8 +47,8 @@ func (m *NvidiaModule) Check(_ context.Context, rc *RunContext) (*CheckResult, e
 		})
 	}
 
-	for _, svc := range m.services(rc) {
-		if !serviceActive(context.Background(), rc, svc) {
+	for _, svc := range m.services(ctx, rc) {
+		if !serviceActive(ctx, rc, svc) {
 			changes = append(changes, Change{Description: "Enable " + svc, Command: "systemctl enable --now " + svc})
 		}
 	}
@@ -62,13 +62,13 @@ func (m *NvidiaModule) Check(_ context.Context, rc *RunContext) (*CheckResult, e
 // services lists the driver-side daemons to keep running. Each is only
 // managed when its unit is installed (DGX OS / the driver packages ship
 // them); rootfiles does not install driver components.
-func (m *NvidiaModule) services(rc *RunContext) []string {
+func (m *NvidiaModule) services(ctx context.Context, rc *RunContext) []string {
 	cfg := rc.Config.Modules.Nvidia
 	var out []string
-	if cfg.Persistenced && unitInstalled(context.Background(), rc, "nvidia-persistenced") {
+	if cfg.Persistenced && unitInstalled(ctx, rc, "nvidia-persistenced") {
 		out = append(out, "nvidia-persistenced")
 	}
-	if cfg.FabricManager && unitInstalled(context.Background(), rc, "nvidia-fabricmanager") {
+	if cfg.FabricManager && unitInstalled(ctx, rc, "nvidia-fabricmanager") {
 		out = append(out, "nvidia-fabricmanager")
 	}
 	return out
@@ -143,7 +143,7 @@ func (m *NvidiaModule) Apply(ctx context.Context, rc *RunContext) (*ApplyResult,
 		changed = true
 	}
 
-	for _, svc := range m.services(rc) {
+	for _, svc := range m.services(ctx, rc) {
 		if serviceActive(ctx, rc, svc) {
 			continue
 		}

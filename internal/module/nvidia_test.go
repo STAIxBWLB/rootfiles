@@ -57,3 +57,22 @@ func TestNvidiaRuntimeRegistrationReloadsDocker(t *testing.T) {
 		t.Fatalf("registering the runtime should reload docker, not restart it: %s", calls)
 	}
 }
+
+// Check runs its service queries under the caller's context, so a canceled
+// dashboard refresh starts no systemctl child.
+func TestNvidiaCheckHonorsContext(t *testing.T) {
+	withDaemonJSON(t, "")
+	log := fakeBin(t, "systemctl")
+	rc := newDryRunRC(t)
+	rc.APT = &agreementPackageManager{}
+	rc.Config.Modules.Nvidia.Persistenced = true
+	rc.Config.Modules.Nvidia.FabricManager = true
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := NewNvidiaModule().Check(ctx, rc); err != nil {
+		t.Fatalf("Check: %v", err)
+	}
+	if calls, _ := os.ReadFile(log); strings.Contains(string(calls), "systemctl") {
+		t.Fatalf("canceled check started systemctl: %s", calls)
+	}
+}

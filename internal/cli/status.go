@@ -323,7 +323,7 @@ func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.Syste
 			iface = "vlan0"
 		}
 		r.details.tunnelInterface = iface
-		r.Tunnel.VLAN = interfaceAddress(iface)
+		r.Tunnel.VLAN = interfaceAddress(ctx, iface)
 	}
 
 	if statusModuleSelected(filter, "users") {
@@ -529,8 +529,8 @@ func systemctlStatus(ctx context.Context, unit string) string {
 
 // interfaceAddress returns the first IPv4 inet address on iface or "" if the
 // interface does not exist / has no address / `ip` binary is missing.
-func interfaceAddress(iface string) string {
-	out, err := exec.Command("ip", "-brief", "addr", "show", iface).Output()
+func interfaceAddress(ctx context.Context, iface string) string {
+	out, err := exec.CommandContext(ctx, "ip", "-brief", "addr", "show", iface).Output()
 	if err != nil {
 		return ""
 	}
