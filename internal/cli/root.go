@@ -166,7 +166,10 @@ func installOutputBoundary(cmd *cobra.Command) {
 		}
 		return nil
 	}
-	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error { return usageError(err) })
+	cmd.SetFlagErrorFunc(func(c *cobra.Command, err error) error {
+		applyDisplayFlags(c, os.Args[1:])
+		return usageError(err)
+	})
 	for _, child := range cmd.Commands() {
 		installOutputBoundary(child)
 	}
@@ -186,6 +189,41 @@ func installOutputBoundary(cmd *cobra.Command) {
 			defer restore()
 			writeHelpPage(c)
 		})
+	}
+}
+
+// applyDisplayFlags sets --color and --ascii from the invocation once flag
+// parsing has stopped at a bad flag, so the refusal and the theme warning
+// follow display flags written after it. Execute runs Cobra on os.Args[1:].
+// Other flags keep their arity (a value flag takes the next argument), and
+// the last value wins, as in pflag.
+func applyDisplayFlags(c *cobra.Command, args []string) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			return
+		}
+		if !strings.HasPrefix(arg, "--") {
+			continue
+		}
+		name, value, inline := strings.Cut(arg[2:], "=")
+		flag := c.Flags().Lookup(name)
+		if flag == nil {
+			continue
+		}
+		switch {
+		case inline:
+		case flag.NoOptDefVal != "":
+			value = flag.NoOptDefVal
+		case i+1 < len(args):
+			i++
+			value = args[i]
+		default:
+			return
+		}
+		if name == "color" || name == "ascii" {
+			_ = c.Flags().Set(name, value)
+		}
 	}
 }
 

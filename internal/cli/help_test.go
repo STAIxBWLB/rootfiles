@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
+	"os"
 	"strings"
 	"testing"
 
@@ -127,6 +129,44 @@ func TestThemeWarningOnInvalidEnv(t *testing.T) {
 			warning := "rootfiles: warning: unknown ROOTFILES_COLOR_THEME " + tc.want
 			if n := strings.Count(stderr.String(), "unknown ROOTFILES_COLOR_THEME"); n != 1 || !strings.Contains(stderr.String(), warning) {
 				t.Fatalf("want %q exactly once on stderr, got %d in %q", warning, n, stderr.String())
+			}
+		})
+	}
+}
+
+// When parsing stops at a bad flag, the display flags after it still style
+// stderr; a value flag keeps its argument, as pflag reads it (#185).
+func TestDisplayFlagsAfterAFlagError(t *testing.T) {
+	pinInventoryPage(t)
+	t.Setenv("LC_ALL", "C.UTF-8")
+	t.Setenv("ROOTFILES_COLOR_THEME", "bad"+ui.Relation+"theme")
+	saved := os.Args
+	t.Cleanup(func() { os.Args = saved })
+	for _, tc := range []struct {
+		args         []string
+		theme, color string
+	}{
+		{[]string{"status", "--zzz-unknown", "--ascii", "--color", "never"}, `"bad->theme"`, "never"},
+		{[]string{"--color=always", "status", "--zzz-unknown", "--ascii=false", "--color=never"}, `"bad` + ui.Relation + `theme"`, "never"},
+		{[]string{"status", "--profile", "--ascii", "--zzz-unknown"}, `"bad` + ui.Relation + `theme"`, "auto"},
+		{[]string{"status", "--zzz-unknown", "--", "--ascii"}, `"bad` + ui.Relation + `theme"`, "auto"},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			os.Args = append([]string{"rootfiles"}, tc.args...)
+			root := NewRootCmd("dev", "test")
+			var out, stderr bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&stderr)
+			root.SetArgs(tc.args)
+			var exit *ExitError
+			if err := executeCommand(context.Background(), root); !errors.As(err, &exit) || exit.Code != 2 {
+				t.Fatalf("err = %v, want a usage error", err)
+			}
+			if !strings.Contains(stderr.String(), "unknown flag: --zzz-unknown") || !strings.Contains(stderr.String(), "unknown ROOTFILES_COLOR_THEME "+tc.theme) {
+				t.Fatalf("want the usage error and theme %s on stderr, got %q", tc.theme, stderr.String())
+			}
+			if color, _ := root.PersistentFlags().GetString("color"); color != tc.color {
+				t.Fatalf("--color = %q, want %q", color, tc.color)
 			}
 		})
 	}
