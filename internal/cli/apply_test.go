@@ -111,6 +111,9 @@ func TestApplyDryRunUnknownNTPDoesNotFail(t *testing.T) {
 // Under TERM=dumb, apply without --yes on a closed stdin stops at its first
 // question instead of taking every default (#177 AC1).
 func TestApplyStopsWhenDumbTerminalStdinIsClosed(t *testing.T) {
+	oldDetect := detectSystem
+	detectSystem = func() (*config.SystemInfo, error) { return &config.SystemInfo{OS: "ubuntu", Version: "24.04"}, nil }
+	t.Cleanup(func() { detectSystem = oldDetect })
 	t.Setenv("TERM", "dumb")
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
@@ -137,7 +140,8 @@ func TestApplyStopsWhenDumbTerminalStdinIsClosed(t *testing.T) {
 	if !errors.Is(err, ui.ErrNoAnswer) || !strings.Contains(stderr.String(), "stdin ended before an answer; pass --yes") {
 		t.Fatalf("err=%v stderr=%q, want the no-answer refusal naming --yes", err, stderr.String())
 	}
-	if strings.Contains(out.String(), "Apply this configuration") {
-		t.Fatalf("apply reached its final confirmation:\n%s", out.String())
+	// The refusal names the prompt it stopped at: the first one, Timezone.
+	if !strings.HasPrefix(err.Error(), "Timezone: ") {
+		t.Fatalf("err=%v, want apply to stop at its first prompt (Timezone)", err)
 	}
 }
