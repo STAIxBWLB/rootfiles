@@ -4,13 +4,10 @@ Generated from docs/releases/ by scripts/gen-changelog.sh; edit the release note
 
 ## v0.23.1
 
-This release fixes a wrong next step on a macOS fleet controller whose inventory is a symlink to a missing file.
+This release fixes a wrong next step on a macOS fleet controller whose inventory is a symlink to a missing file; on Linux, `doctor` and `monitor` never read an inventory, so Linux hosts can stay on v0.23.0.
 
 ### Fixed
 - On a macOS fleet controller whose inventory is a symlink to a file that no longer exists, `rootfiles doctor` and `rootfiles monitor` suggested `rootfiles fleet init --inventory <path>`, which refuses the existing link. They now name the symlink and its missing target and say to point it at an existing inventory or remove it. (#204)
-
-### Action needed
-- Update the macOS fleet controller with `rootfiles update`. On Linux, `doctor` and `monitor` check the host itself and never read an inventory, so Linux hosts can stay on v0.23.0. (#205)
 
 **Full changelog**: https://github.com/STAIxBWLB/rootfiles/compare/v0.23.0...v0.23.1
 
