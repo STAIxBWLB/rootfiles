@@ -283,7 +283,7 @@ func runControllerDoctor(cmd *cobra.Command) error {
 	latest, err := fetchLatestVersion(ctx)
 	if err != nil {
 		findings = append(findings, module.Finding{Check: "version", Level: module.LevelSkip, Detail: "latest release unavailable"})
-	} else if latest != buildVersion && buildVersion != "dev" {
+	} else if normalizeVersion(latest) != normalizeVersion(buildVersion) && buildVersion != "dev" {
 		findings = append(findings, module.Finding{Check: "version", Level: module.LevelWarn, Detail: fmt.Sprintf("%s installed; %s available", buildVersion, latest), Hint: "rootfiles update --check"})
 	} else {
 		findings = append(findings, module.Finding{Check: "version", Level: module.LevelOK, Detail: buildVersion})
