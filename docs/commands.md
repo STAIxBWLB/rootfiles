@@ -51,15 +51,10 @@ Command-local flags such as `--module` and `--force` go after the subcommand: `r
 
 Commands that change the host need root on Linux and take the global lock (`/run/rootfiles.lock`). With `--dry-run`, and with the read-only `update --check` and `tunnel update --check`, they need neither. A second mutating command fails at once and names the PID holding the lock. Each real mutating run writes an audit record ([operations.md](operations.md#lock-and-audit-log)).
 
-### Deprecated flags and aliases
+### Command aliases
 
 | Old | Use instead | Notes |
 |---|---|---|
-| `backup -o/--output DIR` | `backup --dir DIR` | Hidden, prints a deprecation notice. |
-| `user backup -o/--output FILE` | `user backup --file FILE` | Hidden, prints a deprecation notice. |
-| `user add --pubkey KEY` | `user add --ssh-pubkey KEY` | Hidden; `--ssh-pubkey` wins when both are set. |
-| `user passwd --suffix S` | `user passwd --password P` or `--file F` | Hidden; predictable passwords are removed in v0.22.0. |
-| `config init --force` | `config init --overwrite` | Hidden. |
 | `rootfiles upgrade` | `rootfiles update` | Command alias. |
 | `rootfiles tunnel install` | `rootfiles tunnel setup` | Command alias. |
 | `rootfiles tenant reset` | `rootfiles tenant passwd` | Command alias. |
@@ -165,8 +160,6 @@ Capture what is needed to rebuild this host after an OS reinstall ([operations.m
 | `--skip-docker` | `false` | Leave out the Docker image list. |
 | `--skip-etc` | `false` | Leave out the `/etc` archive. |
 
-`-o/--output` is a deprecated alias of `--dir`.
-
 ### rootfiles check
 
 Check current system state against profile.
@@ -200,8 +193,6 @@ Write a site config: a commented template that extends a profile, or a capture o
 | `--file` | stdout | Write to this file instead of stdout. The file ends with mode 0600 and owned by you, new or overwritten, because a `--from-system` capture can hold the tunnel token. A symlink, special file or file owned by another non-root user is refused; a failed write leaves the previous file unchanged. |
 | `--from-system` | `false` | Capture the running host's settings instead of the template; works on hosts not set up by rootfiles. |
 | `--overwrite` | `false` | Replace an existing `--file`. |
-
-`--force` is a deprecated alias of `--overwrite`.
 
 ### rootfiles config show
 
@@ -784,7 +775,6 @@ Create a user with custom home directory.
 | `--no-docker` | `false` | Do not add the account to the `docker` group. |
 
 - The name comes from the argument, `--user` or `ROOTFILES_USER`; the key from `--ssh-pubkey` or `ROOTFILES_SSH_PUBKEY`. Without a name and without `--yes`, it prompts.
-- `--pubkey` is a deprecated alias of `--ssh-pubkey`.
 
 ### rootfiles user audit
 
@@ -799,8 +789,6 @@ Write the users database, merged with the accounts found on the host, to a JSON 
 | Flag | Default | Purpose |
 |---|---|---|
 | `--file` | `rootfiles-users-<hostname>-<YYYYMMDD>.json` in the current directory | Output file. |
-
-`-o/--output` is a deprecated alias of `--file`.
 
 ### rootfiles user del
 
@@ -900,8 +888,6 @@ Set passwords for users (batch).
 | `-f`, `--file` | unset | File with a username, or `username,password`, per line. |
 | `--all` | `false` | Every system user. |
 | `--expire` | `false` | Force a password change at the next login (`chage -d 0`). |
-
-`--suffix` (password = username + suffix) is deprecated and will be removed in v0.22.0.
 
 ### rootfiles user quota
 

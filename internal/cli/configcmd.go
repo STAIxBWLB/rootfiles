@@ -115,8 +115,6 @@ func newConfigInitCmd() *cobra.Command {
 			extends, _ := cmd.Flags().GetString("extends")
 			file, _ := cmd.Flags().GetString("file")
 			overwrite, _ := cmd.Flags().GetBool("overwrite")
-			legacyForce, _ := cmd.Flags().GetBool("force")
-			overwrite = overwrite || legacyForce
 
 			var data []byte
 			if fromSystem {
@@ -152,8 +150,6 @@ func newConfigInitCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().Bool("overwrite", false, "Overwrite an existing config file")
-	cmd.Flags().Bool("force", false, "Deprecated alias for --overwrite")
-	_ = cmd.Flags().MarkDeprecated("force", "use --overwrite instead")
 	cmd.Flags().Bool("from-system", false, "Capture settings from the running system")
 	cmd.Flags().String("extends", "", "Base profile for the template (default: detected)")
 	cmd.Flags().String("file", "", "Write to FILE instead of stdout")

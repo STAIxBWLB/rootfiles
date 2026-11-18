@@ -116,6 +116,8 @@ func TestKnownRootPreflightNeverReplaysSecrets(t *testing.T) {
 	}
 }
 
+// An old script's --suffix is now an unknown flag; the refusal still never
+// echoes its value.
 func TestKnownRootPreflightNeverEchoesPasswordSuffix(t *testing.T) {
 	for _, inline := range []bool{false, true} {
 		t.Run(strconv.FormatBool(inline), func(t *testing.T) {
@@ -132,10 +134,8 @@ func TestKnownRootPreflightNeverEchoesPasswordSuffix(t *testing.T) {
 			root.SetArgs(append(args, "--ascii", "--color=never"))
 			err := executeCommand(context.Background(), root)
 			var exit *ExitError
-			if !errors.As(err, &exit) || exit.Code != 1 || exit.Next != "sudo rootfiles user passwd --help" ||
-				!strings.Contains(stdout.String(), "Flag --suffix has been deprecated") ||
-				strings.Contains(stdout.String()+stderr.String(), "fixture-secret") || strings.Contains(exit.Next, "***") ||
-				strings.Count(stderr.String(), "\n") != 2 {
+			if !errors.As(err, &exit) || exit.Code != 2 || !strings.Contains(stderr.String(), "unknown flag: --suffix") ||
+				strings.Contains(stdout.String()+stderr.String(), "fixture-secret") || strings.Contains(exit.Next, "***") {
 				t.Fatalf("exit=%v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
 			}
 		})

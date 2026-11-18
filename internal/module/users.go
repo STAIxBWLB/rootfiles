@@ -1025,28 +1025,23 @@ func RemoveUserFromGroups(ctx context.Context, rc *RunContext, username string, 
 // PasswordEntry represents a username-password pair for batch password setting.
 type PasswordEntry struct {
 	Username string
-	Password string // empty means auto-generate (username + suffix)
+	Password string // empty means a random password, printed once
 }
 
 // SetPasswords sets passwords for the given entries. Entries without a
-// password get username+suffix when suffix is set (legacy scheme), otherwise
-// a random password that is printed once. With expire, users must change
-// the password at next login.
-func SetPasswords(ctx context.Context, rc *RunContext, entries []PasswordEntry, suffix string, expire bool) error {
+// password get a random password that is printed once. With expire, users
+// must change the password at next login.
+func SetPasswords(ctx context.Context, rc *RunContext, entries []PasswordEntry, expire bool) error {
 	var failed []string
 	for _, e := range entries {
 		pass := e.Password
 		generated := ""
 		if pass == "" {
-			if suffix != "" {
-				pass = e.Username + suffix
-			} else {
-				p, err := generatePassword(16)
-				if err != nil {
-					return fmt.Errorf("generating password: %w", err)
-				}
-				pass, generated = p, p
+			p, err := generatePassword(16)
+			if err != nil {
+				return fmt.Errorf("generating password: %w", err)
 			}
+			pass, generated = p, p
 		}
 		if rc.DryRun {
 			ui.WriteDryRun(rc.Output(), fmt.Sprintf("set password for %s (password: ****)", e.Username))
@@ -1078,7 +1073,7 @@ func SetPasswords(ctx context.Context, rc *RunContext, entries []PasswordEntry, 
 
 // LoadPasswordFile reads a password file and returns PasswordEntry list.
 // Lines with commas are treated as "username,password"; otherwise username-only (auto-generate).
-func LoadPasswordFile(path, suffix string) ([]PasswordEntry, error) {
+func LoadPasswordFile(path string) ([]PasswordEntry, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading password file: %w", err)

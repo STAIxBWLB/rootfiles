@@ -84,7 +84,7 @@ func newUserAddCmd() *cobra.Command {
 				}
 			}
 
-			pubkey := stringFlagOrAlias(cmd, "ssh-pubkey", "pubkey")
+			pubkey, _ := cmd.Flags().GetString("ssh-pubkey")
 			if pubkey == "" {
 				pubkey = os.Getenv("ROOTFILES_SSH_PUBKEY")
 			}
@@ -100,8 +100,6 @@ func newUserAddCmd() *cobra.Command {
 		},
 	}
 	usesRootFlags(cmd, "user", "ssh-pubkey")
-	cmd.Flags().String("pubkey", "", "Deprecated alias for --ssh-pubkey")
-	_ = cmd.Flags().MarkDeprecated("pubkey", "use --ssh-pubkey instead")
 	cmd.Flags().StringSlice("groups", nil, "Additional groups")
 	cmd.Flags().Bool("no-docker", false, "Do not add to docker group")
 	return cmd
@@ -149,14 +147,11 @@ func newUserBackupCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			output := stringFlagOrAlias(cmd, "file", "output")
+			output, _ := cmd.Flags().GetString("file")
 			return backupCLIUsers(rc, output)
 		},
 	}
 	cmd.Flags().String("file", "", "Output path for backup file")
-	cmd.Flags().StringP("output", "o", "", "Deprecated alias for --file")
-	_ = cmd.Flags().MarkDeprecated("output", "use --file instead")
-	_ = cmd.Flags().MarkShorthandDeprecated("output", "use --file instead")
 	return cmd
 }
 
@@ -311,13 +306,12 @@ func newUserPasswdCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			suffix, _ := cmd.Flags().GetString("suffix")
 			password, _ := cmd.Flags().GetString("password")
 			filePath, _ := cmd.Flags().GetString("file")
 			all, _ := cmd.Flags().GetBool("all")
 			expire, _ := cmd.Flags().GetBool("expire")
 
-			entries, err := resolvePasswordTargets(cmd.Context(), rc, args, filePath, suffix, all)
+			entries, err := resolvePasswordTargets(cmd.Context(), rc, args, filePath, all)
 			if err != nil {
 				return err
 			}
@@ -345,12 +339,10 @@ func newUserPasswdCmd() *cobra.Command {
 				return nil
 			}
 
-			return setCLIUserPasswords(cmd.Context(), rc, entries, suffix, expire)
+			return setCLIUserPasswords(cmd.Context(), rc, entries, expire)
 		},
 	}
 	cmd.Flags().String("password", "", "Set the same password for all users")
-	cmd.Flags().String("suffix", "", "Deprecated: password = username+suffix")
-	_ = cmd.Flags().MarkDeprecated("suffix", "use --password or --file instead; predictable passwords are removed in v0.22.0")
 	cmd.Flags().Bool("expire", false, "Force a password change at next login (chage -d 0)")
 	cmd.Flags().StringP("file", "f", "", "File of usernames (or name,password lines)")
 	cmd.Flags().Bool("all", false, "Set passwords for all system users")
@@ -359,10 +351,10 @@ func newUserPasswdCmd() *cobra.Command {
 
 // resolvePasswordTargets decides which users the passwd subcommand should
 // operate on. Sources (in priority): --file, --all, positional args.
-func resolvePasswordTargets(ctx context.Context, rc *module.RunContext, args []string, filePath, suffix string, all bool) ([]module.PasswordEntry, error) {
+func resolvePasswordTargets(ctx context.Context, rc *module.RunContext, args []string, filePath string, all bool) ([]module.PasswordEntry, error) {
 	switch {
 	case filePath != "":
-		return module.LoadPasswordFile(filePath, suffix)
+		return module.LoadPasswordFile(filePath)
 	case all:
 		users, err := module.ScanSystemUsersExported(ctx, rc)
 		if err != nil {
