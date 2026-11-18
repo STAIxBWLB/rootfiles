@@ -12,6 +12,8 @@ test:
 	go test ./... -race -count=1
 
 lint:
+	go run scripts/check-output-literals.go
+	bash scripts/check-output-literals-selftest.sh
 	golangci-lint run ./...
 
 # cli-inventory rewrites docs/cli-inventory.md from the command tree and from the

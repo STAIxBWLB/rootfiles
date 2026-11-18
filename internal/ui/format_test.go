@@ -81,3 +81,19 @@ func TestWriteHint_DimmedLine(t *testing.T) {
 		t.Errorf("hint should be 2-space indented, got %q", out)
 	}
 }
+
+func TestWriteDryRunNextNoteAndFormatBool(t *testing.T) {
+	t.Setenv("LC_ALL", "C.UTF-8")
+	var buf bytes.Buffer
+	w := ConfigureWriter(&buf, "never", false, false)
+	WriteDryRun(w, "write /etc/profile.d/rootfiles-gpu-alice.sh")
+	WriteNext(w, "rootfiles status")
+	WriteNextIndented(w, 4, "systemctl enable --now systemd-timesyncd")
+	WriteNote(w, "skipping offline check")
+	if got, want := buf.String(), "  ~  would write /etc/profile.d/rootfiles-gpu-alice.sh\n  → rootfiles status\n    → systemctl enable --now systemd-timesyncd\nrootfiles: skipping offline check\n"; got != want {
+		t.Fatalf("helpers output:\n%q\nwant:\n%q", got, want)
+	}
+	if !strings.Contains(FormatBool(true), "enabled") || !strings.Contains(FormatBool(false), "disabled") {
+		t.Fatalf("FormatBool unexpected: true=%q false=%q", FormatBool(true), FormatBool(false))
+	}
+}

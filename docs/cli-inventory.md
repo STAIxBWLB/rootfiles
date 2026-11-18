@@ -16,103 +16,103 @@ recorded here as the server sees it.
 
 | command | kind | usage | summary | chars | example | widest | issues |
 |---|---|---|---|---|---|---|---|
-| `rootfiles` | runnable | - | Bootstrap Ubuntu, DGX OS and Rocky servers | 42 | yes | 79 | - |
-| `rootfiles apply` | runnable | - | Apply server configuration | 26 | yes | 79 | - |
+| `rootfiles` | runnable | - | Bootstrap Ubuntu, DGX OS and Rocky servers | 42 | yes | 80 | - |
+| `rootfiles apply` | runnable | - | Apply server configuration | 26 | yes | 73 | - |
 | `rootfiles backup` | runnable | - | Back up the system for an OS upgrade or restore | 47 | yes | 79 | - |
 | `rootfiles check` | runnable | - | Check current system state against profile | 42 | yes | 79 | - |
-| `rootfiles config` | runnable | - | Inspect, validate or scaffold configuration | 43 | yes | 79 | - |
-| `rootfiles config init` | runnable | - | Scaffold a site config | 22 | yes | 79 | - |
-| `rootfiles config show` | runnable | - | Print the fully merged configuration | 36 | yes | 79 | - |
-| `rootfiles config validate` | runnable | - | Validate a profile or config file | 33 | yes | 79 | - |
-| `rootfiles doctor` | runnable | - | Check disks, reboot, time sync, GPU, systemd and access | 55 | yes | 80 | - |
-| `rootfiles fleet` | runnable | - | Manage and monitor an SSH host fleet | 36 | yes | 79 | - |
-| `rootfiles fleet apply` | runnable | - | Apply selected hosts' site configs serially | 43 | yes | 79 | - |
-| `rootfiles fleet bootstrap` | runnable | - | Install a pinned release on selected hosts | 42 | yes | 79 | - |
-| `rootfiles fleet check` | runnable | - | Run a read-only fleet check report | 34 | yes | 79 | - |
-| `rootfiles fleet doctor` | runnable | - | Run a read-only fleet doctor report | 35 | yes | 79 | - |
-| `rootfiles fleet hosts` | runnable | - | List and validate inventory hosts | 33 | yes | 79 | - |
-| `rootfiles fleet init` | runnable | - | Create a fleet inventory | 24 | yes | 79 | - |
+| `rootfiles config` | runnable | - | Inspect, validate or scaffold configuration | 43 | yes | 66 | - |
+| `rootfiles config init` | runnable | - | Scaffold a site config | 22 | yes | 80 | - |
+| `rootfiles config show` | runnable | - | Print the fully merged configuration | 36 | yes | 73 | - |
+| `rootfiles config validate` | runnable | - | Validate a profile or config file | 33 | yes | 73 | - |
+| `rootfiles doctor` | runnable | - | Check disks, reboot, time sync, GPU, systemd and access | 55 | yes | 79 | - |
+| `rootfiles fleet` | runnable | - | Manage and monitor an SSH host fleet | 36 | yes | 78 | - |
+| `rootfiles fleet apply` | runnable | - | Apply selected hosts' site configs serially | 43 | yes | 80 | - |
+| `rootfiles fleet bootstrap` | runnable | - | Install a pinned release on selected hosts | 42 | yes | 80 | - |
+| `rootfiles fleet check` | runnable | - | Run a read-only fleet check report | 34 | yes | 75 | - |
+| `rootfiles fleet doctor` | runnable | - | Run a read-only fleet doctor report | 35 | yes | 75 | - |
+| `rootfiles fleet hosts` | runnable | - | List and validate inventory hosts | 33 | yes | 73 | - |
+| `rootfiles fleet init` | runnable | - | Create a fleet inventory | 24 | yes | 66 | - |
 | `rootfiles fleet log` | runnable | - | Show recorded fleet rollouts, newest first | 42 | yes | 79 | - |
-| `rootfiles fleet ping` | runnable | - | Check fleet connectivity and privilege | 38 | yes | 79 | - |
-| `rootfiles fleet schedule` | runnable | <enable\|disable> | Enable or disable scheduled reports serially | 44 | yes | 79 | - |
-| `rootfiles fleet shutdown` | runnable | - | Schedule, cancel or inspect fleet poweroffs | 43 | yes | 79 | - |
-| `rootfiles fleet shutdown cancel` | runnable | - | Cancel any scheduled shutdown on every selected host | 52 | yes | 79 | - |
-| `rootfiles fleet shutdown now` | runnable | - | Schedule every selected host within --in and announce it now | 60 | yes | 79 | - |
-| `rootfiles fleet shutdown schedule` | runnable | - | Schedule every selected host for one absolute instant | 53 | yes | 79 | - |
+| `rootfiles fleet ping` | runnable | - | Check fleet connectivity and privilege | 38 | yes | 73 | - |
+| `rootfiles fleet schedule` | runnable | <enable\|disable> | Enable or disable scheduled reports serially | 44 | yes | 80 | - |
+| `rootfiles fleet shutdown` | runnable | - | Schedule, cancel or inspect fleet poweroffs | 43 | yes | 80 | - |
+| `rootfiles fleet shutdown cancel` | runnable | - | Cancel any scheduled shutdown on every selected host | 52 | yes | 80 | - |
+| `rootfiles fleet shutdown now` | runnable | - | Schedule every selected host within --in and announce it now | 60 | yes | 80 | - |
+| `rootfiles fleet shutdown schedule` | runnable | - | Schedule every selected host for one absolute instant | 53 | yes | 80 | - |
 | `rootfiles fleet shutdown status` | runnable | - | Show each selected host's scheduled shutdown | 44 | yes | 79 | - |
-| `rootfiles fleet status` | runnable | - | Run a read-only fleet status report | 35 | yes | 79 | - |
-| `rootfiles fleet targets` | runnable | - | Render scrape targets or push them to a hub | 43 | yes | 79 | - |
-| `rootfiles fleet update` | runnable | - | Update selected hosts serially | 30 | yes | 79 | - |
-| `rootfiles gpu` | runnable | - | Manage per-user GPU allocation | 30 | yes | 79 | - |
-| `rootfiles gpu assign` | runnable | <USERNAME> | Assign GPUs to a user | 21 | yes | 79 | - |
-| `rootfiles gpu list` | runnable | - | List current GPU allocations | 28 | yes | 79 | - |
-| `rootfiles gpu mig` | runnable | - | Show Multi-Instance GPU mode and instances | 42 | yes | 79 | - |
-| `rootfiles gpu mig status` | runnable | - | Show MIG mode and instances per GPU | 35 | yes | 79 | - |
-| `rootfiles gpu revoke` | runnable | <USERNAME> | Revoke GPU allocation from a user | 33 | yes | 79 | - |
-| `rootfiles gpu status` | runnable | - | Show GPU status with allocation info | 36 | yes | 79 | - |
-| `rootfiles rollback` | runnable | [BACKUP_ID] | Restore files changed by an earlier run | 39 | yes | 79 | - |
-| `rootfiles schedule` | runnable | - | Install check and doctor report timers | 38 | yes | 79 | - |
-| `rootfiles schedule disable` | runnable | - | Stop and remove the report timer | 32 | yes | 79 | - |
+| `rootfiles fleet status` | runnable | - | Run a read-only fleet status report | 35 | yes | 78 | - |
+| `rootfiles fleet targets` | runnable | - | Render scrape targets or push them to a hub | 43 | yes | 74 | - |
+| `rootfiles fleet update` | runnable | - | Update selected hosts serially | 30 | yes | 80 | - |
+| `rootfiles gpu` | runnable | - | Manage per-user GPU allocation | 30 | yes | 70 | - |
+| `rootfiles gpu assign` | runnable | <USERNAME> | Assign GPUs to a user | 21 | yes | 72 | - |
+| `rootfiles gpu list` | runnable | - | List current GPU allocations | 28 | yes | 70 | - |
+| `rootfiles gpu mig` | runnable | - | Show Multi-Instance GPU mode and instances | 42 | yes | 70 | - |
+| `rootfiles gpu mig status` | runnable | - | Show MIG mode and instances per GPU | 35 | yes | 70 | - |
+| `rootfiles gpu revoke` | runnable | <USERNAME> | Revoke GPU allocation from a user | 33 | yes | 70 | - |
+| `rootfiles gpu status` | runnable | - | Show GPU status with allocation info | 36 | yes | 70 | - |
+| `rootfiles rollback` | runnable | [BACKUP_ID] | Restore files changed by an earlier run | 39 | yes | 77 | - |
+| `rootfiles schedule` | runnable | - | Install check and doctor report timers | 38 | yes | 80 | - |
+| `rootfiles schedule disable` | runnable | - | Stop and remove the report timer | 32 | yes | 70 | - |
 | `rootfiles schedule enable` | runnable | - | Install and start the report timer | 34 | yes | 79 | - |
-| `rootfiles schedule status` | runnable | - | Show the report timer state and the age of its reports | 54 | yes | 79 | - |
-| `rootfiles shutdown` | runnable | - | Schedule a poweroff or reboot with advance notice | 49 | yes | 79 | - |
-| `rootfiles shutdown block` | runnable, hidden | - | Stop new tenant logins (run by the login-block timer) | 53 | yes | 79 | - |
-| `rootfiles shutdown cancel` | runnable | - | Remove the schedule, the units and any tenant login block | 57 | yes | 79 | - |
-| `rootfiles shutdown notify` | runnable, hidden | - | Send one notice (run by the notice timers) | 42 | yes | 79 | - |
-| `rootfiles shutdown schedule` | runnable | - | Schedule the poweroff or reboot | 31 | yes | 79 | - |
-| `rootfiles shutdown status` | runnable | - | Show the schedule, next notice and tenant login block | 53 | yes | 79 | - |
-| `rootfiles status` | runnable | - | Show full system status at a glance | 35 | yes | 79 | - |
+| `rootfiles schedule status` | runnable | - | Show the report timer state and the age of its reports | 54 | yes | 80 | - |
+| `rootfiles shutdown` | runnable | - | Schedule a poweroff or reboot with advance notice | 49 | yes | 80 | - |
+| `rootfiles shutdown block` | runnable, hidden | - | Stop new tenant logins (run by the login-block timer) | 53 | yes | 66 | - |
+| `rootfiles shutdown cancel` | runnable | - | Remove the schedule, the units and any tenant login block | 57 | yes | 66 | - |
+| `rootfiles shutdown notify` | runnable, hidden | - | Send one notice (run by the notice timers) | 42 | yes | 80 | - |
+| `rootfiles shutdown schedule` | runnable | - | Schedule the poweroff or reboot | 31 | yes | 80 | - |
+| `rootfiles shutdown status` | runnable | - | Show the schedule, next notice and tenant login block | 53 | yes | 78 | - |
+| `rootfiles status` | runnable | - | Show full system status at a glance | 35 | yes | 80 | - |
 | `rootfiles tenant` | runnable | - | Manage long-lived tenant containers | 35 | yes | 79 | - |
-| `rootfiles tenant apply` | runnable | [TENANT] | Converge a tenant to its spec | 29 | yes | 79 | - |
-| `rootfiles tenant cpuset` | runnable | <TENANT> | Pin tenant CPUs and NUMA memory | 31 | yes | 79 | - |
-| `rootfiles tenant create` | runnable | <TENANT> | Create a tenant: volume, container and temporary passwords | 58 | yes | 79 | - |
-| `rootfiles tenant gpu` | runnable | <TENANT> | Change a tenant's GPUs (recreates the container) | 48 | yes | 79 | - |
-| `rootfiles tenant image` | runnable | <TENANT> <IMAGE> | Change a tenant's image (recreates the container) | 49 | yes | 79 | - |
-| `rootfiles tenant import` | runnable | <TENANT> | Adopt an existing container as a tenant | 39 | yes | 79 | - |
-| `rootfiles tenant list` | runnable | - | List tenant names | 17 | yes | 79 | - |
-| `rootfiles tenant logs` | runnable | <TENANT> | Show the container log | 22 | yes | 79 | - |
+| `rootfiles tenant apply` | runnable | [TENANT] | Converge a tenant to its spec | 29 | yes | 70 | - |
+| `rootfiles tenant cpuset` | runnable | <TENANT> | Pin tenant CPUs and NUMA memory | 31 | yes | 80 | - |
+| `rootfiles tenant create` | runnable | <TENANT> | Create a tenant: volume, container and temporary passwords | 58 | yes | 80 | - |
+| `rootfiles tenant gpu` | runnable | <TENANT> | Change a tenant's GPUs (recreates the container) | 48 | yes | 70 | - |
+| `rootfiles tenant image` | runnable | <TENANT> <IMAGE> | Change a tenant's image (recreates the container) | 49 | yes | 70 | - |
+| `rootfiles tenant import` | runnable | <TENANT> | Adopt an existing container as a tenant | 39 | yes | 80 | - |
+| `rootfiles tenant list` | runnable | - | List tenant names | 17 | yes | 70 | - |
+| `rootfiles tenant logs` | runnable | <TENANT> | Show the container log | 22 | yes | 70 | - |
 | `rootfiles tenant ops` | runnable | <TENANT> <ACTION> [USER] | Run tenant operator actions (sudo) | 34 | yes | 79 | - |
-| `rootfiles tenant passwd` | runnable | <TENANT> <USER> | Issue a temporary password for a tenant user | 44 | yes | 79 | - |
-| `rootfiles tenant port` | runnable | <TENANT> <SSH_PORT> | Change a tenant's SSH host port (recreates the container) | 57 | yes | 79 | - |
-| `rootfiles tenant restart` | runnable | <TENANT> | Restart a tenant container | 26 | yes | 79 | - |
-| `rootfiles tenant status` | runnable | [TENANT] | Show tenant containers, spec drift and volume use | 49 | yes | 79 | - |
-| `rootfiles tenant sync` | runnable | - | Refresh tenant password hashes and sshpiper keys | 48 | yes | 79 | - |
-| `rootfiles tenant user` | runnable | - | Manage tenant accounts | 22 | yes | 79 | - |
-| `rootfiles tenant user add` | runnable | <TENANT> <NAME> | Add an account and issue its temporary password | 47 | yes | 79 | - |
-| `rootfiles tenant volume` | runnable | - | Manage tenant volumes | 21 | yes | 79 | - |
-| `rootfiles tenant volume resize` | runnable | <TENANT> <SIZE> | Grow a volume, or shrink it offline | 35 | yes | 79 | - |
-| `rootfiles tunnel` | runnable | - | Manage cloudflared tunnel and VLAN private network | 50 | yes | 79 | - |
-| `rootfiles tunnel restart` | runnable | - | Restart cloudflared service | 27 | yes | 79 | - |
-| `rootfiles tunnel setup` | runnable | [TOKEN] | Set up the tunnel, VLAN and cloudflared | 39 | yes | 79 | - |
-| `rootfiles tunnel status` | runnable | - | Show tunnel service and VLAN status | 35 | yes | 79 | - |
-| `rootfiles tunnel uninstall` | runnable | - | Remove tunnel service, VLAN, and binary | 39 | yes | 79 | - |
-| `rootfiles tunnel update` | runnable | - | Upgrade cloudflared binary to latest (or a pinned version) | 58 | yes | 79 | - |
-| `rootfiles update` | runnable | - | Update rootfiles to the latest release | 38 | yes | 79 | - |
-| `rootfiles user` | runnable | - | Manage system users (custom home, backup, restore) | 50 | yes | 79 | - |
-| `rootfiles user add` | runnable | [USERNAME] | Create a user with custom home directory | 40 | yes | 79 | - |
-| `rootfiles user audit` | runnable | - | Compare users.json metadata with the accounts on this system | 60 | yes | 79 | - |
-| `rootfiles user backup` | runnable | - | Backup user list and metadata to JSON | 37 | yes | 79 | - |
-| `rootfiles user del` | runnable | <USERNAME> | Delete a user (home kept by default) | 36 | yes | 79 | - |
-| `rootfiles user du` | runnable | - | Show home directory disk usage per user (largest first) | 55 | yes | 79 | - |
-| `rootfiles user expire` | runnable | <USERNAME> <YYYY-MM-DD\|never> | Set or clear the account expiry date | 36 | yes | 79 | - |
-| `rootfiles user group-add` | runnable | <USERNAME> | Add a user to groups | 20 | yes | 79 | - |
-| `rootfiles user group-del` | runnable | <USERNAME> | Remove a user from groups | 25 | yes | 79 | - |
-| `rootfiles user groups` | runnable | [USERNAME] | List groups (all groups or for a specific user) | 47 | yes | 79 | - |
-| `rootfiles user id` | runnable | <USERNAME> | Show UID, GID, and groups for a user | 36 | yes | 79 | - |
-| `rootfiles user key` | runnable | - | Manage a user's SSH authorized keys | 35 | yes | 79 | - |
-| `rootfiles user key add` | runnable | <USERNAME> <KEY> | Add an authorized key | 21 | yes | 79 | - |
-| `rootfiles user key list` | runnable | <USERNAME> | List authorized keys (numbered) | 31 | yes | 79 | - |
-| `rootfiles user key rm` | runnable | <USERNAME> <INDEX\|KEY\|COMMENT> | Remove authorized key(s) by list index, key or comment | 54 | yes | 79 | - |
-| `rootfiles user list` | runnable | - | List managed users (or system users with --system) | 50 | yes | 79 | - |
-| `rootfiles user lock` | runnable | <USERNAME> | Block all logins (password and SSH key) | 39 | yes | 79 | - |
-| `rootfiles user passwd` | runnable | [USERNAME...] | Set passwords for users (batch) | 31 | yes | 79 | - |
-| `rootfiles user quota` | runnable | - | Limit per-user disk usage on the home base | 42 | yes | 79 | - |
-| `rootfiles user quota rm` | runnable | <USERNAME> | Remove a user's limit | 21 | yes | 79 | - |
-| `rootfiles user quota set` | runnable | <USERNAME> <SIZE> | Set a hard quota, e.g. 500G | 27 | yes | 79 | - |
-| `rootfiles user quota show` | runnable | - | Show the quota report | 21 | yes | 79 | - |
-| `rootfiles user rehome` | runnable | <USERNAME> | Move user home to custom home base directory | 44 | yes | 79 | - |
-| `rootfiles user restore` | runnable | [BACKUP_FILE] | Restore users from backup (reconnect existing home dirs) | 56 | yes | 79 | - |
-| `rootfiles user unlock` | runnable | <USERNAME> | Re-enable logins for a locked user | 34 | yes | 79 | - |
+| `rootfiles tenant passwd` | runnable | <TENANT> <USER> | Issue a temporary password for a tenant user | 44 | yes | 78 | - |
+| `rootfiles tenant port` | runnable | <TENANT> <SSH_PORT> | Change a tenant's SSH host port (recreates the container) | 57 | yes | 70 | - |
+| `rootfiles tenant restart` | runnable | <TENANT> | Restart a tenant container | 26 | yes | 70 | - |
+| `rootfiles tenant status` | runnable | [TENANT] | Show tenant containers, spec drift and volume use | 49 | yes | 70 | - |
+| `rootfiles tenant sync` | runnable | - | Refresh tenant password hashes and sshpiper keys | 48 | yes | 77 | - |
+| `rootfiles tenant user` | runnable | - | Manage tenant accounts | 22 | yes | 70 | - |
+| `rootfiles tenant user add` | runnable | <TENANT> <NAME> | Add an account and issue its temporary password | 47 | yes | 70 | - |
+| `rootfiles tenant volume` | runnable | - | Manage tenant volumes | 21 | yes | 70 | - |
+| `rootfiles tenant volume resize` | runnable | <TENANT> <SIZE> | Grow a volume, or shrink it offline | 35 | yes | 70 | - |
+| `rootfiles tunnel` | runnable | - | Manage cloudflared tunnel and VLAN private network | 50 | yes | 71 | - |
+| `rootfiles tunnel restart` | runnable | - | Restart cloudflared service | 27 | yes | 70 | - |
+| `rootfiles tunnel setup` | runnable | [TOKEN] | Set up the tunnel, VLAN and cloudflared | 39 | yes | 80 | - |
+| `rootfiles tunnel status` | runnable | - | Show tunnel service and VLAN status | 35 | yes | 70 | - |
+| `rootfiles tunnel uninstall` | runnable | - | Remove tunnel service, VLAN, and binary | 39 | yes | 70 | - |
+| `rootfiles tunnel update` | runnable | - | Upgrade cloudflared binary to latest (or a pinned version) | 58 | yes | 78 | - |
+| `rootfiles update` | runnable | - | Update rootfiles to the latest release | 38 | yes | 76 | - |
+| `rootfiles user` | runnable | - | Manage system users (custom home, backup, restore) | 50 | yes | 75 | - |
+| `rootfiles user add` | runnable | [USERNAME] | Create a user with custom home directory | 40 | yes | 78 | - |
+| `rootfiles user audit` | runnable | - | Compare users.json metadata with the accounts on this system | 60 | yes | 70 | - |
+| `rootfiles user backup` | runnable | - | Backup user list and metadata to JSON | 37 | yes | 70 | - |
+| `rootfiles user del` | runnable | <USERNAME> | Delete a user (home kept by default) | 36 | yes | 78 | - |
+| `rootfiles user du` | runnable | - | Show home directory disk usage per user (largest first) | 55 | yes | 70 | - |
+| `rootfiles user expire` | runnable | <USERNAME> <YYYY-MM-DD\|never> | Set or clear the account expiry date | 36 | yes | 70 | - |
+| `rootfiles user group-add` | runnable | <USERNAME> | Add a user to groups | 20 | yes | 70 | - |
+| `rootfiles user group-del` | runnable | <USERNAME> | Remove a user from groups | 25 | yes | 70 | - |
+| `rootfiles user groups` | runnable | [USERNAME] | List groups (all groups or for a specific user) | 47 | yes | 70 | - |
+| `rootfiles user id` | runnable | <USERNAME> | Show UID, GID, and groups for a user | 36 | yes | 70 | - |
+| `rootfiles user key` | runnable | - | Manage a user's SSH authorized keys | 35 | yes | 70 | - |
+| `rootfiles user key add` | runnable | <USERNAME> <KEY> | Add an authorized key | 21 | yes | 70 | - |
+| `rootfiles user key list` | runnable | <USERNAME> | List authorized keys (numbered) | 31 | yes | 70 | - |
+| `rootfiles user key rm` | runnable | <USERNAME> <INDEX\|KEY\|COMMENT> | Remove authorized key(s) by list index, key or comment | 54 | yes | 70 | - |
+| `rootfiles user list` | runnable | - | List managed users (or system users with --system) | 50 | yes | 70 | - |
+| `rootfiles user lock` | runnable | <USERNAME> | Block all logins (password and SSH key) | 39 | yes | 70 | - |
+| `rootfiles user passwd` | runnable | [USERNAME...] | Set passwords for users (batch) | 31 | yes | 71 | - |
+| `rootfiles user quota` | runnable | - | Limit per-user disk usage on the home base | 42 | yes | 70 | - |
+| `rootfiles user quota rm` | runnable | <USERNAME> | Remove a user's limit | 21 | yes | 70 | - |
+| `rootfiles user quota set` | runnable | <USERNAME> <SIZE> | Set a hard quota, e.g. 500G | 27 | yes | 70 | - |
+| `rootfiles user quota show` | runnable | - | Show the quota report | 21 | yes | 70 | - |
+| `rootfiles user rehome` | runnable | <USERNAME> | Move user home to custom home base directory | 44 | yes | 75 | - |
+| `rootfiles user restore` | runnable | [BACKUP_FILE] | Restore users from backup (reconnect existing home dirs) | 56 | yes | 70 | - |
+| `rootfiles user unlock` | runnable | <USERNAME> | Re-enable logins for a locked user | 34 | yes | 70 | - |
 
 ## First word of each summary
 

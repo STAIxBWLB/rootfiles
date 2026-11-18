@@ -1,17 +1,57 @@
 package ui
 
 import (
+	"errors"
 	"fmt"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/x/term"
 )
+
+// TerminalAttached reports whether the prompts below can run: huh's
+// accessible mode (TERM=dumb) needs no terminal; otherwise bubbletea's rule
+// applies, stdin when it is a terminal, else /dev/tty.
+// Without either (a plain ssh command, systemd timer, CI) huh fails with
+// "bubbletea: could not open TTY". A variable so tests can pin it.
+var TerminalAttached = func() bool {
+	if os.Getenv("TERM") == "dumb" {
+		return true
+	}
+	if term.IsTerminal(os.Stdin.Fd()) {
+		return true
+	}
+	f, err := os.Open("/dev/tty")
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	return true
+}
+
+// ErrNoTerminal is what a prompt returns when it has no terminal to run on.
+var ErrNoTerminal = errors.New("no terminal for an interactive prompt; pass --yes, or run from a terminal")
+
+var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
+
+func noTerminal(message string) error {
+	if TerminalAttached() {
+		return nil
+	}
+	clean := strings.TrimSpace(ansiRe.ReplaceAllString(message, ""))
+	return fmt.Errorf("%s: %w", clean, ErrNoTerminal)
+}
 
 // Confirm asks for yes/no. Returns true immediately if unattended.
 func Confirm(message string, unattended bool) (bool, error) {
 	if unattended {
 		return true, nil
+	}
+	if err := noTerminal(message); err != nil {
+		return false, err
 	}
 	var confirmed bool
 	err := huh.NewConfirm().
@@ -27,6 +67,9 @@ func ConfirmDefault(message string, def, unattended bool) (bool, error) {
 	if unattended {
 		return def, nil
 	}
+	if err := noTerminal(message); err != nil {
+		return def, err
+	}
 	confirmed := def
 	err := huh.NewConfirm().
 		Title(message).
@@ -39,6 +82,9 @@ func ConfirmDefault(message string, def, unattended bool) (bool, error) {
 func Select(message string, options []string, defaultVal string, unattended bool) (string, error) {
 	if unattended {
 		return defaultVal, nil
+	}
+	if err := noTerminal(message); err != nil {
+		return defaultVal, err
 	}
 	selected := defaultVal
 	opts := make([]huh.Option[string], len(options))
@@ -60,6 +106,9 @@ func Select(message string, options []string, defaultVal string, unattended bool
 func Input(message, defaultVal string, unattended bool) (string, error) {
 	if unattended {
 		return defaultVal, nil
+	}
+	if err := noTerminal(message); err != nil {
+		return defaultVal, err
 	}
 	var value string
 	err := huh.NewInput().

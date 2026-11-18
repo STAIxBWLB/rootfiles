@@ -48,7 +48,7 @@ CI (`.github/workflows/test.yaml`, `scripts/ci-decision.sh`)
 - Test runs on every main push and PR, with no `paths` filter, so every main commit gets a Test result that Release can check. Main pushes are never cancelled.
 - The `decision` job sets `run_full=false` only when no changed file matches `TEST_INPUTS` (minus `TEST_IGNORE`, `docs/releases/`), or when a main push has the exact tree of a merged PR head whose latest Test run passed and that contained the pre-merge main. Anything unknown (API failure, new ref, 300 or more files) runs full. A rename counts by both paths. `ci-decision.sh --self-test` pins the classification.
 - `release-notes` runs regardless of the decision. Expensive jobs (`lint`, `vuln`, `unit`, then `integration`, `module`, `scenario`, `fleet-scenario`, `tenant-scenario`, `exporter-firewall-scenario`, `rocky`, `monitoring-hub`) run only when `run_full` is true; the feature specs own what those scenarios assert.
-- `lint` also vets and builds for darwin/arm64 (read-only commands on operator laptops) and checks `go mod tidy` drift.
+- `lint` also runs `scripts/check-output-literals.go` and `scripts/check-output-literals-selftest.sh`, vets and builds for darwin/arm64 (read-only commands on operator laptops), and checks `go mod tidy` drift.
 
 Release (`.github/workflows/release.yaml`)
 - Triggered by a `v*` tag push; the tag must match `^v[0-9]+\.[0-9]+\.[0-9]+$`.

@@ -20,8 +20,8 @@ import (
 
 // TestConformanceColorOnlyDecorates holds the colour rule in both directions:
 // a page rendered with colour on says exactly what the colour-off page says
-// once the escapes are removed, and help text carries no decoration at all, so
-// the policy cannot change what a person reads.
+// once the escapes are removed, and --color=always decorates help and reports
+// without changing the words a person reads.
 func TestConformanceColorOnlyDecorates(t *testing.T) {
 	pinInventoryPage(t)
 	walkCommands(NewRootCmd("dev", "test"), func(c *cobra.Command) {
@@ -30,8 +30,8 @@ func TestConformanceColorOnlyDecorates(t *testing.T) {
 		if ansi.Strip(decorated) != plain {
 			t.Errorf("%s: colour changes the words a person reads", c.CommandPath())
 		}
-		if decorated != plain {
-			t.Errorf("%s: help carries decoration", c.CommandPath())
+		if !strings.ContainsRune(decorated, 27) {
+			t.Errorf("%s: colour-on help carries no escape", c.CommandPath())
 		}
 	})
 	for _, command := range measuredReports() {

@@ -525,7 +525,7 @@ func BackupUsers(rc *RunContext, outputPath string) error {
 	// Scan system users and merge
 	sysUsers, err := scanSystemUsers(ctx, rc)
 	if err != nil {
-		ui.WriteText(rc.Output(), "  Warning: system user scan failed: %v\n", err)
+		ui.WriteWarning(userWarningOutput(rc), fmt.Sprintf("system user scan failed: %v", err), "")
 	}
 
 	managed := make(map[string]bool)
@@ -1049,7 +1049,7 @@ func SetPasswords(ctx context.Context, rc *RunContext, entries []PasswordEntry, 
 			}
 		}
 		if rc.DryRun {
-			ui.WriteText(rc.Output(), "  [dry-run] set password for %s (password: ****)\n", e.Username)
+			ui.WriteDryRun(rc.Output(), fmt.Sprintf("set password for %s (password: ****)", e.Username))
 			continue
 		}
 		if err := setPassword(ctx, rc, e.Username, pass); err != nil {

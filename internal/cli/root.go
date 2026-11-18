@@ -1,11 +1,10 @@
 package cli
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -36,7 +35,6 @@ func NewRootCmd(version, commit string) *cobra.Command {
 		SilenceErrors:     true, // main prints the error once
 	}
 	root.Version = version + " (" + commit + ")"
-	root.SetUsageTemplate(usageTemplate)
 
 	root.PersistentFlags().AddFlagSet(newRootFlags())
 
@@ -56,6 +54,7 @@ func NewRootCmd(version, commit string) *cobra.Command {
 	root.AddCommand(newFleetCmd())
 	root.AddCommand(newTenantCmd())
 
+	configureRootGroups(root)
 	markMutating(root)
 	installOutputBoundary(root)
 	return root
@@ -165,21 +164,17 @@ func installOutputBoundary(cmd *cobra.Command) {
 	}
 	if cmd.Parent() == nil {
 		// Every help path (--help, `help <command>`, a group's own page) runs
-		// through this one function, so the inherited inputs are scoped and the
-		// bool value hint is dropped here rather than in each command's help.
-		help := cmd.HelpFunc()
-		cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
-			_ = configureOutput(c)
+		// through this one function, so the inherited inputs are scoped and
+		// rendered with shared styles.
+		cmd.SetHelpFunc(func(c *cobra.Command, _ []string) {
+			restoreTheme, _ := ui.SetPresentation(os.Getenv)
+			defer restoreTheme()
+			if !ui.Configured(c.OutOrStdout()) || c.Flags().Changed("color") || c.Root().PersistentFlags().Changed("color") || c.Flags().Changed("ascii") || c.Root().PersistentFlags().Changed("ascii") {
+				_ = configureOutput(c)
+			}
 			restore := scopeInheritedHelpFlags(c)
 			defer restore()
-			var page bytes.Buffer
-			out, errOut := c.OutOrStdout(), c.ErrOrStderr()
-			c.SetOut(&page)
-			c.SetErr(&page)
-			help(c, args)
-			c.SetOut(out)
-			c.SetErr(errOut)
-			_, _ = io.WriteString(out, withoutBoolValueHint(page.String()))
+			writeHelpPage(c)
 		})
 	}
 }
@@ -208,6 +203,7 @@ func prepareCompletionBoundary(root *cobra.Command) {
 	root.InitDefaultCompletionCmd()
 	for _, command := range root.Commands() {
 		if command.Name() == "completion" {
+			command.GroupID = "help"
 			installOutputBoundary(command)
 			return
 		}
@@ -217,7 +213,13 @@ func prepareCompletionBoundary(root *cobra.Command) {
 // executeCommand owns diagnostics so the writer and parsed display flags are
 // the same for successful reports, usage failures and operational failures.
 func executeCommand(ctx context.Context, root *cobra.Command) error {
+	restoreTheme, themeWarning := ui.SetPresentation(os.Getenv)
+	defer restoreTheme()
 	prepareCompletionBoundary(root)
+	if themeWarning != "" {
+		_ = configureOutput(root)
+		ui.WriteWarning(root.ErrOrStderr(), themeWarning, "")
+	}
 	cmd, err := root.ExecuteContextC(ctx)
 	if err == nil {
 		return nil

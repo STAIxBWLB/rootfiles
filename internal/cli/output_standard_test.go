@@ -128,7 +128,7 @@ func TestStandardHelpUsesStdout(t *testing.T) {
 	if err := executeCommand(context.Background(), root); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stdout.String(), "Usage:") || stderr.Len() != 0 {
+	if !strings.Contains(stdout.String(), "Usage") || stderr.Len() != 0 {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

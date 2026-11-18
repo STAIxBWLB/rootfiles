@@ -42,6 +42,7 @@ func unexpectedProcessStdout(t *testing.T, run func()) string {
 }
 
 func TestApplySummaryWritesOnlyToExplicitWriter(t *testing.T) {
+	t.Setenv("LC_ALL", "C.UTF-8")
 	var output bytes.Buffer
 	cfg := &config.Config{Timezone: "UTC"}
 	leaked := unexpectedProcessStdout(t, func() {
@@ -50,7 +51,7 @@ func TestApplySummaryWritesOnlyToExplicitWriter(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	if got, want := output.String(), "\n=== Summary ===\n  Timezone: UTC\n"; got != want || leaked != "" {
+	if got, want := output.String(), "\n▸ Summary\n  Timezone:       UTC\n"; got != want || leaked != "" {
 		t.Fatalf("summary=%q want=%q process stdout=%q", got, want, leaked)
 	}
 }

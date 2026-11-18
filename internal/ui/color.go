@@ -96,6 +96,12 @@ type outputWriter struct {
 	ascii bool
 }
 
+// Configured reports whether w has already been wrapped by ConfigureWriter.
+func Configured(w io.Writer) bool {
+	_, ok := w.(*outputWriter)
+	return ok
+}
+
 // ConfigureWriter owns decoration at the final stream boundary. Machine output
 // bypasses every transformation, including wrapping and ASCII substitution.
 func ConfigureWriter(w io.Writer, mode string, ascii, json bool) io.Writer {

@@ -263,7 +263,7 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 	if method == "env" || method == "both" {
 		scriptPath := profileDScriptPath(username)
 		if rc.DryRun {
-			ui.WriteText(rc.Output(), "[dry-run] would remove %s\n", scriptPath)
+			ui.WriteDryRun(rc.Output(), "remove "+scriptPath)
 		} else {
 			if err := rc.Runner.Remove(scriptPath); err != nil && !os.IsNotExist(err) {
 				return fmt.Errorf("removing %s: %w", scriptPath, err)
@@ -278,7 +278,7 @@ func RevokeGPUs(ctx context.Context, rc *RunContext, username string) error {
 			slicePath := cgroupSlicePath(u.Uid)
 			sliceDir := filepath.Dir(slicePath)
 			if rc.DryRun {
-				ui.WriteText(rc.Output(), "[dry-run] would remove %s\n", sliceDir)
+				ui.WriteDryRun(rc.Output(), "remove "+sliceDir)
 			} else {
 				// Remove only our drop-in; the slice dir may hold others.
 				if err := rc.Runner.Remove(slicePath); err != nil && !os.IsNotExist(err) {
@@ -577,7 +577,7 @@ func installDockerWrapper(rc *RunContext) error {
 		return nil
 	}
 	if rc.DryRun {
-		ui.WriteText(rc.Output(), "[dry-run] would write %s\n", dockerWrapperPath)
+		ui.WriteDryRun(rc.Output(), "write "+dockerWrapperPath)
 		return nil
 	}
 	_, err := ensureFile(rc, dockerWrapperPath, expected, 0755)
@@ -587,7 +587,7 @@ func installDockerWrapper(rc *RunContext) error {
 // removeDockerWrapper removes the Docker wrapper script if it exists.
 func removeDockerWrapper(ctx context.Context, rc *RunContext) {
 	if rc.DryRun {
-		ui.WriteText(rc.Output(), "[dry-run] would remove %s\n", dockerWrapperPath)
+		ui.WriteDryRun(rc.Output(), "remove "+dockerWrapperPath)
 		return
 	}
 	if err := rc.Runner.Remove(dockerWrapperPath); err != nil && !os.IsNotExist(err) {
@@ -705,7 +705,7 @@ func applyAllocationMethods(ctx context.Context, rc *RunContext, username string
 		scriptPath := profileDScriptPath(username)
 		content := buildProfileDScript(username, gpus)
 		if rc.DryRun {
-			ui.WriteText(rc.Output(), "[dry-run] would write %s\n", scriptPath)
+			ui.WriteDryRun(rc.Output(), "write "+scriptPath)
 		} else {
 			if err := rc.Runner.WriteFile(scriptPath, []byte(content), 0644); err != nil {
 				return fmt.Errorf("writing profile.d script: %w", err)
@@ -721,7 +721,7 @@ func applyAllocationMethods(ctx context.Context, rc *RunContext, username string
 		slicePath := cgroupSlicePath(u.Uid)
 		content := buildCgroupConf(gpus)
 		if rc.DryRun {
-			ui.WriteText(rc.Output(), "[dry-run] would write %s\n", slicePath)
+			ui.WriteDryRun(rc.Output(), "write "+slicePath)
 		} else {
 			sliceDir := filepath.Dir(slicePath)
 			if err := rc.Runner.MkdirAll(sliceDir, 0755); err != nil {
