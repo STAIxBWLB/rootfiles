@@ -78,7 +78,8 @@ func feedStdin(t *testing.T, input string) {
 }
 
 // Under TERM=dumb a typed answer or an empty line keeps today's behavior,
-// and stdin that ends before an answer fails instead of taking the default.
+// and a prompt that reads to the end of stdin fails instead of taking the
+// default, including after a rejected answer.
 func TestDumbTerminalPromptsNeedAnAnswer(t *testing.T) {
 	t.Setenv("TERM", "dumb")
 	for _, tc := range []struct {
@@ -90,7 +91,6 @@ func TestDumbTerminalPromptsNeedAnAnswer(t *testing.T) {
 		{"n\n", true, false},
 		{"\n", true, true},
 		{"\n", false, false},
-		{"y", false, true}, // an answer without a trailing newline still counts
 	} {
 		feedStdin(t, tc.input)
 		if got, err := ConfirmDefault("Apply?", tc.def, false); err != nil || got != tc.want {
@@ -101,23 +101,24 @@ func TestDumbTerminalPromptsNeedAnAnswer(t *testing.T) {
 	if got, err := Input("Name", "default", false); err != nil || got != "lab" {
 		t.Fatalf("Input = (%q, %v), want (\"lab\", nil)", got, err)
 	}
+	feedStdin(t, "1\n")
+	if got, err := Select("Profile", []string{"minimal", "dgx"}, "dgx", false); err != nil || got != "minimal" {
+		t.Fatalf("Select = (%q, %v), want (\"minimal\", nil)", got, err)
+	}
 
-	for _, input := range []string{"", "  ", "maybe\n"} {
-		for _, call := range []struct {
-			name string
-			fn   func() error
-		}{
-			{"ConfirmDefault", func() error { _, err := ConfirmDefault("Apply this configuration?", true, false); return err }},
-			{"Select", func() error { _, err := Select("Profile", []string{"minimal", "dgx"}, "dgx", false); return err }},
-			{"Input", func() error { _, err := Input("Timezone", "UTC", false); return err }},
-		} {
-			if call.name != "ConfirmDefault" && input == "maybe\n" {
-				continue // only a confirm rejects "maybe" and asks again
-			}
+	for _, tc := range []struct {
+		name   string
+		inputs []string
+		fn     func() error
+	}{
+		{"ConfirmDefault", []string{"", "  ", "y", "maybe", "maybe\n"}, func() error { _, err := ConfirmDefault("Apply this configuration?", true, false); return err }},
+		{"Select", []string{"", "maybe\n", "99\n", "maybe"}, func() error { _, err := Select("Profile", []string{"minimal", "dgx"}, "dgx", false); return err }},
+		{"Input", []string{"", "lab"}, func() error { _, err := Input("Timezone", "UTC", false); return err }},
+	} {
+		for _, input := range tc.inputs {
 			feedStdin(t, input)
-			err := call.fn()
-			if !errors.Is(err, ErrNoAnswer) || !strings.Contains(err.Error(), "--yes") {
-				t.Fatalf("%s with stdin %q: err=%v, want ErrNoAnswer naming --yes", call.name, input, err)
+			if err := tc.fn(); !errors.Is(err, ErrNoAnswer) || !strings.Contains(err.Error(), "--yes") {
+				t.Fatalf("%s with stdin %q: err=%v, want ErrNoAnswer naming --yes", tc.name, input, err)
 			}
 		}
 	}

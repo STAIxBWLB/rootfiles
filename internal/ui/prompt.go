@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -56,36 +55,42 @@ func promptLabel(message string) string {
 
 // runPrompt runs one field. huh's accessible mode (TERM=dumb) takes EOF as
 // the default answer, which would let `apply` proceed with nobody there, so
-// there a prompt whose stdin ends before an answer fails instead.
-func runPrompt(message string, field huh.Field) error {
+// there an answer is a full line and a prompt that reads to the end of stdin
+// fails instead.
+func runPrompt(message string, field huh.Field) (err error) {
 	if os.Getenv("TERM") != "dumb" {
 		return huh.Run(field)
 	}
 	in := &answerReader{r: os.Stdin}
+	noAnswer := fmt.Errorf("%s: %w", promptLabel(message), ErrNoAnswer)
+	defer func() {
+		// ponytail: huh v1.0.0's Select indexes a rejected answer once stdin
+		// ends and panics; drop this when huh reports EOF itself.
+		if r := recover(); r != nil {
+			if !in.ended {
+				panic(r)
+			}
+			err = noAnswer
+		}
+	}()
 	if err := huh.NewForm(huh.NewGroup(field)).WithShowHelp(false).WithInput(in).Run(); err != nil {
 		return err
 	}
 	if in.ended {
-		return fmt.Errorf("%s: %w", promptLabel(message), ErrNoAnswer)
+		return noAnswer
 	}
 	return nil
 }
 
-// answerReader notes when its reader ends (EOF or an error) with nothing but
-// whitespace since the last line: the prompt then got no answer.
+// answerReader notes when stdin ends or fails while a prompt reads it.
 type answerReader struct {
-	r              io.Reader
-	pending, ended bool
+	r     io.Reader
+	ended bool
 }
 
 func (a *answerReader) Read(p []byte) (int, error) {
 	n, err := a.r.Read(p)
-	chunk := p[:n]
-	if i := bytes.LastIndexByte(chunk, '\n'); i >= 0 {
-		a.pending, chunk = false, chunk[i+1:]
-	}
-	a.pending = a.pending || len(bytes.TrimSpace(chunk)) > 0
-	if err != nil && !a.pending {
+	if err != nil {
 		a.ended = true
 	}
 	return n, err
