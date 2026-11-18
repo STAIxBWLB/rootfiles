@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"strconv"
@@ -35,14 +37,58 @@ var TerminalAttached = func() bool {
 // ErrNoTerminal is what a prompt returns when it has no terminal to run on.
 var ErrNoTerminal = errors.New("no terminal for an interactive prompt; pass --yes, or run from a terminal")
 
+// ErrNoAnswer is what a TERM=dumb prompt returns when stdin ends before the
+// prompt is answered.
+var ErrNoAnswer = errors.New("stdin ended before an answer; pass --yes, or answer the prompt")
+
 var ansiRe = regexp.MustCompile("\x1b\\[[0-9;]*m")
 
 func noTerminal(message string) error {
 	if TerminalAttached() {
 		return nil
 	}
-	clean := strings.TrimSpace(ansiRe.ReplaceAllString(message, ""))
-	return fmt.Errorf("%s: %w", clean, ErrNoTerminal)
+	return fmt.Errorf("%s: %w", promptLabel(message), ErrNoTerminal)
+}
+
+func promptLabel(message string) string {
+	return strings.TrimSpace(ansiRe.ReplaceAllString(message, ""))
+}
+
+// runPrompt runs one field. huh's accessible mode (TERM=dumb) takes EOF as
+// the default answer, which would let `apply` proceed with nobody there, so
+// there a prompt whose stdin ends before an answer fails instead.
+func runPrompt(message string, field huh.Field) error {
+	if os.Getenv("TERM") != "dumb" {
+		return huh.Run(field)
+	}
+	in := &answerReader{r: os.Stdin}
+	if err := huh.NewForm(huh.NewGroup(field)).WithShowHelp(false).WithInput(in).Run(); err != nil {
+		return err
+	}
+	if in.ended {
+		return fmt.Errorf("%s: %w", promptLabel(message), ErrNoAnswer)
+	}
+	return nil
+}
+
+// answerReader notes when its reader ends (EOF or an error) with nothing but
+// whitespace since the last line: the prompt then got no answer.
+type answerReader struct {
+	r              io.Reader
+	pending, ended bool
+}
+
+func (a *answerReader) Read(p []byte) (int, error) {
+	n, err := a.r.Read(p)
+	chunk := p[:n]
+	if i := bytes.LastIndexByte(chunk, '\n'); i >= 0 {
+		a.pending, chunk = false, chunk[i+1:]
+	}
+	a.pending = a.pending || len(bytes.TrimSpace(chunk)) > 0
+	if err != nil && !a.pending {
+		a.ended = true
+	}
+	return n, err
 }
 
 // Confirm asks for yes/no. Returns true immediately if unattended.
@@ -54,10 +100,9 @@ func Confirm(message string, unattended bool) (bool, error) {
 		return false, err
 	}
 	var confirmed bool
-	err := huh.NewConfirm().
+	err := runPrompt(message, huh.NewConfirm().
 		Title(message).
-		Value(&confirmed).
-		Run()
+		Value(&confirmed))
 	return confirmed, err
 }
 
@@ -71,11 +116,13 @@ func ConfirmDefault(message string, def, unattended bool) (bool, error) {
 		return def, err
 	}
 	confirmed := def
-	err := huh.NewConfirm().
+	err := runPrompt(message, huh.NewConfirm().
 		Title(message).
-		Value(&confirmed).
-		Run()
-	return confirmed, err
+		Value(&confirmed))
+	if err != nil {
+		return def, err
+	}
+	return confirmed, nil
 }
 
 // Select presents a choice. Returns defaultVal if unattended.
@@ -91,11 +138,10 @@ func Select(message string, options []string, defaultVal string, unattended bool
 	for i, o := range options {
 		opts[i] = huh.NewOption(o, o)
 	}
-	err := huh.NewSelect[string]().
+	err := runPrompt(message, huh.NewSelect[string]().
 		Title(message).
 		Options(opts...).
-		Value(&selected).
-		Run()
+		Value(&selected))
 	if err != nil {
 		return defaultVal, err
 	}
@@ -111,11 +157,10 @@ func Input(message, defaultVal string, unattended bool) (string, error) {
 		return defaultVal, err
 	}
 	var value string
-	err := huh.NewInput().
+	err := runPrompt(message, huh.NewInput().
 		Title(message).
 		Value(&value).
-		Placeholder(defaultVal).
-		Run()
+		Placeholder(defaultVal))
 	if err != nil {
 		return defaultVal, err
 	}

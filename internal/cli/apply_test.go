@@ -2,11 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 func TestNewApplyCmd_Basics(t *testing.T) {
@@ -101,5 +105,39 @@ func TestApplyDryRunUnknownNTPDoesNotFail(t *testing.T) {
 				t.Fatalf("warning-only NTP failure blocks apply --dry-run: %v\n%s", err, output.String())
 			}
 		})
+	}
+}
+
+// Under TERM=dumb, apply without --yes on a closed stdin stops at its first
+// question instead of taking every default (#177 AC1).
+func TestApplyStopsWhenDumbTerminalStdinIsClosed(t *testing.T) {
+	t.Setenv("TERM", "dumb")
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("ROOTFILES_STATE_DIR", t.TempDir())
+	file := filepath.Join(t.TempDir(), "site.yaml")
+	contents := "users:\n  home_base: " + t.TempDir() + "\nmodules:\n  security:\n    enabled: true\n"
+	if err := os.WriteFile(file, []byte(contents), 0600); err != nil {
+		t.Fatal(err)
+	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+	saved := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = saved; _ = r.Close() })
+
+	root := NewRootCmd("test", "test")
+	var out, stderr bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"apply", "--config", file, "--dry-run"})
+	err = executeCommand(context.Background(), root)
+	if !errors.Is(err, ui.ErrNoAnswer) || !strings.Contains(stderr.String(), "stdin ended before an answer; pass --yes") {
+		t.Fatalf("err=%v stderr=%q, want the no-answer refusal naming --yes", err, stderr.String())
+	}
+	if strings.Contains(out.String(), "Apply this configuration") {
+		t.Fatalf("apply reached its final confirmation:\n%s", out.String())
 	}
 }

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"errors"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -57,5 +58,67 @@ func TestInteractivePromptsRefuseWithoutTerminal(t *testing.T) {
 				t.Fatalf("error missing --yes recovery hint: %v", err)
 			}
 		})
+	}
+}
+
+// feedStdin replaces stdin with a pipe holding input, then closed.
+func feedStdin(t *testing.T, input string) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.WriteString(input); err != nil {
+		t.Fatal(err)
+	}
+	_ = w.Close()
+	saved := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = saved; _ = r.Close() })
+}
+
+// Under TERM=dumb a typed answer or an empty line keeps today's behavior,
+// and stdin that ends before an answer fails instead of taking the default.
+func TestDumbTerminalPromptsNeedAnAnswer(t *testing.T) {
+	t.Setenv("TERM", "dumb")
+	for _, tc := range []struct {
+		input string
+		def   bool
+		want  bool
+	}{
+		{"y\n", false, true},
+		{"n\n", true, false},
+		{"\n", true, true},
+		{"\n", false, false},
+		{"y", false, true}, // an answer without a trailing newline still counts
+	} {
+		feedStdin(t, tc.input)
+		if got, err := ConfirmDefault("Apply?", tc.def, false); err != nil || got != tc.want {
+			t.Fatalf("input %q default %v: (%v, %v), want (%v, nil)", tc.input, tc.def, got, err, tc.want)
+		}
+	}
+	feedStdin(t, "lab\n")
+	if got, err := Input("Name", "default", false); err != nil || got != "lab" {
+		t.Fatalf("Input = (%q, %v), want (\"lab\", nil)", got, err)
+	}
+
+	for _, input := range []string{"", "  ", "maybe\n"} {
+		for _, call := range []struct {
+			name string
+			fn   func() error
+		}{
+			{"ConfirmDefault", func() error { _, err := ConfirmDefault("Apply this configuration?", true, false); return err }},
+			{"Select", func() error { _, err := Select("Profile", []string{"minimal", "dgx"}, "dgx", false); return err }},
+			{"Input", func() error { _, err := Input("Timezone", "UTC", false); return err }},
+		} {
+			if call.name != "ConfirmDefault" && input == "maybe\n" {
+				continue // only a confirm rejects "maybe" and asks again
+			}
+			feedStdin(t, input)
+			err := call.fn()
+			if !errors.Is(err, ErrNoAnswer) || !strings.Contains(err.Error(), "--yes") {
+				t.Fatalf("%s with stdin %q: err=%v, want ErrNoAnswer naming --yes", call.name, input, err)
+			}
+		}
 	}
 }
