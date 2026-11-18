@@ -66,7 +66,7 @@ type Module interface {
   - Leave out tests, CI, refactors, docs, agent instructions and release plumbing. A release with nothing else is the single line `Maintenance release: no user-facing changes.` plus the changelog line.
   - No commit SHAs, conventional-commit prefixes or internal package paths.
   - Last line: `**Full changelog**: https://github.com/STAIxBWLB/rootfiles/compare/<previous release>...vX.Y.Z` (`.../commits/vX.Y.Z` for the first release).
-- Upgrade command to mention when users must act: `sudo rootfiles update` or `rootfiles fleet update --version vX.Y.Z`.
+- Upgrade command to mention when users must act: `sudo rootfiles update` or `rootfiles fleet update --all --version vX.Y.Z --yes` (`--host` or `--group` to narrow it).
 
 <!-- AGENT_HUB:BEGIN (managed by `ahub init`, edits inside are overwritten) -->
 ## agent-hub

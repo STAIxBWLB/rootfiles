@@ -99,15 +99,20 @@ The installer verifies the release checksum, installs `/usr/local/bin/rootfiles`
 ## Self-update
 
 ```bash
+# Linux host
 sudo rootfiles update                    # latest GitHub release
 rootfiles update --check                 # report only
 sudo rootfiles update --version v0.20.0  # a specific release
 sudo rootfiles update --dry-run          # download and verify, do not replace
+
+# macOS controller: no sudo
+rootfiles update
+rootfiles update --version v0.20.0
 ```
 
-- `update` downloads the release archive for this OS and architecture, verifies its SHA-256 checksum, and replaces the running binary atomically. It works on Linux only.
-- It also creates the `root` symlink next to the binary when it is missing.
-- After replacing the binary it runs `rootfiles check`. When the new release plans changes on this host, it prints an "Apply pending" hint; nothing is applied automatically.
+- `update` downloads the release archive for this OS and architecture, verifies its SHA-256 checksum, and replaces the running binary atomically. On a macOS controller run it without sudo: it replaces the binary only when the running user owns both the binary and its directory, and otherwise prints the `scripts/install.sh --prefix "$HOME/.local"` reinstall command instead.
+- When the binary is `/usr/local/bin/rootfiles` or `/usr/bin/rootfiles`, it also points `root` in that directory at it, replacing any other file or symlink named `root` there; a failure there does not fail the update. Any other path, such as `$HOME/.local/bin/rootfiles`, gets no `root` symlink.
+- On Linux, after replacing the binary it runs `rootfiles check`. When the new release plans changes on this host, it prints an "Apply pending" hint; nothing is applied automatically.
 - `update --check` and `tunnel update --check` need neither root nor the lock. Exit codes: 0 when current, 2 when an update (or, for the tunnel, a missing cloudflared) is available, 1 on a lookup error.
 - `rootfiles upgrade` is an alias of `update`.
-- For a fleet, use `rootfiles fleet update --version vX.Y.Z` ([fleet.md](fleet.md#rollouts)).
+- For a fleet, use `rootfiles fleet update --all --version vX.Y.Z --yes`, or `--host`/`--group` instead of `--all` ([fleet.md](fleet.md#rollouts)).

@@ -114,3 +114,4 @@ Human-readable background. Agent instructions: `AGENTS.md`.
 - 2026-11-12: module order and toggles moved to `moduleDefinitions` in `internal/config/modules.go` (#121); AGENTS.md now points there instead of naming four lists to keep in sync.
 - 2026-11-15: repeated import diagnostics omitted recovery steps during #139 review; AGENTS.md now points to the existing Error messages pass in REVIEW.md before error/refusal changes.
 - 2026-11-15: recovery suggestions repeated failed validation or omitted effective overrides during #143 review; AGENTS.md now requires checking the target and overrides before supplying a recovery command.
+- 2026-11-18: v0.21.0's notes and the v0.22.0 draft gave `rootfiles fleet update --version vX.Y.Z`, which refuses to run without a host selection and `--yes` (#189 review); AGENTS.md now names the runnable form (#190).
