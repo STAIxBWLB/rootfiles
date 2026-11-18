@@ -151,6 +151,7 @@ func installOutputBoundary(cmd *cobra.Command) {
 		if err := configureOutput(c, values...); err != nil {
 			return err
 		}
+		warnTheme(c)
 		if args == nil && c.HasSubCommands() && len(values) > 0 {
 			return unknownCommandError(c, values[0])
 		}
@@ -180,6 +181,7 @@ func installOutputBoundary(cmd *cobra.Command) {
 				// Help is a human page even on raw-payload and JSON commands.
 				_ = configureWriters(c, false)
 			}
+			warnTheme(c)
 			restore := scopeInheritedHelpFlags(c)
 			defer restore()
 			writeHelpPage(c)
@@ -218,6 +220,18 @@ func prepareCompletionBoundary(root *cobra.Command) {
 	}
 }
 
+const annotThemeWarning = "rootfiles/theme-warning"
+
+// warnTheme prints the unknown-theme warning executeCommand left on the root,
+// once, through the stderr the parsed --color and --ascii configured.
+func warnTheme(c *cobra.Command) {
+	root := c.Root()
+	if msg := root.Annotations[annotThemeWarning]; msg != "" {
+		delete(root.Annotations, annotThemeWarning)
+		ui.WriteWarning(c.ErrOrStderr(), msg, "")
+	}
+}
+
 // executeCommand owns diagnostics so the writer and parsed display flags are
 // the same for successful reports, usage failures and operational failures.
 func executeCommand(ctx context.Context, root *cobra.Command) error {
@@ -225,18 +239,26 @@ func executeCommand(ctx context.Context, root *cobra.Command) error {
 	defer restoreTheme()
 	prepareCompletionBoundary(root)
 	if themeWarning != "" {
-		_ = configureOutput(root)
-		ui.WriteWarning(root.ErrOrStderr(), themeWarning, "")
+		// Printed once the display flags are parsed (warnTheme).
+		if root.Annotations == nil {
+			root.Annotations = map[string]string{}
+		}
+		root.Annotations[annotThemeWarning] = themeWarning
 	}
 	cmd, err := root.ExecuteContextC(ctx)
-	if err == nil {
-		return nil
-	}
 	if cmd == nil {
 		cmd = root
 	}
-	var exit *ExitError
+	if err == nil && root.Annotations[annotThemeWarning] == "" {
+		return nil
+	}
+	// A path that skipped the output boundary (--version) or failed before it.
 	_ = configureOutput(cmd)
+	warnTheme(cmd)
+	if err == nil {
+		return nil
+	}
+	var exit *ExitError
 	if errors.As(err, &exit) {
 		if exit.Msg != "" {
 			ui.WriteError(cmd.ErrOrStderr(), exit.Msg, exit.Next)

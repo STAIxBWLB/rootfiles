@@ -97,19 +97,37 @@ func TestHelpHonorsDisplayFlagsOnMachineCommands(t *testing.T) {
 	}
 }
 
+// The unknown-theme warning is printed once, after the display flags are
+// parsed: the theme name carries a Relation marker that --ascii rewrites (#178).
 func TestThemeWarningOnInvalidEnv(t *testing.T) {
 	pinInventoryPage(t)
 	t.Setenv("LC_ALL", "C.UTF-8")
-	t.Setenv("ROOTFILES_COLOR_THEME", "invalid-theme")
-	root := NewRootCmd("dev", "test")
-	var out, stderr bytes.Buffer
-	root.SetOut(&out)
-	root.SetErr(&stderr)
-	root.SetArgs([]string{"--help", "--color=never"})
-	if err := executeCommand(context.Background(), root); err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(stderr.String(), "rootfiles: warning: unknown ROOTFILES_COLOR_THEME") {
-		t.Fatalf("expected theme warning on stderr, got %q", stderr.String())
+	t.Setenv("ROOTFILES_COLOR_THEME", "bad"+ui.Relation+"theme")
+	for _, tc := range []struct {
+		args    []string
+		want    string
+		failing bool
+	}{
+		{args: []string{"--help", "--color=never"}, want: `"bad` + ui.Relation + `theme"`},
+		{args: []string{"--help", "--ascii", "--color=never"}, want: `"bad->theme"`},
+		{args: []string{"help", "config", "--ascii"}, want: `"bad->theme"`},
+		{args: []string{"config", "show", "--profile", "minimal", "--ascii", "--color=never"}, want: `"bad->theme"`},
+		{args: []string{"--version", "--ascii"}, want: `"bad->theme"`},
+		{args: []string{"no-such-command", "--ascii"}, want: `"bad->theme"`, failing: true},
+	} {
+		t.Run(strings.Join(tc.args, " "), func(t *testing.T) {
+			root := NewRootCmd("dev", "test")
+			var out, stderr bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&stderr)
+			root.SetArgs(tc.args)
+			if err := executeCommand(context.Background(), root); (err != nil) != tc.failing {
+				t.Fatalf("err = %v, want failing=%v (stderr=%q)", err, tc.failing, stderr.String())
+			}
+			warning := "rootfiles: warning: unknown ROOTFILES_COLOR_THEME " + tc.want
+			if n := strings.Count(stderr.String(), "unknown ROOTFILES_COLOR_THEME"); n != 1 || !strings.Contains(stderr.String(), warning) {
+				t.Fatalf("want %q exactly once on stderr, got %d in %q", warning, n, stderr.String())
+			}
+		})
 	}
 }
