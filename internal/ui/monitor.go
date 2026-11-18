@@ -128,11 +128,19 @@ type DashboardSnapshot struct {
 	Fleet            []FleetDashRow
 	FleetView        string
 	Err              string
-	// GPUFailed and TenantsFailed mark a read that failed on the host
-	// dashboard, so an empty list is not shown as an absent resource.
-	GPUFailed     bool
-	TenantsFailed bool
+	GPUState         SectionState
+	TenantState      SectionState
 }
+
+// SectionState says what a section's rows mean, so a filtered or failed read
+// never renders as "none". The zero value omits the section.
+type SectionState int
+
+const (
+	SectionOmitted SectionState = iota // not collected: filtered out or not applicable
+	SectionRead                        // collected; no rows means none exist
+	SectionFailed                      // the read failed; Err says why
+)
 
 // RefreshFunc collects a fresh DashboardSnapshot.
 type RefreshFunc func(ctx context.Context) (DashboardSnapshot, error)
@@ -268,8 +276,8 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case snapshotMsg:
 		m.inFlight = false
 		if msg.err != nil {
+			// Rows on screen stay labelled with the time they were collected.
 			m.snap.Err = msg.err.Error()
-			m.snap.UpdatedAt = time.Now()
 		} else {
 			m.snap = msg.snap
 			if m.snap.UpdatedAt.IsZero() {
@@ -433,12 +441,15 @@ func (m *DashboardModel) renderGPUSection(w io.Writer, _ int, focused bool) {
 	if focused && m.cfg.Mode == ModeHost {
 		title += " [active]"
 	}
+	if m.snap.GPUState == SectionOmitted {
+		return
+	}
 	if focused {
 		m.markFocus(1)
 	}
 	WriteSection(w, title)
 	if len(m.snap.GPUs) == 0 {
-		if m.snap.GPUFailed || (m.cfg.Mode == ModeGPU && m.snap.Err != "") {
+		if m.snap.GPUState == SectionFailed {
 			WriteHint(w, "GPU read failed; see the warning above")
 		} else {
 			WriteHint(w, "no NVIDIA GPUs detected")
@@ -487,8 +498,8 @@ func (m *DashboardModel) renderMIGSection(w io.Writer) {
 }
 
 func (m *DashboardModel) renderTenantSection(w io.Writer, _ int, focused bool) {
-	failed := m.snap.TenantsFailed || (m.cfg.Mode == ModeTenant && m.snap.Err != "")
-	if m.cfg.Mode == ModeHost && len(m.snap.Tenants) == 0 && !failed {
+	failed := m.snap.TenantState == SectionFailed
+	if m.snap.TenantState == SectionOmitted || (m.cfg.Mode == ModeHost && len(m.snap.Tenants) == 0 && !failed) {
 		return
 	}
 	title := "Tenants"
@@ -711,13 +722,23 @@ func RunDashboard(ctx context.Context, out io.Writer, cfg DashboardConfig, refre
 			initial.Err = err.Error()
 		} else {
 			initial = snap
-		}
-		if initial.UpdatedAt.IsZero() {
-			initial.UpdatedAt = time.Now()
+			if initial.UpdatedAt.IsZero() {
+				initial.UpdatedAt = time.Now()
+			}
 		}
 	}
 	model := NewDashboardModel(ctx, cfg, initial, refresh)
-	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithOutput(out), tea.WithContext(ctx))
+	p := tea.NewProgram(model, tea.WithAltScreen(), tea.WithOutput(teaOutput(out)), tea.WithContext(ctx))
 	_, err := p.Run()
 	return err
+}
+
+// teaOutput hands Bubble Tea the raw stream: it writes cursor and screen
+// control sequences that a color-stripping writer would remove, and it sizes
+// the screen from the stream's file descriptor. The model applies color itself.
+func teaOutput(out io.Writer) io.Writer {
+	if o, ok := out.(*outputWriter); ok {
+		return o.Writer
+	}
+	return out
 }

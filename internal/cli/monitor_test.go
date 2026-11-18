@@ -145,4 +145,28 @@ func TestMonitorAndWatchCollectSnapshotsHostFree(t *testing.T) {
 			t.Fatalf("GPU error %q reported=%v, want %v (snapshot error %q)", gpuErr, reported, want, capturedSnap.Err)
 		}
 	}
+
+	// A GPU module filtered out is omitted, not shown as absent; a MIG read
+	// failure reaches the warning line.
+	stubGPUStatus(t, rootDir)
+	migStatusCollector = func(context.Context, *module.RunContext) ([]module.MIGGPU, error) {
+		return nil, errors.New("fixture nvidia-smi failed")
+	}
+	for _, tc := range []struct {
+		args []string
+		ok   func() bool
+	}{
+		{[]string{"monitor", "--config", site, "--module", "tenant"}, func() bool { return capturedSnap.GPUState == ui.SectionOmitted }},
+		{[]string{"gpu", "status", "--config", site, "--watch"}, func() bool {
+			return capturedSnap.GPUState == ui.SectionRead && strings.Contains(capturedSnap.Err, "MIG status unavailable: fixture nvidia-smi failed")
+		}},
+	} {
+		root := NewRootCmd("test", "test")
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		root.SetArgs(tc.args)
+		if err := executeCommand(context.Background(), root); err != nil || !tc.ok() {
+			t.Fatalf("%v: err=%v snapshot GPU state=%v error=%q", tc.args, err, capturedSnap.GPUState, capturedSnap.Err)
+		}
+	}
 }

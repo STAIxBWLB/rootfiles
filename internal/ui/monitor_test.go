@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -38,6 +39,8 @@ func sampleSnapshot() DashboardSnapshot {
 		ModulesSatisfied: 12,
 		ModulesTotal:     14,
 		PendingModules:   []string{"ssh", "monitoring"},
+		GPUState:         SectionRead,
+		TenantState:      SectionRead,
 		GPUs: []GPUDashRow{
 			{Index: 0, Model: "NVIDIA H100 80GB HBM3", MemUsed: "40960", MemTotal: "81920", MemPct: 50, UtilPct: 80, TempC: "64", PowerW: "320", Assigned: "alice"},
 			{Index: 1, Model: "NVIDIA H100 80GB HBM3", Restricted: true, Assigned: "tenant:lab"},
@@ -186,24 +189,51 @@ func TestRunDashboard_RefusesWithoutTerminal(t *testing.T) {
 	}
 }
 
-// A failed read never renders as an absent resource.
+// A failed or filtered read never renders as an absent resource.
 func TestMonitorModel_FailedReadsAreNotEmptyResources(t *testing.T) {
 	cleanOutputEnv(t)
+	empty := []string{"no NVIDIA GPUs detected", "no tenant specs configured", "no hosts selected"}
 	for _, tc := range []struct {
-		mode DashboardMode
-		snap DashboardSnapshot
-		want string
+		mode    DashboardMode
+		snap    DashboardSnapshot
+		want    []string
+		without []string
 	}{
-		{ModeHost, DashboardSnapshot{Err: "GPU status unavailable", GPUFailed: true, TenantsFailed: true}, "GPU read failed"},
-		{ModeHost, DashboardSnapshot{Err: "GPU status unavailable", GPUFailed: true, TenantsFailed: true}, "tenant read failed"},
-		{ModeGPU, DashboardSnapshot{Err: "allocation database unreadable"}, "GPU read failed"},
-		{ModeTenant, DashboardSnapshot{Err: "spec directory unreadable"}, "tenant read failed"},
-		{ModeFleet, DashboardSnapshot{Err: "inventory unreadable"}, "fleet read failed"},
+		{ModeHost, DashboardSnapshot{Err: "GPU status unavailable", GPUState: SectionFailed, TenantState: SectionFailed}, []string{"GPU read failed", "tenant read failed"}, empty},
+		{ModeHost, DashboardSnapshot{}, nil, append([]string{"GPUs", "Tenants"}, empty...)},
+		{ModeGPU, DashboardSnapshot{Err: "allocation database unreadable"}, []string{"allocation database unreadable"}, empty},
+		{ModeTenant, DashboardSnapshot{Err: "spec directory unreadable"}, []string{"spec directory unreadable"}, empty},
+		{ModeFleet, DashboardSnapshot{Err: "inventory unreadable"}, []string{"fleet read failed"}, empty},
+		{ModeHost, DashboardSnapshot{GPUState: SectionRead}, []string{"no NVIDIA GPUs detected"}, nil},
 	} {
 		view := ansi.Strip(NewDashboardModel(context.Background(), DashboardConfig{Mode: tc.mode, Height: 60}, tc.snap, nil).View())
-		if !strings.Contains(view, tc.want) || strings.Contains(view, "no NVIDIA GPUs detected") || strings.Contains(view, "no tenant specs configured") || strings.Contains(view, "no hosts selected") {
-			t.Errorf("mode=%s: want %q and no empty-resource hint:\n%s", tc.mode, tc.want, view)
+		for _, want := range tc.want {
+			if !strings.Contains(view, want) {
+				t.Errorf("mode=%s: missing %q:\n%s", tc.mode, want, view)
+			}
 		}
+		for _, bad := range tc.without {
+			if strings.Contains(view, bad) {
+				t.Errorf("mode=%s: unexpected %q:\n%s", tc.mode, bad, view)
+			}
+		}
+	}
+}
+
+// A failed refresh keeps the rows on screen labelled with their collection
+// time, and Bubble Tea gets the raw stream, not the color-stripping writer.
+func TestMonitorModel_FailedRefreshKeepsCollectionTime(t *testing.T) {
+	cleanOutputEnv(t)
+	snap := sampleSnapshot()
+	var m tea.Model = NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeGPU, Height: 60}, snap, nil)
+	m, _ = m.Update(snapshotMsg{err: errors.New("allocation database unreadable")})
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, snap.UpdatedAt.Local().Format("15:04:05")) || !strings.Contains(view, "allocation database unreadable") {
+		t.Fatalf("stale rows lost their collection time:\n%s", view)
+	}
+	var raw bytes.Buffer
+	if got := teaOutput(ConfigureWriter(&raw, "never", true, false)); got != io.Writer(&raw) {
+		t.Fatalf("teaOutput kept the decorating writer: %T", got)
 	}
 }
 

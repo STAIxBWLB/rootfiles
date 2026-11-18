@@ -202,10 +202,10 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 	}
 	// A failed read is reported, never shown as an absent resource.
 	var problems []string
-	if report.ConfigErr != "" {
-		problems = append(problems, report.ConfigErr)
-	} else if report.ModuleCheckError != "" {
-		problems = append(problems, report.ModuleCheckError)
+	for _, problem := range []string{report.ConfigErr, report.ModuleCheckError, report.ScheduledShutdownError} {
+		if problem != "" {
+			problems = append(problems, problem)
+		}
 	}
 
 	for _, m := range report.Modules {
@@ -226,17 +226,19 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 
 	if statusModuleSelected(moduleFilter, "gpu") {
 		gpuRep, err := gpuStatusCollector(ctx, rc)
+		snap.GPUState = ui.SectionRead
 		switch {
 		case err == nil && gpuRep != nil:
 			snap.GPUs = toGPUDashRows(gpuRep.Rows)
 		case err != nil && !errors.Is(err, module.ErrNoGPUDevices):
-			snap.GPUFailed = true
+			snap.GPUState = ui.SectionFailed
 			problems = append(problems, "GPU status unavailable: "+err.Error()+" (run 'rootfiles gpu status' for details)")
 		}
 	}
 	if statusModuleSelected(moduleFilter, "tenant") && rc.Config.Users.HomeBase != "" && !config.IsRocky(rc.Config.System) {
 		m := module.NewTenantManager(rc, io.Discard)
 		names, err := tenantSpecLister(m.SpecDir)
+		snap.TenantState = ui.SectionRead
 		if err == nil && len(names) > 0 {
 			var tRep *tenant.StatusReport
 			if tRep, err = tenantStatusCollector(m, ctx, names, false); err == nil && tRep != nil {
@@ -246,7 +248,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 			}
 		}
 		if err != nil {
-			snap.TenantsFailed = true
+			snap.TenantState = ui.SectionFailed
 			problems = append(problems, "tenant status unavailable: "+err.Error()+" (run 'rootfiles tenant status' for details)")
 		}
 	}
@@ -264,7 +266,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 func collectGPUDashboardSnapshot(ctx context.Context, rc *module.RunContext) (ui.DashboardSnapshot, error) {
 	report, err := gpuStatusCollector(ctx, rc)
 	if errors.Is(err, module.ErrNoGPUDevices) {
-		return ui.DashboardSnapshot{UpdatedAt: time.Now()}, nil // the GPU section says none were detected
+		return ui.DashboardSnapshot{UpdatedAt: time.Now(), GPUState: ui.SectionRead}, nil // the GPU section says none were detected
 	}
 	if err != nil {
 		return ui.DashboardSnapshot{}, err
@@ -272,8 +274,13 @@ func collectGPUDashboardSnapshot(ctx context.Context, rc *module.RunContext) (ui
 	snap := ui.DashboardSnapshot{
 		UpdatedAt: time.Now(),
 		GPUs:      toGPUDashRows(report.Rows),
+		GPUState:  ui.SectionRead,
 	}
-	if migs, err := migStatusCollector(ctx, rc); err == nil {
+	migs, err := migStatusCollector(ctx, rc)
+	if err != nil {
+		snap.Err = "MIG status unavailable: " + err.Error() + " (run 'rootfiles gpu mig status' for details)"
+	}
+	if err == nil {
 		for _, g := range migs {
 			mode := g.Current
 			if g.Pending != "" && g.Pending != g.Current {
@@ -304,6 +311,7 @@ func collectTenantDashboardSnapshot(ctx context.Context, m *tenant.Manager, name
 	}
 	return ui.DashboardSnapshot{
 		UpdatedAt:     time.Now(),
+		TenantState:   ui.SectionRead,
 		Tenants:       toTenantDashRows(report.Rows),
 		Commitment:    report.Commitment,
 		Overcommitted: report.Overcommitted,

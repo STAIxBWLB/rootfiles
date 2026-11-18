@@ -562,7 +562,7 @@ Read-only overview: system, profile, last apply, module satisfaction, GPU alloca
 | `-o`, `--output` | `text` | `text` or `json`. |
 | `--json` | `false` | Alias for `--output json`; conflicting formats are rejected. |
 | `-w`, `--watch` | `false` | Refresh the report continuously in an interactive terminal. |
-| `--interval` | `2s` | Refresh interval for `--watch`, at least `500ms`. |
+| `--interval` | `2s` (`5s` on a controller) | Refresh interval for `--watch`, at least `500ms`. |
 
 Exit code 0 for the overview, including reported findings; 2 for argument/flag parsing errors, and 1 for other invocation errors. When the config does not load, `status` reports the error and skips the user and GPU databases unless an absolute home base is known.
 

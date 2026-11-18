@@ -59,6 +59,9 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 	if nativeHostOS != "linux" {
 		if watch {
+			if !cmd.Flags().Changed("interval") {
+				interval = defaultFleetWatchInterval // a controller polls hosts over SSH
+			}
 			return runControllerMonitor(cmd, interval)
 		}
 		return runControllerStatus(cmd)
