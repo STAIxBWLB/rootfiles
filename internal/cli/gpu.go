@@ -131,7 +131,9 @@ func newGPUCmd() *cobra.Command {
 			}
 			gpus, err := migStatusCollector(cmd.Context(), rc)
 			if err != nil {
-				return err
+				// Both MIG reads are nvidia-smi queries; plain nvidia-smi
+				// shows the driver state on this host.
+				return withNext(err, "nvidia-smi")
 			}
 			out := cmd.OutOrStdout()
 			ui.WriteHeader(out, cmd.CommandPath())
