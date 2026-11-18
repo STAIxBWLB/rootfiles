@@ -84,7 +84,7 @@ func runPrompt(message string, field huh.Field) (err error) {
 // maxAnswer bounds one answer line, well under huh's 64 KiB scanner limit.
 const maxAnswer = 16 << 10
 
-var errLongAnswer = fmt.Errorf("answer longer than %d bytes; give the value in the config or on the command line instead", maxAnswer)
+var errLongAnswer = fmt.Errorf("answer longer than %d bytes; pass --yes, or answer with a shorter line", maxAnswer)
 
 // lineReader hands huh one stdin line per read, reading byte by byte so a
 // prompt never consumes a later prompt's answer. Stdin ending, a read error
