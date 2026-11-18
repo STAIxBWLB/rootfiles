@@ -2,9 +2,15 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
+
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 )
 
 func TestParseGPUList(t *testing.T) {
@@ -161,5 +167,29 @@ func TestNewGPUCmd_RevokeRequiresExactlyOneArg(t *testing.T) {
 	cmd.SetErr(&bytes.Buffer{})
 	if err := cmd.Execute(); err == nil {
 		t.Error("revoke with no args should fail")
+	}
+}
+
+// A failed MIG read exits with its cause and the failed query, which repeats
+// the read on the same host, as the next step (#180).
+func TestMIGStatusFailureNamesNextStep(t *testing.T) {
+	pinInventoryPage(t)
+	rootDir, site, _ := statusContractFixture(t, "populated")
+	t.Chdir(rootDir)
+	saved := migStatusCollector
+	t.Cleanup(func() { migStatusCollector = saved })
+	migStatusCollector = func(context.Context, *module.RunContext) ([]module.MIGGPU, error) {
+		return nil, &module.MIGQueryError{Query: "nvidia-smi -L", Err: errors.New(`command "nvidia-smi -L" failed: fixture driver error`)}
+	}
+	root := NewRootCmd("test", "test")
+	var stderr bytes.Buffer
+	root.SetOut(io.Discard)
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"gpu", "mig", "status", "--config", site})
+	if err := executeCommand(context.Background(), root); err == nil {
+		t.Fatal("failed MIG read exited 0")
+	}
+	if !strings.Contains(stderr.String(), "fixture driver error") || !strings.Contains(stderr.String(), " nvidia-smi -L\n") {
+		t.Fatalf("stderr=%q, want the cause and the failed query as the next step", stderr.String())
 	}
 }

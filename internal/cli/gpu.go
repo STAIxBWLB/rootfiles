@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -130,6 +131,10 @@ func newGPUCmd() *cobra.Command {
 				return err
 			}
 			gpus, err := migStatusCollector(cmd.Context(), rc)
+			var query *module.MIGQueryError
+			if errors.As(err, &query) {
+				return withNext(err, query.Query) // repeats the failed read on this host
+			}
 			if err != nil {
 				return err
 			}
