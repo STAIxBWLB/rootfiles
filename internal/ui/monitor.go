@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -334,7 +335,37 @@ func (m *DashboardModel) View() string {
 	} else {
 		WriteHint(w, fmt.Sprintf("every %s  (q quit, r refresh, tab pane, ? keys)", m.cfg.Interval))
 	}
-	return clampLinesWidth(raw.String(), width)
+	return fitHeight(clampLinesWidth(raw.String(), width), m.cfg.Height)
+}
+
+// selectedRow matches a table row carrying the cursor marker (">0", ">host");
+// ASCII section titles ("> GPUs") have a space after the marker.
+var selectedRow = regexp.MustCompile(`^\s*>[^\s>]`)
+
+// fitHeight keeps the title and footer lines and scrolls the body so the
+// selected row, or else the active section, stays on screen.
+// ponytail: stateless centering; a stateful viewport if long non-table sections need paging.
+func fitHeight(text string, height int) string {
+	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+	if height <= 0 || len(lines) <= height {
+		return text
+	}
+	if height < 3 {
+		return strings.Join(lines[:height], "\n")
+	}
+	body, room := lines[1:len(lines)-1], height-2
+	anchor := -1
+	for i, line := range body {
+		if plain := ansi.Strip(line); selectedRow.MatchString(plain) {
+			anchor = i
+			break
+		} else if anchor < 0 && strings.Contains(plain, "[active]") {
+			anchor = i
+		}
+	}
+	start := min(max(0, anchor-room/2), len(body)-room)
+	visible := append([]string{lines[0]}, body[start:start+room]...)
+	return strings.Join(append(visible, lines[len(lines)-1]), "\n")
 }
 
 func (m *DashboardModel) renderHostVitalsSection(w io.Writer, width int) {
@@ -408,9 +439,9 @@ func (m *DashboardModel) renderGPUSection(w io.Writer, _ int, focused bool) {
 			utilCell = fmt.Sprintf("%s %.0f%%", m.renderPlainBar(g.UtilPct, 6), g.UtilPct)
 			if g.TempC != "" {
 				thermCell = g.TempC + "C"
-				if g.PowerW != "" {
-					thermCell += "/" + g.PowerW + "W"
-				}
+			}
+			if g.PowerW != "" {
+				thermCell += "/" + g.PowerW + "W"
 			}
 		}
 		owner := FirstNonEmpty(g.Assigned, "-")

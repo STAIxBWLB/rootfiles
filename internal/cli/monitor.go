@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -28,6 +29,9 @@ const (
 // runDashboard is overridable in tests so CLI watch paths can be exercised
 // without opening an interactive alt-screen program.
 var runDashboard = ui.RunDashboard
+
+// hostVitalsCollector is overridable so tests never read the host's /proc or disks.
+var hostVitalsCollector = module.CollectHostVitals
 
 func addWatchFlags(cmd *cobra.Command, defaultInterval time.Duration) {
 	cmd.Flags().BoolP("watch", "w", false, "Refresh the report continuously in a terminal")
@@ -163,7 +167,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 	rc.Err = io.Discard
 
 	report := collectStatus(ctx, rc, sysInfo, reportProfile, reportPath, cfgErr, last, moduleFilter...)
-	vitals := module.CollectHostVitals(rc)
+	vitals := hostVitalsCollector(rc)
 
 	osLine := ui.FirstNonEmpty(sysInfo.OS, "unknown")
 	if sysInfo.Version != "" {
@@ -196,10 +200,12 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 		},
 		ModulesTotal: len(report.Modules),
 	}
+	// A failed read is reported, never shown as an absent resource.
+	var problems []string
 	if report.ConfigErr != "" {
-		snap.Err = report.ConfigErr
+		problems = append(problems, report.ConfigErr)
 	} else if report.ModuleCheckError != "" {
-		snap.Err = report.ModuleCheckError
+		problems = append(problems, report.ModuleCheckError)
 	}
 
 	for _, m := range report.Modules {
@@ -219,18 +225,27 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 	}
 
 	if statusModuleSelected(moduleFilter, "gpu") {
-		if gpuRep, err := gpuStatusCollector(ctx, rc); err == nil && gpuRep != nil {
+		gpuRep, err := gpuStatusCollector(ctx, rc)
+		switch {
+		case err == nil && gpuRep != nil:
 			snap.GPUs = toGPUDashRows(gpuRep.Rows)
+		case err != nil && !errors.Is(err, module.ErrNoGPUDevices):
+			problems = append(problems, "GPU status unavailable: "+err.Error()+" (run 'rootfiles gpu status' for details)")
 		}
 	}
 	if statusModuleSelected(moduleFilter, "tenant") && rc.Config.Users.HomeBase != "" && !config.IsRocky(rc.Config.System) {
 		m := module.NewTenantManager(rc, io.Discard)
-		if names, err := tenantSpecLister(m.SpecDir); err == nil && len(names) > 0 {
-			if tRep, err := tenantStatusCollector(m, ctx, names, false); err == nil && tRep != nil {
+		names, err := tenantSpecLister(m.SpecDir)
+		if err == nil && len(names) > 0 {
+			var tRep *tenant.StatusReport
+			if tRep, err = tenantStatusCollector(m, ctx, names, false); err == nil && tRep != nil {
 				snap.Tenants = toTenantDashRows(tRep.Rows)
 				snap.Commitment = tRep.Commitment
 				snap.Overcommitted = tRep.Overcommitted
 			}
+		}
+		if err != nil {
+			problems = append(problems, "tenant status unavailable: "+err.Error()+" (run 'rootfiles tenant status' for details)")
 		}
 	}
 	for _, f := range doctorChecks(ctx, rc) {
@@ -240,6 +255,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 			Detail: f.Detail,
 		})
 	}
+	snap.Err = strings.Join(problems, "; ")
 	return snap, nil
 }
 

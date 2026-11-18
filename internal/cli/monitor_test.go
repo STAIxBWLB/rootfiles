@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/STAIxBWLB/rootfiles/internal/module"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -61,8 +62,17 @@ func TestMonitorAndWatchCollectSnapshotsHostFree(t *testing.T) {
 	pinReportClock(t)
 	t.Chdir(rootDir)
 	stubGPUStatus(t, rootDir)
+	stubMIGStatus(t, rootDir)
 	stubTenantReports(t, rootDir)
 	stubFleetStatusReads(t, rootDir)
+	savedVitals, savedDoctor := hostVitalsCollector, doctorChecks
+	t.Cleanup(func() { hostVitalsCollector, doctorChecks = savedVitals, savedDoctor })
+	hostVitalsCollector = func(*module.RunContext) module.HostVitals {
+		return module.HostVitals{Load1: 0.5, LoadKnown: true, MemTotalMiB: 1024, MemUsedMiB: 512, MemUsedPct: 50}
+	}
+	doctorChecks = func(context.Context, *module.RunContext) []module.Finding {
+		return []module.Finding{{Level: "ok", Check: "fixture", Detail: "synthetic"}}
+	}
 
 	var capturedCfg ui.DashboardConfig
 	var capturedSnap ui.DashboardSnapshot
@@ -118,5 +128,21 @@ func TestMonitorAndWatchCollectSnapshotsHostFree(t *testing.T) {
 				t.Fatalf("rendered view missing header:\n%s", view)
 			}
 		})
+	}
+
+	// A failed GPU read is reported; a host without GPUs is not an error.
+	for _, gpuErr := range []error{errors.New("fixture allocation database unreadable"), module.ErrNoGPUDevices} {
+		gpuStatusCollector = func(context.Context, *module.RunContext) (*module.GPUStatusReport, error) { return nil, gpuErr }
+		root := NewRootCmd("test", "test")
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		root.SetArgs([]string{"monitor", "--config", site})
+		if err := executeCommand(context.Background(), root); err != nil {
+			t.Fatalf("monitor with GPU error %v: %v", gpuErr, err)
+		}
+		reported := strings.Contains(capturedSnap.Err, "GPU status unavailable: "+gpuErr.Error())
+		if want := !errors.Is(gpuErr, module.ErrNoGPUDevices); reported != want {
+			t.Fatalf("GPU error %q reported=%v, want %v (snapshot error %q)", gpuErr, reported, want, capturedSnap.Err)
+		}
 	}
 }

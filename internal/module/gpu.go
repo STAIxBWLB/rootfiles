@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -368,6 +369,10 @@ type GPUStatusReport struct {
 	Rows []GPUStatusRow
 }
 
+// ErrNoGPUDevices is what CollectGPUStatus returns on a host without NVIDIA
+// device nodes, so callers can tell a GPU-less host from a failed read.
+var ErrNoGPUDevices = errors.New("no NVIDIA GPU devices found in /dev")
+
 // CollectGPUStatus reads the device count, nvidia-smi and the allocation
 // database, so the command renders the report from data instead of printing
 // from the collector.
@@ -375,7 +380,7 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 	WarnUntrustedMetadata(rc)
 	totalGPUs := countGPUDevices()
 	if totalGPUs == 0 {
-		return nil, fmt.Errorf("no NVIDIA GPU devices found in /dev")
+		return nil, ErrNoGPUDevices
 	}
 
 	// Query nvidia-smi — may only see a subset due to cgroup restrictions.

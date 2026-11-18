@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -90,6 +91,29 @@ func TestMonitorModel_Render80ColumnsAndModes(t *testing.T) {
 						t.Errorf("mode=%s ascii=true kept Unicode glyph in:\n%s", mode, plain)
 					}
 				})
+			}
+		}
+	}
+}
+
+// A table taller than the terminal scrolls with the selection and keeps the
+// title and key footer on screen.
+func TestMonitorModel_FitsHeightAndFollowsSelection(t *testing.T) {
+	cleanOutputEnv(t)
+	snap := DashboardSnapshot{UpdatedAt: time.Date(2026, 11, 18, 9, 30, 0, 0, time.UTC)}
+	for i := 0; i < 40; i++ {
+		snap.Fleet = append(snap.Fleet, FleetDashRow{Host: fmt.Sprintf("host%02d", i), State: "ok"})
+	}
+	for _, ascii := range []bool{false, true} {
+		var m tea.Model = NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeFleet, Width: 80, Height: 12, ASCII: ascii}, snap, nil)
+		for want := 0; want <= 30; want += 30 {
+			lines := strings.Split(ansi.Strip(m.View()), "\n")
+			view := strings.Join(lines, "\n")
+			if len(lines) > 12 || !strings.Contains(lines[0], "rootfiles monitor") || !strings.Contains(lines[len(lines)-1], "q quit") || !strings.Contains(view, fmt.Sprintf(">host%02d", want)) {
+				t.Fatalf("ascii=%v cursor=%d: %d lines, want <= 12 with title, footer and selection:\n%s", ascii, want, len(lines), view)
+			}
+			for i := 0; i < 30; i++ {
+				m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
 			}
 		}
 	}
