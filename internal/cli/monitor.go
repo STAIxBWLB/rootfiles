@@ -424,7 +424,7 @@ func toTenantDashRows(rows []tenant.StatusRow) []ui.TenantDashRow {
 	for _, r := range rows {
 		stateText := r.State
 		if r.Error != "" {
-			stateText = "error: " + r.Error
+			stateText = r.Error // already "error: <cause>"
 		}
 		out = append(out, ui.TenantDashRow{
 			Name:    r.Tenant,

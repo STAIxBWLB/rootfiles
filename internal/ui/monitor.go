@@ -436,7 +436,7 @@ func (m *DashboardModel) renderHostVitalsSection(w io.Writer, width int) {
 		WriteKV(w, "Modules", truncateCells(modText, max(20, width-18)))
 	}
 	for _, mt := range m.snap.Mounts {
-		bar := m.renderBar(mt.UsedPct, 10)
+		bar := m.renderLevelBar(mt.UsedPct, 10, mt.Level)
 		WriteKV(w, "Disk "+mt.Path, fmt.Sprintf("%s %.0f%% (%.0f GiB free)", bar, mt.UsedPct, mt.FreeGiB))
 	}
 }
@@ -647,14 +647,27 @@ func (m *DashboardModel) renderFleetSection(w io.Writer, _ int) {
 }
 
 func (m *DashboardModel) renderBar(pct float64, cells int) string {
+	level := "ok"
+	switch {
+	case pct >= 90:
+		level = "fail"
+	case pct >= 70:
+		level = "warn"
+	}
+	return m.renderLevelBar(pct, cells, level)
+}
+
+// renderLevelBar colors a gauge by a computed severity, so a disk bar agrees
+// with the doctor thresholds that produced its level.
+func (m *DashboardModel) renderLevelBar(pct float64, cells int, level string) string {
 	bar := m.renderPlainBar(pct, cells)
 	if !m.cfg.Color {
 		return bar
 	}
-	switch {
-	case pct >= 90:
+	switch level {
+	case "fail":
 		return StyleError.Render(bar)
-	case pct >= 70:
+	case "warn":
 		return StyleWarning.Render(bar)
 	default:
 		return StyleSuccess.Render(bar)
@@ -722,6 +735,10 @@ func RunDashboard(ctx context.Context, out io.Writer, cfg DashboardConfig, refre
 	if !DashboardTerminal(out) {
 		return fmt.Errorf("%s: %w", FirstNonEmpty(cfg.Title, "rootfiles monitor"), ErrNoDashboardTerminal)
 	}
+	// Quitting cancels a refresh still in flight (fleet SSH reads, module
+	// queries), which Bubble Tea's own context does not reach.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	var initial DashboardSnapshot
 	if refresh != nil {
 		snap, err := refresh(ctx)

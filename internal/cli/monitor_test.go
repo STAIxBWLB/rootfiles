@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/STAIxBWLB/rootfiles/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/tenant"
 	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
@@ -210,5 +211,13 @@ func TestMonitorWithholdsDatabasesWithoutHomeBase(t *testing.T) {
 	}
 	if snap.GPUState != ui.SectionFailed || snap.TenantState != ui.SectionFailed || snap.Err == "" {
 		t.Fatalf("GPU state=%v tenant state=%v error=%q, want both failed with the config error", snap.GPUState, snap.TenantState, snap.Err)
+	}
+}
+
+// CollectStatus already formats a spec error as "error: <cause>".
+func TestTenantDashRowsKeepCollectorErrorText(t *testing.T) {
+	rows := toTenantDashRows([]tenant.StatusRow{{Tenant: "lab", Error: "error: spec unreadable"}})
+	if rows[0].State != "error: spec unreadable" {
+		t.Fatalf("state=%q", rows[0].State)
 	}
 }

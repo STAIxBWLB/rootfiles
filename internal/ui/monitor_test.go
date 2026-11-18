@@ -269,3 +269,13 @@ func TestMonitorModel_UnknownUtilizationIsNotZero(t *testing.T) {
 		t.Fatalf("unknown utilization rendered as a percentage:\n%s", view)
 	}
 }
+
+// A disk gauge takes its color from the doctor level, not fixed thresholds.
+func TestMonitorModel_DiskBarUsesDoctorLevel(t *testing.T) {
+	cleanOutputEnv(t)
+	m := NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeHost, Color: true, Height: 60}, DashboardSnapshot{Mounts: []MountDashRow{{Path: "/", UsedPct: 75, Level: "ok"}}}, nil)
+	plain := m.renderPlainBar(75, 10)
+	if view := m.View(); !strings.Contains(view, StyleSuccess.Render(plain)) || strings.Contains(view, StyleWarning.Render(plain)) {
+		t.Fatalf("75%% disk at doctor level ok not drawn as ok:\n%q", view)
+	}
+}
