@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -280,6 +282,36 @@ func TestWatchCapturesStderrAndRechecksTenantTrust(t *testing.T) {
 	got := diagnosticLines("time=t level=INFO msg=exec\nrootfiles: warning: kept\nrootfiles: warning: kept\n")
 	if len(got) != 1 || got[0] != "warning: kept" {
 		t.Fatalf("diagnosticLines=%q, want only the warning", got)
+	}
+}
+
+// #196: only a missing inventory gets the fleet init step; a missing host
+// config inside an existing inventory must not suggest replacing it.
+func TestControllerMonitorInitHintOnlyForMissingInventory(t *testing.T) {
+	saved := nativeHostOS
+	nativeHostOS = "darwin"
+	t.Cleanup(func() { nativeHostOS = saved })
+	dir := t.TempDir()
+	existing := filepath.Join(dir, "fleet.yaml")
+	if err := os.WriteFile(existing, []byte("hosts:\n  gpu01:\n    ssh: gpu01\n    config: fleet/gpu01.yaml\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		inventory string
+		wantInit  bool
+	}{{filepath.Join(dir, "missing.yaml"), true}, {existing, false}} {
+		root := NewRootCmd("test", "test")
+		root.SetOut(io.Discard)
+		root.SetErr(io.Discard)
+		root.SetArgs([]string{"monitor", "--inventory", tc.inventory})
+		err := executeCommand(context.Background(), root)
+		next := ""
+		if exit := (*ExitError)(nil); errors.As(err, &exit) {
+			next = exit.Next
+		}
+		if err == nil || strings.Contains(next, "fleet init") != tc.wantInit {
+			t.Fatalf("%s: err=%v next=%q, want init step %v", tc.inventory, err, next, tc.wantInit)
+		}
 	}
 }
 
