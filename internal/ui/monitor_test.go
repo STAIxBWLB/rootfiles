@@ -42,7 +42,8 @@ func sampleSnapshot() DashboardSnapshot {
 		GPUState:         SectionRead,
 		TenantState:      SectionRead,
 		GPUs: []GPUDashRow{
-			{Index: 0, Model: "NVIDIA H100 80GB HBM3", MemUsed: "40960", MemTotal: "81920", MemPct: 50, UtilPct: 80, TempC: "64", PowerW: "320", Assigned: "alice"},
+			{Index: 0, Model: "NVIDIA H100 80GB HBM3", MemUsed: "40960", MemTotal: "81920", MemPct: 50, UtilPct: 80, UtilKnown: true, TempC: "64", PowerW: "320", Assigned: "alice"},
+			{Index: 2, Model: "NVIDIA H100 80GB HBM3", MemUsed: "0", MemTotal: "81920", Assigned: "bob"},
 			{Index: 1, Model: "NVIDIA H100 80GB HBM3", Restricted: true, Assigned: "tenant:lab"},
 		},
 		Tenants: []TenantDashRow{
@@ -103,9 +104,10 @@ func TestMonitorModel_Render80ColumnsAndModes(t *testing.T) {
 // title and key footer on screen.
 func TestMonitorModel_FitsHeightAndFollowsSelection(t *testing.T) {
 	cleanOutputEnv(t)
+	t.Setenv("COLUMNS", "60") // long reasons would wrap if tables wrapped
 	snap := DashboardSnapshot{UpdatedAt: time.Date(2026, 11, 18, 9, 30, 0, 0, time.UTC)}
 	for i := 0; i < 40; i++ {
-		snap.Fleet = append(snap.Fleet, FleetDashRow{Host: fmt.Sprintf("host%02d", i), State: "ok"})
+		snap.Fleet = append(snap.Fleet, FleetDashRow{Host: fmt.Sprintf("host%02d", i), State: "ok", Reason: strings.Repeat("long reason ", 8)})
 	}
 	for _, ascii := range []bool{false, true} {
 		var m tea.Model = NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeFleet, Width: 80, Height: 12, ASCII: ascii}, snap, nil)
@@ -255,5 +257,15 @@ func TestMonitorModel_HealthPaneSelectsShownFindings(t *testing.T) {
 	view := ansi.Strip(m.View())
 	if !strings.Contains(view, ">check29") || len(strings.Split(view, "\n")) > 12 {
 		t.Fatalf("health pane selection not shown on a 12-line screen:\n%s", view)
+	}
+}
+
+// An unknown utilization reading is never shown as a measured 0%.
+func TestMonitorModel_UnknownUtilizationIsNotZero(t *testing.T) {
+	cleanOutputEnv(t)
+	snap := DashboardSnapshot{GPUState: SectionRead, GPUs: []GPUDashRow{{Index: 0, Model: "fixture", MemUsed: "0", MemTotal: "1024"}}}
+	view := ansi.Strip(NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeGPU, Height: 40}, snap, nil).View())
+	if strings.Contains(view, "0%") {
+		t.Fatalf("unknown utilization rendered as a percentage:\n%s", view)
 	}
 }

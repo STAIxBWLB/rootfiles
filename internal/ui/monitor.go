@@ -67,6 +67,7 @@ type GPUDashRow struct {
 	MemTotal   string
 	MemPct     float64
 	UtilPct    float64
+	UtilKnown  bool // false when nvidia-smi reported N/A; never shown as 0%
 	TempC      string
 	PowerW     string
 	Assigned   string
@@ -372,6 +373,10 @@ func (m *DashboardModel) View() string {
 	return fitHeight(clampLinesWidth(raw.String(), width), m.cfg.Height, m.focusLine)
 }
 
+// noWrap keeps every dashboard table row on one line, so a row's index is
+// its line offset for markFocus; clampLinesWidth truncates what does not fit.
+const noWrap = -1
+
 // fitHeight keeps the title and footer lines and scrolls the body so the
 // focus line stays on screen.
 // ponytail: stateless centering on one line; a stateful viewport if long sections need paging.
@@ -467,7 +472,9 @@ func (m *DashboardModel) renderGPUSection(w io.Writer, _ int, focused bool) {
 			if g.MemUsed != "" && g.MemTotal != "" {
 				memCell = fmt.Sprintf("%s/%sM", g.MemUsed, g.MemTotal)
 			}
-			utilCell = fmt.Sprintf("%s %.0f%%", m.renderPlainBar(g.UtilPct, 6), g.UtilPct)
+			if g.UtilKnown {
+				utilCell = fmt.Sprintf("%s %.0f%%", m.renderPlainBar(g.UtilPct, 6), g.UtilPct)
+			}
 			if g.TempC != "" {
 				thermCell = g.TempC + "C"
 			}
@@ -481,7 +488,7 @@ func (m *DashboardModel) renderGPUSection(w io.Writer, _ int, focused bool) {
 	if focused {
 		m.markFocus(1 + m.cursor)
 	}
-	_ = WriteTable(w, []string{"GPU", "MODEL", "VRAM", "UTIL", "TEMP/PWR", "OWNER"}, rows, 1)
+	_ = WriteTable(w, []string{"GPU", "MODEL", "VRAM", "UTIL", "TEMP/PWR", "OWNER"}, rows, noWrap)
 }
 
 func (m *DashboardModel) renderMIGSection(w io.Writer) {
@@ -533,7 +540,7 @@ func (m *DashboardModel) renderTenantSection(w io.Writer, _ int, focused bool) {
 	if focused {
 		m.markFocus(1 + m.cursor)
 	}
-	_ = WriteTable(w, []string{"TENANT", "STATE", "SSH", "GPUS", "SPEC", "VOLUME"}, rows, 5)
+	_ = WriteTable(w, []string{"TENANT", "STATE", "SSH", "GPUS", "SPEC", "VOLUME"}, rows, noWrap)
 	if m.snap.Commitment != "" {
 		marker, text := OKMark(), m.snap.Commitment
 		if m.snap.Overcommitted {
@@ -626,11 +633,11 @@ func (m *DashboardModel) renderFleetSection(w io.Writer, _ int) {
 	m.markFocus(1 + m.cursor)
 	switch m.snap.FleetView {
 	case "gpu":
-		_ = WriteTable(w, []string{"HOST", "STATE", "GPUS", "REASON"}, rows, 2)
+		_ = WriteTable(w, []string{"HOST", "STATE", "GPUS", "REASON"}, rows, noWrap)
 	case "users":
-		_ = WriteTable(w, []string{"HOST", "STATE", "USERS", "REASON"}, rows, 2)
+		_ = WriteTable(w, []string{"HOST", "STATE", "USERS", "REASON"}, rows, noWrap)
 	default:
-		_ = WriteTable(w, []string{"HOST", "STATE", "SHUTDOWN", "REASON"}, rows, 3)
+		_ = WriteTable(w, []string{"HOST", "STATE", "SHUTDOWN", "REASON"}, rows, noWrap)
 	}
 	WriteSummary(w, []SummaryCount{
 		{Marker: FailMark(), Count: counts["fail"], Label: "error"},

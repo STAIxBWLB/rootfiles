@@ -1,15 +1,18 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
@@ -135,8 +138,11 @@ func runMonitor(cmd *cobra.Command, _ []string) error {
 func runControllerMonitor(cmd *cobra.Command, interval time.Duration) error {
 	invPath := fleetInventoryPath(cmd)
 	inv, err := fleet.LoadInventory(invPath)
-	if err != nil {
+	if errors.Is(err, fs.ErrNotExist) {
 		return withNext(err, "rootfiles fleet init --inventory "+fleet.ShellQuote(invPath))
+	}
+	if err != nil {
+		return err
 	}
 	hosts, err := inv.Select(nil, nil, true)
 	if err != nil {
@@ -164,7 +170,14 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
 	rc := readOnlyRunContext(cfg, sysInfo, logger)
 	rc.Out = io.Discard
-	rc.Err = io.Discard
+	// Diagnostics (untrusted metadata and the like) go to the warning line;
+	// writing them to stderr would tear the alternate screen.
+	var diagnostics bytes.Buffer
+	rc.Err = &diagnostics
+	homeBase := rc.Config.Users.HomeBase
+	if homeBase != "" {
+		warnStatusMetadata(rc)
+	}
 
 	report := collectStatus(ctx, rc, sysInfo, reportProfile, reportPath, cfgErr, last, moduleFilter...)
 	vitals := hostVitalsCollector(rc)
@@ -224,7 +237,11 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 		})
 	}
 
-	if statusModuleSelected(moduleFilter, "gpu") {
+	// An empty home base means the config did not load: withhold the
+	// databases instead of reading them under /home, as status does.
+	if statusModuleSelected(moduleFilter, "gpu") && homeBase == "" {
+		snap.GPUState = ui.SectionFailed
+	} else if statusModuleSelected(moduleFilter, "gpu") {
 		gpuRep, err := gpuStatusCollector(ctx, rc)
 		snap.GPUState = ui.SectionRead
 		switch {
@@ -235,9 +252,15 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 			problems = append(problems, "GPU status unavailable: "+err.Error()+" (run 'rootfiles gpu status' for details)")
 		}
 	}
-	if statusModuleSelected(moduleFilter, "tenant") && rc.Config.Users.HomeBase != "" && !config.IsRocky(rc.Config.System) {
+	if statusModuleSelected(moduleFilter, "tenant") && homeBase == "" && !config.IsRocky(rc.Config.System) {
+		snap.TenantState = ui.SectionFailed
+	} else if statusModuleSelected(moduleFilter, "tenant") && !config.IsRocky(rc.Config.System) {
 		m := module.NewTenantManager(rc, io.Discard)
-		names, err := tenantSpecLister(m.SpecDir)
+		var names []string
+		err := checkTenantTrust(rc)
+		if err == nil {
+			names, err = tenantSpecLister(m.SpecDir)
+		}
 		snap.TenantState = ui.SectionRead
 		if err == nil && len(names) > 0 {
 			var tRep *tenant.StatusReport
@@ -258,6 +281,11 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 			Check:  f.Check,
 			Detail: f.Detail,
 		})
+	}
+	for _, line := range strings.Split(ansi.Strip(diagnostics.String()), "\n") {
+		if line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "rootfiles:")); line != "" {
+			problems = append(problems, line)
+		}
 	}
 	snap.Err = strings.Join(problems, "; ")
 	return snap, nil
@@ -349,11 +377,19 @@ func collectFleetDashboardSnapshot(ctx context.Context, _ *fleet.Inventory, host
 		}
 		rows = append(rows, row)
 	}
-	return ui.DashboardSnapshot{
-		UpdatedAt: time.Now(),
-		Fleet:     rows,
-		FleetView: view,
-	}, nil
+	snap := ui.DashboardSnapshot{UpdatedAt: time.Now(), Fleet: rows, FleetView: view}
+	failed := 0
+	for _, row := range rows {
+		switch row.State {
+		case "ok", "drift", "findings":
+		default:
+			failed++
+		}
+	}
+	if failed > 0 {
+		snap.Err = fmt.Sprintf("%d of %d host reads failed; see the REASON column", failed, len(rows))
+	}
+	return snap, nil
 }
 
 func toGPUDashRows(rows []module.GPUStatusRow) []ui.GPUDashRow {
@@ -361,7 +397,7 @@ func toGPUDashRows(rows []module.GPUStatusRow) []ui.GPUDashRow {
 	for _, r := range rows {
 		used, _ := strconv.ParseFloat(r.MemUsed, 64)
 		total, _ := strconv.ParseFloat(r.MemTotal, 64)
-		util, _ := strconv.ParseFloat(r.Util, 64)
+		util, utilErr := strconv.ParseFloat(r.Util, 64)
 		memPct := 0.0
 		if total > 0 {
 			memPct = (used / total) * 100
@@ -373,6 +409,7 @@ func toGPUDashRows(rows []module.GPUStatusRow) []ui.GPUDashRow {
 			MemTotal:   r.MemTotal,
 			MemPct:     memPct,
 			UtilPct:    util,
+			UtilKnown:  utilErr == nil,
 			TempC:      r.TempC,
 			PowerW:     r.PowerW,
 			Assigned:   r.Assigned,

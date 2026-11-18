@@ -45,14 +45,23 @@ func tenantEnv(cmd *cobra.Command) (*module.RunContext, *tenant.Manager, error) 
 	if config.IsRocky(rc.Config.System) {
 		return nil, nil, fmt.Errorf("tenant containers are not supported on Rocky Linux")
 	}
-	if err := module.RequireTrustedMetadata(rc); err != nil {
+	if err := checkTenantTrust(rc); err != nil {
 		return nil, nil, err
+	}
+	return rc, module.NewTenantManager(rc, cmd.OutOrStdout()), nil
+}
+
+// checkTenantTrust refuses tenant data that root does not control; every
+// reader of tenant specs and status goes through it.
+func checkTenantTrust(rc *module.RunContext) error {
+	if err := module.RequireTrustedMetadata(rc); err != nil {
+		return err
 	}
 	root := rc.Config.Modules.Tenant.DataRoot()
 	if err := config.RootOnlyHomeBase("/", root, 0); err != nil {
-		return nil, nil, fmt.Errorf("refusing tenant root %s: %w", root, err)
+		return fmt.Errorf("refusing tenant root %s: %w", root, err)
 	}
-	return rc, module.NewTenantManager(rc, cmd.OutOrStdout()), nil
+	return nil
 }
 
 // tenantDo runs fn for tenant t and records a real run in the audit log.

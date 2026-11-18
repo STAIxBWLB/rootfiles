@@ -117,6 +117,9 @@ func TestMonitorAndWatchCollectSnapshotsHostFree(t *testing.T) {
 			if capturedSnap.UpdatedAt.IsZero() {
 				t.Fatalf("snapshot UpdatedAt is zero")
 			}
+			if want := "1 of 3 host reads failed; see the REASON column"; tc.mode == ui.ModeFleet && capturedSnap.Err != want {
+				t.Fatalf("fleet warning=%q, want %q", capturedSnap.Err, want)
+			}
 			model := ui.NewDashboardModel(context.Background(), ui.DashboardConfig{
 				Title:    capturedCfg.Title,
 				Mode:     capturedCfg.Mode,
@@ -168,5 +171,44 @@ func TestMonitorAndWatchCollectSnapshotsHostFree(t *testing.T) {
 		if err := executeCommand(context.Background(), root); err != nil || !tc.ok() {
 			t.Fatalf("%v: err=%v snapshot GPU state=%v error=%q", tc.args, err, capturedSnap.GPUState, capturedSnap.Err)
 		}
+	}
+}
+
+// Without a home base the dashboard withholds the GPU and tenant databases,
+// as status does, instead of reading them under /home.
+func TestMonitorWithholdsDatabasesWithoutHomeBase(t *testing.T) {
+	pinInventoryPage(t)
+	rootDir, site, _ := statusContractFixture(t, "unknown-home")
+	t.Chdir(rootDir)
+	saved := struct {
+		run     func(context.Context, io.Writer, ui.DashboardConfig, ui.RefreshFunc) error
+		vitals  func(*module.RunContext) module.HostVitals
+		doctor  func(context.Context, *module.RunContext) []module.Finding
+		gpuRead func(context.Context, *module.RunContext) (*module.GPUStatusReport, error)
+	}{runDashboard, hostVitalsCollector, doctorChecks, gpuStatusCollector}
+	t.Cleanup(func() {
+		runDashboard, hostVitalsCollector, doctorChecks, gpuStatusCollector = saved.run, saved.vitals, saved.doctor, saved.gpuRead
+	})
+	hostVitalsCollector = func(*module.RunContext) module.HostVitals { return module.HostVitals{} }
+	doctorChecks = func(context.Context, *module.RunContext) []module.Finding { return nil }
+	gpuStatusCollector = func(context.Context, *module.RunContext) (*module.GPUStatusReport, error) {
+		t.Fatal("GPU database read without a home base")
+		return nil, nil
+	}
+	var snap ui.DashboardSnapshot
+	runDashboard = func(ctx context.Context, _ io.Writer, _ ui.DashboardConfig, refresh ui.RefreshFunc) error {
+		var err error
+		snap, err = refresh(ctx)
+		return err
+	}
+	root := NewRootCmd("test", "test")
+	root.SetOut(io.Discard)
+	root.SetErr(io.Discard)
+	root.SetArgs([]string{"monitor", "--config", site})
+	if err := executeCommand(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	if snap.GPUState != ui.SectionFailed || snap.TenantState != ui.SectionFailed || snap.Err == "" {
+		t.Fatalf("GPU state=%v tenant state=%v error=%q, want both failed with the config error", snap.GPUState, snap.TenantState, snap.Err)
 	}
 }
