@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/STAIxBWLB/rootfiles/internal/config"
 	"github.com/STAIxBWLB/rootfiles/internal/module"
+	"github.com/STAIxBWLB/rootfiles/internal/ui"
 )
 
 func aliasCLIFixture(t *testing.T) {
@@ -74,6 +76,22 @@ func TestCLIUserAddKeyAliasesAndUsernameFallback(t *testing.T) {
 				t.Fatalf("missing key replacement notice: %q", printed)
 			}
 		})
+	}
+}
+
+func TestCLIUserAddWithoutNameNamesCauseAndFix(t *testing.T) {
+	aliasCLIFixture(t)
+	saved := ui.TerminalAttached
+	ui.TerminalAttached = func() bool { return false }
+	t.Cleanup(func() { ui.TerminalAttached = saved })
+	root := NewRootCmd("test", "test")
+	var output bytes.Buffer
+	root.SetOut(&output)
+	root.SetErr(&output)
+	root.SetArgs([]string{"user", "add", "--dry-run"})
+	var exit *ExitError
+	if err := root.Execute(); !errors.As(err, &exit) || !strings.Contains(exit.Msg, "no terminal") || !strings.Contains(exit.Next, "--user") {
+		t.Fatalf("user add without a name or terminal: err=%v", err)
 	}
 }
 
