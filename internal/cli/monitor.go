@@ -8,6 +8,7 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -144,10 +145,13 @@ func runMonitor(cmd *cobra.Command, _ []string) error {
 func runControllerMonitor(cmd *cobra.Command, interval time.Duration) error {
 	invPath := fleetInventoryPath(cmd)
 	inv, err := fleet.LoadInventory(invPath)
-	if errors.Is(err, fs.ErrNotExist) {
-		return withNext(err, "rootfiles fleet init --inventory "+fleet.ShellQuote(invPath))
-	}
 	if err != nil {
+		// Only a missing inventory file gets the init step: a missing host
+		// config inside an existing inventory wraps the same not-exist error,
+		// and init would replace that inventory.
+		if _, statErr := os.Stat(invPath); errors.Is(statErr, fs.ErrNotExist) {
+			return withNext(err, "rootfiles fleet init --inventory "+fleet.ShellQuote(invPath))
+		}
 		return err
 	}
 	hosts, err := inv.Select(nil, nil, true)
