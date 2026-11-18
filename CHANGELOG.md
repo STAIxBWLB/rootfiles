@@ -2,6 +2,18 @@
 
 Generated from docs/releases/ by scripts/gen-changelog.sh; edit the release notes, not this file.
 
+## v0.22.1
+
+Fleet commands work again when the default inventory is a symlink to an inventory kept elsewhere.
+
+### Fixed
+- With `~/.config/rootfiles/fleet.yaml` symlinked to an inventory in another folder, the `rootfiles fleet` commands that read the inventory (`hosts`, `ping`, `status`, `check`, `apply`, `update` and the others that select hosts) failed without `--inventory` with "reading config ...: no such file or directory", and the controller's `status`, `doctor` and `monitor` could not read the inventory, because relative `config:` paths were looked up next to the link. They now resolve next to the file the link points to. (#193)
+
+### Action needed
+- Update the fleet controller with `rootfiles update` on macOS, or `sudo rootfiles update` on a Linux controller. The fix runs only on the controller, so hosts can stay on v0.22.0; to keep versions aligned, run `rootfiles fleet update --all --version v0.22.1 --yes`. (#194)
+
+**Full changelog**: https://github.com/STAIxBWLB/rootfiles/compare/v0.22.0...v0.22.1
+
 ## v0.22.0
 
 This release adds a live monitoring dashboard, restyles help and report output, and removes the five spellings deprecated in v0.21.0.
