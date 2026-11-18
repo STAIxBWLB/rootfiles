@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -89,18 +90,16 @@ func runApply(cmd *cobra.Command, _ []string) error {
 	}
 
 	// Show plan
-	ui.WriteText(out, "Profile: %s\n", profileName)
+	ui.WriteHeader(out, cmd.CommandPath())
+	ui.WriteKV(out, "Profile", profileName)
 	if dryRun {
-		ui.WriteLine(out, "Mode: dry-run (no changes will be made)")
+		ui.WriteKV(out, "Mode", "dry-run (no changes will be made)")
 	}
-	ui.WriteText(out, "Modules: ")
+	names := make([]string, len(modules))
 	for i, m := range modules {
-		if i > 0 {
-			ui.WriteRaw(out, ", ")
-		}
-		ui.WriteRaw(out, m.Name())
+		names[i] = m.Name()
 	}
-	ui.WriteLine(out)
+	ui.WriteKV(out, "Modules", strings.Join(names, ", "))
 
 	// Interactive configuration preview & edit
 	if err := configureInteractive(out, cfg, yes, dryRun); err != nil {

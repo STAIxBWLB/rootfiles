@@ -72,7 +72,7 @@ func TestApplyRoutesCommandAndModuleOutput(t *testing.T) {
 			t.Fatal(err)
 		}
 	})
-	for _, want := range []string{"Profile: minimal\n", "Mode: dry-run (no changes will be made)\n", "Modules: packages\n", "packages: already satisfied"} {
+	for _, want := range []string{" rootfiles apply\n", "  Profile:        minimal\n", "  Mode:           dry-run (no changes will be made)\n", "  Modules:        packages\n", "packages: already satisfied"} {
 		if !strings.Contains(output.String(), want) {
 			t.Errorf("command writer missing %q: %s", want, output.String())
 		}

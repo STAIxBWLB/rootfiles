@@ -98,6 +98,17 @@ func usageError(err error) error {
 }
 
 func configureOutput(cmd *cobra.Command, args ...string) error {
+	machine, _ := cmd.Flags().GetBool("json")
+	machine = machine || rawPassthroughOutput(cmd, args)
+	if f := cmd.Flags().Lookup("output"); cmd.Flags().Lookup("json") != nil && f != nil && (f.Value.String() == "json" || f.Value.String() == "prometheus") {
+		machine = true
+	}
+	return configureWriters(cmd, machine)
+}
+
+// configureWriters applies the parsed --color and --ascii to both streams;
+// machine leaves stdout undecorated.
+func configureWriters(cmd *cobra.Command, machine bool) error {
 	mode, _ := cmd.Flags().GetString("color")
 	if mode == "" {
 		mode, _ = cmd.Root().PersistentFlags().GetString("color")
@@ -108,11 +119,6 @@ func configureOutput(cmd *cobra.Command, args ...string) error {
 		return usageError(fmt.Errorf("invalid --color %q: choose auto, always or never", mode))
 	}
 	ascii, _ := cmd.Flags().GetBool("ascii")
-	machine, _ := cmd.Flags().GetBool("json")
-	machine = machine || rawPassthroughOutput(cmd, args)
-	if f := cmd.Flags().Lookup("output"); cmd.Flags().Lookup("json") != nil && f != nil && (f.Value.String() == "json" || f.Value.String() == "prometheus") {
-		machine = true
-	}
 	cmd.SetOut(ui.ConfigureWriter(cmd.OutOrStdout(), mode, ascii, machine))
 	cmd.SetErr(ui.ConfigureWriter(cmd.ErrOrStderr(), mode, ascii, false))
 	return nil
@@ -171,7 +177,8 @@ func installOutputBoundary(cmd *cobra.Command) {
 			restoreTheme, _ := ui.SetPresentation(os.Getenv)
 			defer restoreTheme()
 			if !ui.Configured(c.OutOrStdout()) || c.Flags().Changed("color") || c.Root().PersistentFlags().Changed("color") || c.Flags().Changed("ascii") || c.Root().PersistentFlags().Changed("ascii") {
-				_ = configureOutput(c)
+				// Help is a human page even on raw-payload and JSON commands.
+				_ = configureWriters(c, false)
 			}
 			restore := scopeInheritedHelpFlags(c)
 			defer restore()
