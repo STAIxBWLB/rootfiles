@@ -2,6 +2,15 @@
 
 Generated from docs/releases/ by scripts/gen-changelog.sh; edit the release notes, not this file.
 
+## v0.23.1
+
+This release fixes a wrong next step on a macOS fleet controller whose inventory is a symlink to a missing file; on Linux, `doctor` and `monitor` never read an inventory, so Linux hosts can stay on v0.23.0.
+
+### Fixed
+- On a macOS fleet controller whose inventory is a symlink to a file that no longer exists, `rootfiles doctor` and `rootfiles monitor` suggested `rootfiles fleet init --inventory <path>`, which refuses the existing link. They now name the symlink and its missing target and say to point it at an existing inventory or remove it. (#204)
+
+**Full changelog**: https://github.com/STAIxBWLB/rootfiles/compare/v0.23.0...v0.23.1
+
 ## v0.23.0
 
 The fleet dashboard on a controller now shows each host's load, memory, disk and GPUs, and Enter opens a host's own dashboard.
