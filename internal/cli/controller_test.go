@@ -75,6 +75,36 @@ func TestControllerDoctorAndStatus(t *testing.T) {
 	}
 }
 
+type releaseTransport struct{ tag string }
+
+func (r releaseTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	body := `{"tag_name":"` + r.tag + `"}`
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
+}
+
+// #195: the release tag's "v" prefix does not make the installed release look
+// outdated; an older build still warns.
+func TestControllerDoctorVersionIgnoresTagPrefix(t *testing.T) {
+	_, inventory := controllerFixture(t)
+	http.DefaultClient = &http.Client{Transport: releaseTransport{tag: "v0.22.1"}}
+	oldVersion := buildVersion
+	t.Cleanup(func() { buildVersion = oldVersion })
+	for _, tc := range []struct {
+		build    string
+		wantFail bool
+	}{{"0.22.1", false}, {"0.22.0", true}} {
+		var out bytes.Buffer
+		cmd := NewRootCmd(tc.build, "test")
+		cmd.SetOut(&out)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs([]string{"doctor", "--inventory", inventory, "--strict", "--json"})
+		err := cmd.Execute()
+		if (err != nil) != tc.wantFail || strings.Contains(out.String(), "installed;") != tc.wantFail {
+			t.Fatalf("build %s: err=%v out=%s", tc.build, err, out.String())
+		}
+	}
+}
+
 func TestControllerDoctorMissingInventoryAndIdentity(t *testing.T) {
 	home, _ := controllerFixture(t)
 	missing := filepath.Join(home, "missing.yaml")
