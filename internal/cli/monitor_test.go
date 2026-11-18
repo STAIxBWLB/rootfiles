@@ -29,7 +29,7 @@ func TestMonitorAndWatchRefuseInvalidFlagsAndNonTTY(t *testing.T) {
 		{"status watch with output json", []string{"status", "--watch", "-o", "json"}, 2, "--watch cannot be combined with --output"},
 		{"status interval without watch", []string{"status", "--interval", "2s"}, 2, "--interval requires --watch"},
 		{"monitor interval too short", []string{"monitor", "--interval", "100ms"}, 2, "--interval must be at least 500ms"},
-		{"monitor without terminal", []string{"monitor"}, 1, "no terminal for an interactive prompt"},
+		{"monitor without terminal", []string{"monitor"}, 1, "no terminal for the live dashboard"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := NewRootCmd("test", "test")

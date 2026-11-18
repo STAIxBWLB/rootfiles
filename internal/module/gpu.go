@@ -386,9 +386,12 @@ func CollectGPUStatus(ctx context.Context, rc *RunContext) (*GPUStatusReport, er
 	// Query nvidia-smi — may only see a subset due to cgroup restrictions.
 	// We parse what's visible and leave the rest as "N/A".
 	smiData := make(map[int]*gpuSMIInfo)
-	result, err := rc.Runner.Query(ctx, "nvidia-smi",
-		"--query-gpu=index,name,memory.used,memory.total,utilization.gpu,temperature.gpu,power.draw",
-		"--format=csv,noheader,nounits")
+	core := "index,name,memory.used,memory.total,utilization.gpu"
+	result, err := rc.Runner.Query(ctx, "nvidia-smi", "--query-gpu="+core+",temperature.gpu,power.draw", "--format=csv,noheader,nounits")
+	if err != nil {
+		// A driver that rejects the optional properties still reports the core columns.
+		result, err = rc.Runner.Query(ctx, "nvidia-smi", "--query-gpu="+core, "--format=csv,noheader,nounits")
+	}
 	if err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
 			line = strings.TrimSpace(line)

@@ -176,7 +176,54 @@ func TestRunDashboard_RefusesWithoutTerminal(t *testing.T) {
 
 	var out bytes.Buffer
 	err := RunDashboard(context.Background(), &out, DashboardConfig{Title: "rootfiles monitor"}, nil)
-	if !errors.Is(err, ErrNoTerminal) {
-		t.Fatalf("expected ErrNoTerminal, got %v", err)
+	if !errors.Is(err, ErrNoDashboardTerminal) || strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("expected ErrNoDashboardTerminal without --yes advice, got %v", err)
+	}
+	t.Setenv("TERM", "dumb")
+	TerminalAttached = func() bool { return true }
+	if DashboardTerminal(&out) {
+		t.Fatal("dashboard accepted a non-terminal output or TERM=dumb")
+	}
+}
+
+// A failed read never renders as an absent resource.
+func TestMonitorModel_FailedReadsAreNotEmptyResources(t *testing.T) {
+	cleanOutputEnv(t)
+	for _, tc := range []struct {
+		mode DashboardMode
+		snap DashboardSnapshot
+		want string
+	}{
+		{ModeHost, DashboardSnapshot{Err: "GPU status unavailable", GPUFailed: true, TenantsFailed: true}, "GPU read failed"},
+		{ModeHost, DashboardSnapshot{Err: "GPU status unavailable", GPUFailed: true, TenantsFailed: true}, "tenant read failed"},
+		{ModeGPU, DashboardSnapshot{Err: "allocation database unreadable"}, "GPU read failed"},
+		{ModeTenant, DashboardSnapshot{Err: "spec directory unreadable"}, "tenant read failed"},
+		{ModeFleet, DashboardSnapshot{Err: "inventory unreadable"}, "fleet read failed"},
+	} {
+		view := ansi.Strip(NewDashboardModel(context.Background(), DashboardConfig{Mode: tc.mode, Height: 60}, tc.snap, nil).View())
+		if !strings.Contains(view, tc.want) || strings.Contains(view, "no NVIDIA GPUs detected") || strings.Contains(view, "no tenant specs configured") || strings.Contains(view, "no hosts selected") {
+			t.Errorf("mode=%s: want %q and no empty-resource hint:\n%s", tc.mode, tc.want, view)
+		}
+	}
+}
+
+// The health pane selects among the findings it lists and keeps the
+// selection on screen.
+func TestMonitorModel_HealthPaneSelectsShownFindings(t *testing.T) {
+	cleanOutputEnv(t)
+	snap := DashboardSnapshot{Findings: []FindingDashRow{{Level: "ok", Check: "hidden-ok"}}}
+	for i := 0; i < 30; i++ {
+		snap.Findings = append(snap.Findings, FindingDashRow{Level: "warn", Check: fmt.Sprintf("check%02d", i), Detail: "fixture"})
+	}
+	var m tea.Model = NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeHost, Width: 80, Height: 12}, snap, nil)
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyTab}, {Type: tea.KeyTab}} {
+		m, _ = m.Update(key)
+	}
+	for i := 0; i < 40; i++ {
+		m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	view := ansi.Strip(m.View())
+	if !strings.Contains(view, ">check29") || len(strings.Split(view, "\n")) > 12 {
+		t.Fatalf("health pane selection not shown on a 12-line screen:\n%s", view)
 	}
 }

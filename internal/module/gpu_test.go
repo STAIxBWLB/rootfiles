@@ -1082,3 +1082,31 @@ func TestCollectGPUStatus_ParsesTempAndPower(t *testing.T) {
 		t.Fatalf("row 1 unexpected: %+v", r1)
 	}
 }
+
+// A driver that rejects temperature.gpu or power.draw keeps the core columns.
+func TestCollectGPUStatus_FallsBackWhenOptionalMetricsAreRejected(t *testing.T) {
+	devDir := t.TempDir()
+	savedDevDir := gpuDeviceDir
+	gpuDeviceDir = devDir
+	t.Cleanup(func() { gpuDeviceDir = savedDevDir })
+	if err := os.WriteFile(filepath.Join(devDir, "nvidia0"), nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	binDir := t.TempDir()
+	smi := "#!/bin/sh\ncase \"$*\" in *temperature.gpu*) echo 'Field \"temperature.gpu\" is not a valid field to query.' >&2; exit 2;; esac\nprintf '0, NVIDIA A100-SXM4-40GB, 1024, 40960, 12\\n'\n"
+	if err := os.WriteFile(filepath.Join(binDir, "nvidia-smi"), []byte(smi), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+	homeBase := t.TempDir()
+	rc := testRunContext(t, homeBase, "env")
+	setupDBWithAllocations(t, homeBase, &GPUAllocationsDB{Version: 1, TotalGPUs: 1})
+
+	report, err := CollectGPUStatus(context.Background(), rc)
+	if err != nil {
+		t.Fatalf("CollectGPUStatus: %v", err)
+	}
+	if r := report.Rows[0]; r.Restricted || r.Util != "12" || r.MemTotal != "40960" || r.TempC != "" {
+		t.Fatalf("core columns lost after the optional query failed: %+v", r)
+	}
+}

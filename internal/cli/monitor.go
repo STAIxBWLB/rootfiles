@@ -230,6 +230,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 		case err == nil && gpuRep != nil:
 			snap.GPUs = toGPUDashRows(gpuRep.Rows)
 		case err != nil && !errors.Is(err, module.ErrNoGPUDevices):
+			snap.GPUFailed = true
 			problems = append(problems, "GPU status unavailable: "+err.Error()+" (run 'rootfiles gpu status' for details)")
 		}
 	}
@@ -245,6 +246,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 			}
 		}
 		if err != nil {
+			snap.TenantsFailed = true
 			problems = append(problems, "tenant status unavailable: "+err.Error()+" (run 'rootfiles tenant status' for details)")
 		}
 	}
@@ -261,6 +263,9 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 
 func collectGPUDashboardSnapshot(ctx context.Context, rc *module.RunContext) (ui.DashboardSnapshot, error) {
 	report, err := gpuStatusCollector(ctx, rc)
+	if errors.Is(err, module.ErrNoGPUDevices) {
+		return ui.DashboardSnapshot{UpdatedAt: time.Now()}, nil // the GPU section says none were detected
+	}
 	if err != nil {
 		return ui.DashboardSnapshot{}, err
 	}

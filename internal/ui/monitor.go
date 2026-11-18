@@ -3,10 +3,11 @@ package ui
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
-	"regexp"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -127,6 +128,10 @@ type DashboardSnapshot struct {
 	Fleet            []FleetDashRow
 	FleetView        string
 	Err              string
+	// GPUFailed and TenantsFailed mark a read that failed on the host
+	// dashboard, so an empty list is not shown as an absent resource.
+	GPUFailed     bool
+	TenantsFailed bool
 }
 
 // RefreshFunc collects a fresh DashboardSnapshot.
@@ -149,6 +154,26 @@ type DashboardModel struct {
 	activePane int
 	cursor     int
 	showHelp   bool
+	lines      *lineCounter // set during View
+	focusLine  int          // output line fitHeight keeps on screen
+}
+
+// lineCounter counts the lines View has written, so a renderer can mark
+// where its selected row lands.
+type lineCounter struct {
+	w io.Writer
+	n int
+}
+
+func (c *lineCounter) Write(p []byte) (int, error) {
+	c.n += bytes.Count(p, []byte("\n"))
+	return c.w.Write(p)
+}
+
+// markFocus asks fitHeight to keep the line rowsAhead below the next one
+// written on screen.
+func (m *DashboardModel) markFocus(rowsAhead int) {
+	m.focusLine = m.lines.n + rowsAhead
 }
 
 // NewDashboardModel constructs a DashboardModel with initial snapshot state.
@@ -283,7 +308,7 @@ func (m *DashboardModel) activeRowCount() int {
 		case 1:
 			return len(m.snap.Tenants)
 		default:
-			return len(m.snap.Findings)
+			return len(m.shownFindings())
 		}
 	}
 }
@@ -294,7 +319,8 @@ func (m *DashboardModel) View() string {
 	if m.cfg.Color {
 		colorMode = "always"
 	}
-	w := ConfigureWriter(&raw, colorMode, m.cfg.ASCII, false)
+	m.lines, m.focusLine = &lineCounter{w: &raw}, 0
+	w := ConfigureWriter(m.lines, colorMode, m.cfg.ASCII, false)
 	width := m.cfg.Width
 	if width <= 0 {
 		width = 80
@@ -335,17 +361,13 @@ func (m *DashboardModel) View() string {
 	} else {
 		WriteHint(w, fmt.Sprintf("every %s  (q quit, r refresh, tab pane, ? keys)", m.cfg.Interval))
 	}
-	return fitHeight(clampLinesWidth(raw.String(), width), m.cfg.Height)
+	return fitHeight(clampLinesWidth(raw.String(), width), m.cfg.Height, m.focusLine)
 }
 
-// selectedRow matches a table row carrying the cursor marker (">0", ">host");
-// ASCII section titles ("> GPUs") have a space after the marker.
-var selectedRow = regexp.MustCompile(`^\s*>[^\s>]`)
-
 // fitHeight keeps the title and footer lines and scrolls the body so the
-// selected row, or else the active section, stays on screen.
-// ponytail: stateless centering; a stateful viewport if long non-table sections need paging.
-func fitHeight(text string, height int) string {
+// focus line stays on screen.
+// ponytail: stateless centering on one line; a stateful viewport if long sections need paging.
+func fitHeight(text string, height, focus int) string {
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	if height <= 0 || len(lines) <= height {
 		return text
@@ -354,16 +376,7 @@ func fitHeight(text string, height int) string {
 		return strings.Join(lines[:height], "\n")
 	}
 	body, room := lines[1:len(lines)-1], height-2
-	anchor := -1
-	for i, line := range body {
-		if plain := ansi.Strip(line); selectedRow.MatchString(plain) {
-			anchor = i
-			break
-		} else if anchor < 0 && strings.Contains(plain, "[active]") {
-			anchor = i
-		}
-	}
-	start := min(max(0, anchor-room/2), len(body)-room)
+	start := min(max(0, focus-1-room/2), len(body)-room)
 	visible := append([]string{lines[0]}, body[start:start+room]...)
 	return strings.Join(append(visible, lines[len(lines)-1]), "\n")
 }
@@ -420,9 +433,16 @@ func (m *DashboardModel) renderGPUSection(w io.Writer, _ int, focused bool) {
 	if focused && m.cfg.Mode == ModeHost {
 		title += " [active]"
 	}
+	if focused {
+		m.markFocus(1)
+	}
 	WriteSection(w, title)
 	if len(m.snap.GPUs) == 0 {
-		WriteHint(w, "no NVIDIA GPUs detected")
+		if m.snap.GPUFailed || (m.cfg.Mode == ModeGPU && m.snap.Err != "") {
+			WriteHint(w, "GPU read failed; see the warning above")
+		} else {
+			WriteHint(w, "no NVIDIA GPUs detected")
+		}
 		return
 	}
 	rows := make([][]string, 0, len(m.snap.GPUs))
@@ -447,6 +467,9 @@ func (m *DashboardModel) renderGPUSection(w io.Writer, _ int, focused bool) {
 		owner := FirstNonEmpty(g.Assigned, "-")
 		rows = append(rows, []string{idx, truncateCells(g.Model, 18), memCell, utilCell, thermCell, owner})
 	}
+	if focused {
+		m.markFocus(1 + m.cursor)
+	}
 	_ = WriteTable(w, []string{"GPU", "MODEL", "VRAM", "UTIL", "TEMP/PWR", "OWNER"}, rows, 1)
 }
 
@@ -464,16 +487,24 @@ func (m *DashboardModel) renderMIGSection(w io.Writer) {
 }
 
 func (m *DashboardModel) renderTenantSection(w io.Writer, _ int, focused bool) {
-	if m.cfg.Mode == ModeHost && len(m.snap.Tenants) == 0 {
+	failed := m.snap.TenantsFailed || (m.cfg.Mode == ModeTenant && m.snap.Err != "")
+	if m.cfg.Mode == ModeHost && len(m.snap.Tenants) == 0 && !failed {
 		return
 	}
 	title := "Tenants"
 	if focused && m.cfg.Mode == ModeHost {
 		title += " [active]"
 	}
+	if focused {
+		m.markFocus(1)
+	}
 	WriteSection(w, title)
 	if len(m.snap.Tenants) == 0 {
-		WriteHint(w, "no tenant specs configured")
+		if failed {
+			WriteHint(w, "tenant read failed; see the warning above")
+		} else {
+			WriteHint(w, "no tenant specs configured")
+		}
 		return
 	}
 	rows := make([][]string, 0, len(m.snap.Tenants))
@@ -487,6 +518,9 @@ func (m *DashboardModel) renderTenantSection(w io.Writer, _ int, focused bool) {
 			port = strconv.Itoa(t.SSHPort)
 		}
 		rows = append(rows, []string{name, t.State, port, FirstNonEmpty(t.GPUs, "-"), FirstNonEmpty(t.Spec, "-"), FirstNonEmpty(t.Volume, "-")})
+	}
+	if focused {
+		m.markFocus(1 + m.cursor)
 	}
 	_ = WriteTable(w, []string{"TENANT", "STATE", "SSH", "GPUS", "SPEC", "VOLUME"}, rows, 5)
 	if m.snap.Commitment != "" {
@@ -506,18 +540,25 @@ func (m *DashboardModel) renderFindingsSection(w io.Writer, width int, focused b
 	if focused && m.cfg.Mode == ModeHost {
 		title += " [active]"
 	}
+	if focused {
+		m.markFocus(1)
+	}
 	WriteSection(w, title)
 	counts := map[string]int{}
 	for _, f := range m.snap.Findings {
 		counts[f.Level]++
-		if f.Level == "ok" || f.Level == "skip" {
-			continue
-		}
+	}
+	for i, f := range m.shownFindings() {
 		marker := WarnMark()
 		if f.Level == "fail" {
 			marker = FailMark()
 		}
-		WriteBullet(w, marker, truncateCells(f.Check+": "+f.Detail, max(20, width-6)))
+		text := f.Check + ": " + f.Detail
+		if focused && i == m.cursor {
+			m.markFocus(0)
+			text = ">" + text
+		}
+		WriteBullet(w, marker, truncateCells(text, max(20, width-6)))
 	}
 	WriteSummary(w, []SummaryCount{
 		{Marker: FailMark(), Count: counts["fail"], Label: "failed"},
@@ -526,10 +567,25 @@ func (m *DashboardModel) renderFindingsSection(w io.Writer, width int, focused b
 	})
 }
 
+// shownFindings are the findings the health pane lists and selects from.
+func (m *DashboardModel) shownFindings() []FindingDashRow {
+	var shown []FindingDashRow
+	for _, f := range m.snap.Findings {
+		if f.Level != "ok" && f.Level != "skip" {
+			shown = append(shown, f)
+		}
+	}
+	return shown
+}
+
 func (m *DashboardModel) renderFleetSection(w io.Writer, _ int) {
 	WriteSection(w, fmt.Sprintf("Fleet (%d host(s))", len(m.snap.Fleet)))
 	if len(m.snap.Fleet) == 0 {
-		WriteHint(w, "no hosts selected")
+		if m.snap.Err != "" {
+			WriteHint(w, "fleet read failed; see the warning above")
+		} else {
+			WriteHint(w, "no hosts selected")
+		}
 		return
 	}
 	rows := make([][]string, 0, len(m.snap.Fleet))
@@ -556,6 +612,7 @@ func (m *DashboardModel) renderFleetSection(w io.Writer, _ int) {
 			rows = append(rows, []string{host, h.State, FirstNonEmpty(h.Shutdown, "-"), FirstNonEmpty(h.Reason, "-")})
 		}
 	}
+	m.markFocus(1 + m.cursor)
 	switch m.snap.FleetView {
 	case "gpu":
 		_ = WriteTable(w, []string{"HOST", "STATE", "GPUS", "REASON"}, rows, 2)
@@ -630,11 +687,22 @@ func clampLinesWidth(text string, width int) string {
 	return strings.Join(lines, "\n")
 }
 
+// ErrNoDashboardTerminal is what RunDashboard returns when it cannot draw or
+// read keys; --yes does not apply to it.
+var ErrNoDashboardTerminal = errors.New("no terminal for the live dashboard; run it from an interactive terminal without redirecting its output")
+
+// DashboardTerminal reports whether the dashboard can draw on out and read
+// keys: out is a terminal, input comes from a terminal, and TERM is not dumb
+// (the alternate screen needs cursor control). A variable so tests can pin it.
+var DashboardTerminal = func(out io.Writer) bool {
+	return os.Getenv("TERM") != "dumb" && Terminal(out) && TerminalAttached()
+}
+
 // RunDashboard starts the interactive Bubble Tea program on out. It requires
 // an attached terminal and cancels cleanly when ctx is cancelled.
 func RunDashboard(ctx context.Context, out io.Writer, cfg DashboardConfig, refresh RefreshFunc) error {
-	if err := noTerminal(cfg.Title); err != nil {
-		return err
+	if !DashboardTerminal(out) {
+		return fmt.Errorf("%s: %w", FirstNonEmpty(cfg.Title, "rootfiles monitor"), ErrNoDashboardTerminal)
 	}
 	var initial DashboardSnapshot
 	if refresh != nil {
