@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -130,10 +131,12 @@ func newGPUCmd() *cobra.Command {
 				return err
 			}
 			gpus, err := migStatusCollector(cmd.Context(), rc)
+			var query *module.MIGQueryError
+			if errors.As(err, &query) {
+				return withNext(err, query.Query) // repeats the failed read on this host
+			}
 			if err != nil {
-				// Both MIG reads are nvidia-smi queries; plain nvidia-smi
-				// shows the driver state on this host.
-				return withNext(err, "nvidia-smi")
+				return err
 			}
 			out := cmd.OutOrStdout()
 			ui.WriteHeader(out, cmd.CommandPath())

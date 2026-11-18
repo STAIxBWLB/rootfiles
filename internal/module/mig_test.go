@@ -2,6 +2,7 @@ package module
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,7 +52,9 @@ esac
 		t.Fatalf("MIG disabled: gpus=%+v err=%v, want one GPU, no instances, no error", gpus, err)
 	}
 	t.Setenv("MIG_LIST_FAIL", "1")
-	if gpus, err = MIGStatus(context.Background(), newDryRunRC(t)); err == nil || !strings.Contains(err.Error(), "nvidia-smi -L") {
-		t.Fatalf("failed listing: gpus=%+v err=%v, want an nvidia-smi -L error", gpus, err)
+	gpus, err = MIGStatus(context.Background(), newDryRunRC(t))
+	var q *MIGQueryError
+	if !errors.As(err, &q) || q.Query != "nvidia-smi -L" || !strings.Contains(err.Error(), "fixture driver error") {
+		t.Fatalf("failed listing: gpus=%+v err=%v, want a MIGQueryError for nvidia-smi -L with the cause", gpus, err)
 	}
 }

@@ -170,8 +170,8 @@ func TestNewGPUCmd_RevokeRequiresExactlyOneArg(t *testing.T) {
 	}
 }
 
-// A failed MIG read exits with its cause and a command that shows the
-// driver state on the same host (#180).
+// A failed MIG read exits with its cause and the failed query, which repeats
+// the read on the same host, as the next step (#180).
 func TestMIGStatusFailureNamesNextStep(t *testing.T) {
 	pinInventoryPage(t)
 	rootDir, site, _ := statusContractFixture(t, "populated")
@@ -179,7 +179,7 @@ func TestMIGStatusFailureNamesNextStep(t *testing.T) {
 	saved := migStatusCollector
 	t.Cleanup(func() { migStatusCollector = saved })
 	migStatusCollector = func(context.Context, *module.RunContext) ([]module.MIGGPU, error) {
-		return nil, errors.New("nvidia-smi -L: fixture driver error")
+		return nil, &module.MIGQueryError{Query: "nvidia-smi -L", Err: errors.New(`command "nvidia-smi -L" failed: fixture driver error`)}
 	}
 	root := NewRootCmd("test", "test")
 	var stderr bytes.Buffer
@@ -189,7 +189,7 @@ func TestMIGStatusFailureNamesNextStep(t *testing.T) {
 	if err := executeCommand(context.Background(), root); err == nil {
 		t.Fatal("failed MIG read exited 0")
 	}
-	if !strings.Contains(stderr.String(), "nvidia-smi -L: fixture driver error") || !strings.Contains(stderr.String(), " nvidia-smi\n") {
-		t.Fatalf("stderr=%q, want the cause and the nvidia-smi next step", stderr.String())
+	if !strings.Contains(stderr.String(), "fixture driver error") || !strings.Contains(stderr.String(), " nvidia-smi -L\n") {
+		t.Fatalf("stderr=%q, want the cause and the failed query as the next step", stderr.String())
 	}
 }
