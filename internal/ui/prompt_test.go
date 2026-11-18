@@ -68,10 +68,10 @@ func feedStdin(t *testing.T, input string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := w.WriteString(input); err != nil {
-		t.Fatal(err)
-	}
-	_ = w.Close()
+	go func() { // input may exceed the pipe buffer; closing r ends a blocked write
+		_, _ = w.WriteString(input)
+		_ = w.Close()
+	}()
 	saved := os.Stdin
 	os.Stdin = r
 	t.Cleanup(func() { os.Stdin = saved; _ = r.Close() })
@@ -105,13 +105,20 @@ func TestDumbTerminalPromptsNeedAnAnswer(t *testing.T) {
 	if got, err := Select("Profile", []string{"minimal", "dgx"}, "dgx", false); err != nil || got != "minimal" {
 		t.Fatalf("Select = (%q, %v), want (\"minimal\", nil)", got, err)
 	}
+	// Each prompt reads only its own line, so answers piped together all count.
+	feedStdin(t, "y\nn\n")
+	first, err1 := ConfirmDefault("First?", false, false)
+	second, err2 := ConfirmDefault("Second?", true, false)
+	if err1 != nil || err2 != nil || !first || second {
+		t.Fatalf("piped answers: (%v, %v), (%v, %v), want (true, nil), (false, nil)", first, err1, second, err2)
+	}
 
 	for _, tc := range []struct {
 		name   string
 		inputs []string
 		fn     func() error
 	}{
-		{"ConfirmDefault", []string{"", "  ", "y", "maybe", "maybe\n"}, func() error { _, err := ConfirmDefault("Apply this configuration?", true, false); return err }},
+		{"ConfirmDefault", []string{"", "  ", "y", "maybe", "maybe\n", strings.Repeat("y", 70000)}, func() error { _, err := ConfirmDefault("Apply this configuration?", true, false); return err }},
 		{"Select", []string{"", "maybe\n", "99\n", "maybe"}, func() error { _, err := Select("Profile", []string{"minimal", "dgx"}, "dgx", false); return err }},
 		{"Input", []string{"", "lab"}, func() error { _, err := Input("Timezone", "UTC", false); return err }},
 	} {

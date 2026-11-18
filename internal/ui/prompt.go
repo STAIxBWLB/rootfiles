@@ -53,19 +53,19 @@ func promptLabel(message string) string {
 	return strings.TrimSpace(ansiRe.ReplaceAllString(message, ""))
 }
 
-// runPrompt runs one field. huh's accessible mode (TERM=dumb) takes EOF as
-// the default answer, which would let `apply` proceed with nobody there, so
-// there an answer is a full line and a prompt that reads to the end of stdin
-// fails instead.
+// runPrompt runs one field. huh's accessible mode (TERM=dumb) takes EOF,
+// or a line its scanner cannot hold, as the default answer, which would let
+// `apply` proceed with nobody there. There an answer is a full stdin line,
+// and a prompt that runs out of lines fails instead.
 func runPrompt(message string, field huh.Field) (err error) {
 	if os.Getenv("TERM") != "dumb" {
 		return huh.Run(field)
 	}
-	in := &answerReader{r: os.Stdin}
+	in := &lineReader{r: os.Stdin}
 	noAnswer := fmt.Errorf("%s: %w", promptLabel(message), ErrNoAnswer)
 	defer func() {
-		// ponytail: huh v1.0.0's Select indexes a rejected answer once stdin
-		// ends and panics; drop this when huh reports EOF itself.
+		// ponytail: huh v1.0.0's Select indexes a rejected answer once its
+		// input ends and panics; drop this when huh reports EOF itself.
 		if r := recover(); r != nil {
 			if !in.ended {
 				panic(r)
@@ -82,18 +82,36 @@ func runPrompt(message string, field huh.Field) (err error) {
 	return nil
 }
 
-// answerReader notes when stdin ends or fails while a prompt reads it.
-type answerReader struct {
+// maxAnswer bounds one answer line, well under huh's scanner buffer.
+const maxAnswer = 1024
+
+// lineReader hands huh one stdin line per read, reading byte by byte so a
+// prompt never consumes a later prompt's answer. Stdin ending or failing
+// mid-line, or a line longer than maxAnswer, marks ended and reads as EOF.
+type lineReader struct {
 	r     io.Reader
+	line  []byte
 	ended bool
 }
 
-func (a *answerReader) Read(p []byte) (int, error) {
-	n, err := a.r.Read(p)
-	if err != nil {
-		a.ended = true
+func (l *lineReader) Read(p []byte) (int, error) {
+	if l.ended {
+		return 0, io.EOF
 	}
-	return n, err
+	if len(l.line) == 0 {
+		var b [1]byte
+		for len(l.line) == 0 || l.line[len(l.line)-1] != '\n' {
+			n, err := l.r.Read(b[:])
+			l.line = append(l.line, b[:n]...)
+			if err != nil || len(l.line) > maxAnswer {
+				l.ended, l.line = true, nil
+				return 0, io.EOF
+			}
+		}
+	}
+	n := copy(p, l.line)
+	l.line = l.line[n:]
+	return n, nil
 }
 
 // Confirm asks for yes/no. Returns true immediately if unattended.
