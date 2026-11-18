@@ -424,8 +424,8 @@ func collectTenantDashboardSnapshot(ctx context.Context, m *tenant.Manager, name
 	}, nil
 }
 
-// tenantRowProblem counts failed tenant reads for the warning line; each row
-// carries its own cause.
+// tenantRowProblem counts failed tenant reads for the warning line; the
+// dashboard cell shortens each cause, which one-shot status prints whole.
 func tenantRowProblem(rows []tenant.StatusRow) string {
 	failed := 0
 	for _, r := range rows {
@@ -436,7 +436,7 @@ func tenantRowProblem(rows []tenant.StatusRow) string {
 	if failed == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%d of %d tenant reads failed; see the STATE column", failed, len(rows))
+	return fmt.Sprintf("%d of %d tenant reads failed; run `rootfiles tenant status` for each full cause", failed, len(rows))
 }
 
 func collectFleetDashboardSnapshot(ctx context.Context, _ *fleet.Inventory, hosts []fleet.NamedHost, parallel int, view string) (ui.DashboardSnapshot, error) {

@@ -309,7 +309,7 @@ func TestTenantDashboardCountsFailedReads(t *testing.T) {
 		}}, nil
 	}
 	snap, err := collectTenantDashboardSnapshot(context.Background(), &tenant.Manager{}, []string{"lab", "ml"}, false)
-	if err != nil || snap.Err != "1 of 2 tenant reads failed; see the STATE column" || snap.Tenants[1].State != "error: docker inspect tenant-ml: permission denied" {
+	if err != nil || snap.Err != "1 of 2 tenant reads failed; run `rootfiles tenant status` for each full cause" || snap.Tenants[1].State != "error: docker inspect tenant-ml: permission denied" {
 		t.Fatalf("err=%v warning=%q rows=%+v", err, snap.Err, snap.Tenants)
 	}
 }
