@@ -49,11 +49,17 @@ func WriteHint(w io.Writer, msg string) {
 // status lists and allocation rows where every entry wants the same 2-space
 // outer indent as WriteKV but no key-width alignment.
 func WriteBullet(w io.Writer, marker, text string) {
+	writeBullet(w, OutputWidth(w), marker, text)
+}
+
+// writeBullet wraps at width, for writers that cannot report one (the
+// dashboard renders into memory).
+func writeBullet(w io.Writer, width int, marker, text string) {
 	ascii := ASCIIMarkers(false)
 	if out, ok := w.(*outputWriter); ok {
 		ascii = out.ascii
 	}
-	fmt.Fprintln(displayWriter(w), hangingText(w, "  "+MarkerCell(marker, ascii)+" ", text))
+	fmt.Fprintln(displayWriter(w), hangingTextWidth(width, "  "+MarkerCell(marker, ascii)+" ", text))
 }
 
 // SummaryCount is one cell of a check command's summary line: the marker for a
@@ -171,7 +177,10 @@ func WriteRaw(w io.Writer, text string) {
 
 // hangingText wraps only the free-text part, preserving the label/marker column.
 func hangingText(w io.Writer, prefix, text string) string {
-	width := OutputWidth(w)
+	return hangingTextWidth(OutputWidth(w), prefix, text)
+}
+
+func hangingTextWidth(width int, prefix, text string) string {
 	indent := ansi.StringWidth(prefix)
 	if width <= indent {
 		return prefix + text

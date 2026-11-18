@@ -274,6 +274,9 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 				snap.Tenants = toTenantDashRows(tRep.Rows)
 				snap.Commitment = tRep.Commitment
 				snap.Overcommitted = tRep.Overcommitted
+				if problem := tenantRowProblem(tRep.Rows); problem != "" {
+					problems = append(problems, problem)
+				}
 			}
 		}
 		if err != nil {
@@ -417,7 +420,31 @@ func collectTenantDashboardSnapshot(ctx context.Context, m *tenant.Manager, name
 		Tenants:       toTenantDashRows(report.Rows),
 		Commitment:    report.Commitment,
 		Overcommitted: report.Overcommitted,
+		Err:           tenantRowProblem(report.Rows),
 	}, nil
+}
+
+// tenantRowProblem counts failed tenant reads for the warning line, which
+// wraps, and gives the first cause whole with its next step: the dashboard
+// cell shortens each cause.
+func tenantRowProblem(rows []tenant.StatusRow) string {
+	failed, first := 0, ""
+	for _, r := range rows {
+		if r.Error == "" {
+			continue
+		}
+		failed++
+		if first == "" {
+			first = r.Tenant + ": " + strings.TrimPrefix(r.Error, "error: ")
+			if len(r.Detail) > 0 {
+				first += "; " + strings.TrimPrefix(r.Detail[0], r.Tenant+": ")
+			}
+		}
+	}
+	if failed == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%d of %d tenant reads failed; first, %s", failed, len(rows), first)
 }
 
 func collectFleetDashboardSnapshot(ctx context.Context, _ *fleet.Inventory, hosts []fleet.NamedHost, parallel int, view string) (ui.DashboardSnapshot, error) {

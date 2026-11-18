@@ -222,7 +222,7 @@ func renderTenantStatus(out io.Writer, report *tenant.StatusReport) error {
 	for _, row := range report.Rows {
 		if row.Error != "" {
 			rows = append(rows, []string{row.Tenant, "error", "-", "-", "-", "-", row.Error})
-			details = append(details, nil)
+			details = append(details, row.Detail)
 			continue
 		}
 		rows = append(rows, []string{

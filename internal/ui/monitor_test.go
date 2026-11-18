@@ -214,6 +214,22 @@ func TestRunDashboard_RefusesWithoutTerminal(t *testing.T) {
 	}
 }
 
+// The warning line wraps at the dashboard width instead of being cut, so a
+// long cause keeps its next step (#179).
+func TestMonitorModel_WarningWrapsAtWidth(t *testing.T) {
+	cleanOutputEnv(t)
+	warning := "2 of 3 tenant reads failed; first, ml: docker inspect tenant-ml: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?; run `docker inspect tenant-ml` for the full Docker error"
+	view := ansi.Strip(NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeTenant, Width: 80, Height: 60}, DashboardSnapshot{Err: warning}, nil).View())
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > 80 || strings.HasSuffix(line, "...") {
+			t.Fatalf("line cut or wider than 80: %q\n%s", line, view)
+		}
+	}
+	if joined := strings.Join(strings.Fields(view), " "); !strings.Contains(joined, "run `docker inspect tenant-ml` for the full Docker error") {
+		t.Fatalf("next step lost:\n%s", view)
+	}
+}
+
 // A failed or filtered read never renders as an absent resource.
 func TestMonitorModel_FailedReadsAreNotEmptyResources(t *testing.T) {
 	cleanOutputEnv(t)

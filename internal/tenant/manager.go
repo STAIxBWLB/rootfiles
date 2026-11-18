@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -92,17 +93,35 @@ func (m *Manager) Load(t string) (*Spec, error) { return LoadSpec(m.SpecDir, t) 
 
 type containerState struct {
 	Exists, Running bool
-	Digest          string
-	Restart         string
-	GPUs            string // the GPUs the container was started with
-	Cpuset          Cpuset
+	// Err is a failed read (daemon down, permission denied), as opposed to
+	// a container that does not exist. Only status reports it; other
+	// callers treat the container as absent, as before.
+	Err     error
+	Digest  string
+	Restart string
+	GPUs    string // the GPUs the container was started with
+	Cpuset  Cpuset
 }
 
 func (m *Manager) inspect(ctx context.Context, name string) containerState {
 	res, err := m.Runner.Query(ctx, "docker", "inspect", "-f",
 		`{{.State.Running}}|{{index .Config.Labels "rootfiles.tenant.spec"}}|{{.HostConfig.RestartPolicy.Name}}|{{index .Config.Labels "rootfiles.tenant.gpus"}}|{{.HostConfig.CpusetCpus}}|{{.HostConfig.CpusetMems}}`, name)
 	if err != nil {
-		return containerState{}
+		stderr := ""
+		if res != nil {
+			stderr = strings.TrimSpace(res.Stderr)
+		}
+		if lower := strings.ToLower(stderr); strings.Contains(lower, "no such object") || strings.Contains(lower, "no such container") {
+			return containerState{}
+		}
+		cause := err.Error()
+		if inner := errors.Unwrap(err); inner != nil {
+			cause = inner.Error() // without the inspect template
+		}
+		if stderr != "" {
+			cause = firstLine(stderr)
+		}
+		return containerState{Err: fmt.Errorf("docker inspect %s: %s", name, firstLine(cause))}
 	}
 	f := strings.Split(strings.TrimSpace(res.Stdout), "|")
 	st := containerState{Exists: true}
@@ -670,6 +689,12 @@ func (m *Manager) CollectStatus(ctx context.Context, names []string, detail bool
 		}
 		specs = append(specs, s)
 		st := m.inspect(ctx, ContainerName(n))
+		if st.Err != nil {
+			// A failed read is not a missing container.
+			report.Rows = append(report.Rows, StatusRow{Tenant: n, Error: fmt.Sprintf("error: %v", st.Err),
+				Detail: []string{fmt.Sprintf("%s: run `docker inspect %s` for the full Docker error", n, ContainerName(n))}})
+			continue
+		}
 		state := "missing"
 		if st.Exists {
 			state = "stopped"

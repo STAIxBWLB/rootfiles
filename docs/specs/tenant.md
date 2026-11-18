@@ -65,6 +65,7 @@ Live settings (`Manager.UpdateCpuset`, `Manager.ChangeCpuset`)
 - `--clear` is exclusive with the two list flags. It removes the spec field and explicitly resets both live keys to the full host online CPU and memory-node lists.
 - A live-update failure restores the previous spec bytes, including comments, through Runner. Dry-run changes neither spec nor container.
 - `tenant status` reports `update` for live-only drift; detail shows both desired settings and actual container values, including unmanaged pins.
+- `tenant status` shows `missing` only when docker reports no such container; any other `docker inspect` failure (daemon unreachable, permission denied) is an error row naming the cause, with `docker inspect tenant-<TENANT>` as the next step.
 - Import carries legacy cpuset values into the spec and new container. Before a recreate, unmanaged actual pins warn that they will be lost and name the command to adopt them.
 - On cgroup v2 a live memory-node change migrates existing pages and may take time. Older binaries strictly reject the new field; remove it before downgrading (the live pin remains).
 

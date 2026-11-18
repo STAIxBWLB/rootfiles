@@ -54,6 +54,23 @@ func TestTenantStatusNamesOvercommittedCapacity(t *testing.T) {
 	}
 }
 
+// A failed tenant read keeps its next step under the table (#179).
+func TestTenantStatusErrorRowNamesNextStep(t *testing.T) {
+	var out bytes.Buffer
+	report := &tenant.StatusReport{Rows: []tenant.StatusRow{{
+		Tenant: "lab", Error: "error: docker inspect tenant-lab: Cannot connect to the Docker daemon",
+		Detail: []string{"lab: run `docker inspect tenant-lab` for the full Docker error"},
+	}}}
+	if err := renderTenantStatus(ui.ConfigureWriter(&out, "never", true, false), report); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"Cannot connect to the Docker daemon", "lab: run `docker inspect tenant-lab`"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing %q:\n%s", want, out.String())
+		}
+	}
+}
+
 // TestTenantOpsStatusFailureIsAudited keeps a failed collection on the audit
 // path: `tenant ops` promises every attempt is recorded, so the status branch
 // shares the common record instead of returning early.
