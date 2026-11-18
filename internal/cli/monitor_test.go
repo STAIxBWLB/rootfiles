@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -399,5 +400,41 @@ func TestFleetDashboardVitalsAndGPUCells(t *testing.T) {
 	}
 	if c := open("absent"); c != nil {
 		t.Fatalf("an unknown host opened %v", c.Args)
+	}
+}
+
+// #201 review: vitals are read for -o json only and within the bound, so a
+// mount that does not answer cannot stall status; text never reads them.
+func TestStatusVitalsJSONOnlyAndBounded(t *testing.T) {
+	_, site, _ := statusContractFixture(t, "populated")
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	var calls atomic.Int32
+	hostVitalsCollector = func(*module.RunContext) module.HostVitals {
+		calls.Add(1)
+		<-release // a statfs that never returns
+		return module.HostVitals{LoadKnown: true}
+	}
+	saved := statusVitalsTimeout
+	statusVitalsTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { statusVitalsTimeout = saved })
+	for _, tc := range []struct {
+		format string
+		calls  int32
+	}{{"text", 0}, {"json", 1}} {
+		var out bytes.Buffer
+		root := NewRootCmd("test", "test")
+		root.SetOut(&out)
+		root.SetErr(io.Discard)
+		root.SetArgs([]string{"status", "--config", site, "--output", tc.format})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("%s status: %v", tc.format, err)
+		}
+		if calls.Load() != tc.calls {
+			t.Fatalf("after %s status the collector ran %d times, want %d", tc.format, calls.Load(), tc.calls)
+		}
+		if tc.format == "json" && !strings.Contains(out.String(), `"load_known": false`) {
+			t.Fatalf("a stalled vitals read was not left empty:\n%s", out.String())
+		}
 	}
 }

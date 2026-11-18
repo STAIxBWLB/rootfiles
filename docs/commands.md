@@ -471,7 +471,7 @@ Show each GPU with its owner. Pass `-w`/`--watch` and `--interval` (`2s` default
 ### rootfiles monitor
 
 Watch live system, GPU, tenant and health status.
-Interactive live terminal dashboard for host vitals, GPUs, tenant containers and doctor findings (alias `top`). On a non-Linux controller, `--inventory` selects the fleet inventory to monitor: one row per host with its state, 1-minute load, memory use, fullest mount, GPUs (count and model from the allocation ledger with how many are assigned, or as the host detected them when it keeps no ledger), scheduled shutdown and reason. A column no host reports is hidden, and a host whose `rootfiles` does not report vitals yet shows `-` for them until it is updated. Enter on a host opens that host's own dashboard over `ssh -t` (`rootfiles monitor` as the SSH user, without sudo); quitting it returns to the fleet list.
+Interactive live terminal dashboard for host vitals, GPUs, tenant containers and doctor findings (alias `top`). On a non-Linux controller, `--inventory` selects the fleet inventory to monitor: one row per host with its state, scheduled shutdown and failure reason, then its 1-minute load, memory use, fullest mount, GPUs (count and model from the allocation ledger with how many are assigned, or as the host detected them when it keeps no ledger). A column no host reports is hidden, and a host whose `rootfiles` does not report vitals yet shows `-` for them until it is updated. Enter on a host opens that host's own dashboard over `ssh -t` (`rootfiles monitor` as the SSH user, without sudo); quitting it returns to the fleet list.
 
 | Flag | Default | Purpose |
 |---|---|---|
@@ -545,7 +545,7 @@ Show the schedule, the instant in UTC and host local time, the time left, the no
 Show full system status at a glance.
 On non-Linux controllers, `--inventory` selects the local fleet inventory; `--json` includes `mode: "controller"`, inventory counts and latest fleet run per host.
 
-Read-only overview: system, profile, last apply, module satisfaction, GPU allocations, tunnel and users. `-o json` also carries `vitals` (load, memory, swap, uptime and mount usage), which the fleet dashboard shows; the text report does not.
+Read-only overview: system, profile, last apply, module satisfaction, GPU allocations, tunnel and users. `-o json` also carries `vitals` (load, memory, swap, uptime and mount usage), which the fleet dashboard shows; it is left empty when a filesystem does not answer within 3 seconds, and the text report does not read it.
 
 | Flag | Default | Purpose |
 |---|---|---|

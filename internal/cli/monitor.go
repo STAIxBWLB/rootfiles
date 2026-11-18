@@ -192,7 +192,7 @@ func collectHostDashboardSnapshot(ctx context.Context, cmd *cobra.Command, modul
 	}
 
 	report := collectStatus(ctx, rc, sysInfo, reportProfile, reportPath, cfgErr, last, moduleFilter...)
-	vitals := report.Vitals
+	vitals := hostVitalsCollector(rc)
 
 	osLine := ui.FirstNonEmpty(sysInfo.OS, "unknown")
 	if sysInfo.Version != "" {

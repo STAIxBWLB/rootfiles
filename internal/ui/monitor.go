@@ -707,8 +707,9 @@ func (m *DashboardModel) renderFleetSection(w io.Writer, _ int) {
 		case "users":
 			rows = append(rows, []string{host, h.State, FirstNonEmpty(h.Users, "-"), FirstNonEmpty(h.Reason, "-")})
 		default:
-			rows = append(rows, []string{host, h.State, FirstNonEmpty(h.Load, "-"), FirstNonEmpty(h.Mem, "-"), FirstNonEmpty(h.Disk, "-"),
-				FirstNonEmpty(h.GPUs, "-"), FirstNonEmpty(h.Shutdown, "-"), FirstNonEmpty(h.Reason, "-")})
+			// Failure reasons and shutdowns first: a narrow terminal cuts the vitals instead.
+			rows = append(rows, []string{host, h.State, FirstNonEmpty(h.Shutdown, "-"), FirstNonEmpty(h.Reason, "-"),
+				FirstNonEmpty(h.Load, "-"), FirstNonEmpty(h.Mem, "-"), FirstNonEmpty(h.Disk, "-"), FirstNonEmpty(h.GPUs, "-")})
 		}
 	}
 	m.markFocus(1 + m.cursor)
@@ -718,7 +719,7 @@ func (m *DashboardModel) renderFleetSection(w io.Writer, _ int) {
 	case "users":
 		_ = WriteTable(w, []string{"HOST", "STATE", "USERS", "REASON"}, rows, noWrap)
 	default:
-		_ = WriteTable(w, []string{"HOST", "STATE", "LOAD", "MEM", "DISK", "GPUS", "SHUTDOWN", "REASON"}, rows, noWrap)
+		_ = WriteTable(w, []string{"HOST", "STATE", "SHUTDOWN", "REASON", "LOAD", "MEM", "DISK", "GPUS"}, rows, noWrap)
 	}
 	WriteSummary(w, []SummaryCount{
 		{Marker: FailMark(), Count: counts["fail"], Label: "error"},

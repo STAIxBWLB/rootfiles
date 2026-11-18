@@ -399,3 +399,22 @@ func TestMonitorModel_FleetVitalsAndOpenHost(t *testing.T) {
 		t.Fatalf("host view lost the pane key:\n%s", view)
 	}
 }
+
+// #201 review: in 80 columns a failure reason stays whole beside long vitals
+// and GPU cells, which are what the terminal edge cuts instead.
+func TestMonitorModel_FleetReasonSurvivesNarrowTerminal(t *testing.T) {
+	cleanOutputEnv(t)
+	snap := DashboardSnapshot{Fleet: []FleetDashRow{
+		{Host: "gpu01", State: "ok", Load: "212.4", Mem: "97%", Disk: "93% /srv/tenants/data", GPUs: "3x RTX PRO 6000 Blackwell Server Edition, 2 assigned"},
+		{Host: "gpu02", State: "unreachable", Reason: "ssh connection failed"},
+	}}
+	view := ansi.Strip(NewDashboardModel(context.Background(), DashboardConfig{Mode: ModeFleet, Width: 80, Height: 24}, snap, nil).View())
+	if !strings.Contains(view, "ssh connection failed") {
+		t.Fatalf("80-column fleet view cut the failure reason:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > 80 {
+			t.Fatalf("line wider than 80 columns: %q", line)
+		}
+	}
+}

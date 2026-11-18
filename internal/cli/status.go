@@ -118,6 +118,7 @@ func runStatus(cmd *cobra.Command, _ []string) error {
 	}
 	report := collectStatus(ctx, rc, sysInfo, reportProfile, reportPath, cfgErr, last, moduleFilter...)
 	if format == "json" {
+		report.Vitals = statusVitals(rc)
 		return writeJSON(out, report)
 	}
 	renderStatusText(out, report, profileName, lastErr)
@@ -243,6 +244,25 @@ type statusReport struct {
 	Vitals module.HostVitals `json:"vitals"`
 }
 
+// statusVitalsTimeout bounds the vitals read: statfs on a network filesystem
+// that does not answer must not hold up the report.
+var statusVitalsTimeout = 3 * time.Second
+
+// statusVitals returns the host vitals, or none when they take longer than
+// statusVitalsTimeout.
+// ponytail: a statfs stuck in the kernel keeps its goroutine until the
+// one-shot status process exits; per-mount timeouts if a long-lived caller needs this.
+func statusVitals(rc *module.RunContext) module.HostVitals {
+	done := make(chan module.HostVitals, 1)
+	go func() { done <- hostVitalsCollector(rc) }()
+	select {
+	case v := <-done:
+		return v
+	case <-time.After(statusVitalsTimeout):
+		return module.HostVitals{}
+	}
+}
+
 type statusTunnel struct {
 	Binary  string `json:"binary,omitempty"`
 	Service string `json:"service"`
@@ -266,7 +286,6 @@ func collectStatus(ctx context.Context, rc *module.RunContext, sys *config.Syste
 	}
 	r.Version = buildVersion
 	r.Hostname, _ = os.Hostname()
-	r.Vitals = hostVitalsCollector(rc)
 	if scheduled, err := shutdown.LoadForReport(time.Now()); err == nil {
 		r.ScheduledShutdown = scheduled
 	} else {
