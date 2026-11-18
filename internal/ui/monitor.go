@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -163,9 +164,47 @@ type snapshotMsg struct {
 
 // hostClosedMsg reports how a host dashboard opened with Enter ended.
 type hostClosedMsg struct {
-	host   string
-	err    error
-	stderr string
+	host string
+	err  error
+}
+
+// hostSession runs a host dashboard for tea.Exec. ssh -t carries remote
+// errors through the PTY to stdout, so a failed session keeps the terminal
+// on that output until Enter instead of covering it with the fleet list.
+type hostSession struct {
+	host string
+	cmd  *exec.Cmd
+	in   io.Reader
+	out  io.Writer
+}
+
+func (s *hostSession) SetStdin(r io.Reader) {
+	s.in = r
+	if s.cmd.Stdin == nil {
+		s.cmd.Stdin = r
+	}
+}
+
+func (s *hostSession) SetStdout(w io.Writer) {
+	s.out = w
+	if s.cmd.Stdout == nil {
+		s.cmd.Stdout = w
+	}
+}
+
+func (s *hostSession) SetStderr(w io.Writer) {
+	if s.cmd.Stderr == nil {
+		s.cmd.Stderr = w
+	}
+}
+
+func (s *hostSession) Run() error {
+	err := s.cmd.Run()
+	if err != nil && s.in != nil && s.out != nil {
+		fmt.Fprintf(s.out, "\r\n%s: host dashboard exited: %v; press Enter to return to the fleet ", s.host, err)
+		_, _ = bufio.NewReader(s.in).ReadString('\n')
+	}
+	return err
 }
 
 // DashboardModel is the Bubble Tea model for live server and fleet monitoring.
@@ -295,10 +334,7 @@ func (m *DashboardModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.scheduleTick(), m.triggerRefresh())
 	case hostClosedMsg:
 		if msg.err != nil {
-			m.notice = fmt.Sprintf("%s: host dashboard failed: %v", msg.host, msg.err)
-			if msg.stderr != "" {
-				m.notice += ": " + msg.stderr
-			}
+			m.notice = fmt.Sprintf("%s: host dashboard exited: %v (its output was shown before Enter; Enter opens it again)", msg.host, msg.err)
 		}
 		return m, m.triggerRefresh()
 	case snapshotMsg:
@@ -332,15 +368,8 @@ func (m *DashboardModel) openHost() tea.Cmd {
 	if c == nil {
 		return nil
 	}
-	// The ssh client's own errors would print to the screen the dashboard
-	// covers again on return, so keep them for the warning line.
-	var stderr bytes.Buffer
-	if c.Stderr == nil {
-		c.Stderr = &stderr
-	}
-	return tea.ExecProcess(c, func(err error) tea.Msg {
-		lines := strings.Split(strings.TrimSpace(stderr.String()), "\n")
-		return hostClosedMsg{host: host, err: err, stderr: strings.TrimSpace(lines[len(lines)-1])}
+	return tea.Exec(&hostSession{host: host, cmd: c}, func(err error) tea.Msg {
+		return hostClosedMsg{host: host, err: err}
 	})
 }
 

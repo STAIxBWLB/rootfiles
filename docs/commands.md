@@ -471,7 +471,7 @@ Show each GPU with its owner. Pass `-w`/`--watch` and `--interval` (`2s` default
 ### rootfiles monitor
 
 Watch live system, GPU, tenant and health status.
-Interactive live terminal dashboard for host vitals, GPUs, tenant containers and doctor findings (alias `top`). On a non-Linux controller, `--inventory` selects the fleet inventory to monitor: one row per host with its state, scheduled shutdown and failure reason, then its 1-minute load, memory use, fullest mount, GPUs (count and model from the allocation ledger with how many are assigned, or as the host detected them when it keeps no ledger). A column no host reports is hidden, and a host whose `rootfiles` does not report vitals yet shows `-` for them until it is updated. Enter on a host opens that host's own dashboard over `ssh -t` (`rootfiles monitor` as the SSH user, without sudo); quitting it returns to the fleet list.
+Interactive live terminal dashboard for host vitals, GPUs, tenant containers and doctor findings (alias `top`). On a non-Linux controller, `--inventory` selects the fleet inventory to monitor: one row per host with its state, scheduled shutdown and failure reason, then its 1-minute load, memory use, fullest mount, GPUs (count and model from the allocation ledger with how many are assigned, or as the host detected them when it keeps no ledger). A column no host reports is hidden, and a host whose `rootfiles` does not report vitals yet shows `-` for them until it is updated. Enter on a host opens that host's own dashboard over `ssh -t` (`rootfiles monitor` as the SSH user, without sudo); quitting it returns to the fleet list. If it fails, its output stays on screen until you press Enter.
 
 | Flag | Default | Purpose |
 |---|---|---|

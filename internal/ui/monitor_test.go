@@ -375,15 +375,15 @@ func TestMonitorModel_FleetVitalsAndOpenHost(t *testing.T) {
 	}
 
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	if _, run := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); run == nil || len(opened) != 1 || opened[0] != "gpu02" || cmd.Stderr == nil {
-		t.Fatalf("enter: cmd=%v opened=%v stderr kept=%v", run, opened, cmd != nil && cmd.Stderr != nil)
+	if _, run := m.Update(tea.KeyMsg{Type: tea.KeyEnter}); run == nil || len(opened) != 1 || opened[0] != "gpu02" {
+		t.Fatalf("enter: cmd=%v opened=%v", run, opened)
 	}
-	m, _ = m.Update(hostClosedMsg{host: "gpu02", err: errors.New("exit status 255"), stderr: "ssh: connect to host gpu02 port 22: Connection refused"})
-	if view := ansi.Strip(m.View()); !strings.Contains(view, "gpu02: host dashboard failed: exit status 255: ssh: connect to host gpu02 port 22: Connection refused") {
+	m, _ = m.Update(hostClosedMsg{host: "gpu02", err: errors.New("exit status 255")})
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "gpu02: host dashboard exited: exit status 255") {
 		t.Fatalf("failed host dashboard not on the warning line:\n%s", view)
 	}
 	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("r")})
-	if view := ansi.Strip(m.View()); strings.Contains(view, "host dashboard failed") {
+	if view := ansi.Strip(m.View()); strings.Contains(view, "host dashboard exited") {
 		t.Fatalf("r kept the stale warning:\n%s", view)
 	}
 
@@ -415,6 +415,27 @@ func TestMonitorModel_FleetReasonSurvivesNarrowTerminal(t *testing.T) {
 	for _, line := range strings.Split(view, "\n") {
 		if ansi.StringWidth(line) > 80 {
 			t.Fatalf("line wider than 80 columns: %q", line)
+		}
+	}
+}
+
+// #201 review: a failed host session keeps the remote output on screen until
+// Enter; a session that ends cleanly returns at once.
+func TestHostSessionHoldsFailedOutput(t *testing.T) {
+	for _, tc := range []struct {
+		script  string
+		wantErr bool
+	}{{"echo remote cause; exit 3", true}, {"echo fine", false}} {
+		var out bytes.Buffer
+		input := strings.NewReader("\n")
+		s := &hostSession{host: "gpu01", cmd: exec.Command("sh", "-c", tc.script)}
+		s.SetStdin(input)
+		s.SetStdout(&out)
+		s.SetStderr(&out)
+		err := s.Run()
+		held := strings.Contains(out.String(), "gpu01: host dashboard exited: exit status 3; press Enter to return to the fleet")
+		if (err != nil) != tc.wantErr || held != tc.wantErr {
+			t.Fatalf("%q: err=%v held=%v out=%q", tc.script, err, held, out.String())
 		}
 	}
 }
