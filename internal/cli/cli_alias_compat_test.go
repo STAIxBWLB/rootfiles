@@ -49,12 +49,9 @@ func TestCLIUserAddKeyAliasesAndUsernameFallback(t *testing.T) {
 	for _, tc := range []struct {
 		name, username, pubkey string
 		args                   []string
-		deprecated             bool
 	}{
-		{"canonical", "alice", "canonical-key", []string{"alice", "--ssh-pubkey", "canonical-key"}, false},
-		{"legacy", "alice", "legacy-key", []string{"alice", "--pubkey", "legacy-key"}, true},
-		{"username fallback", "flag-user", "canonical-key", []string{"--user", "flag-user", "--ssh-pubkey", "canonical-key"}, false},
-		{"canonical wins", "alice", "canonical-key", []string{"alice", "--pubkey", "legacy-key", "--ssh-pubkey", "canonical-key"}, true},
+		{"canonical", "alice", "canonical-key", []string{"alice", "--ssh-pubkey", "canonical-key"}},
+		{"username fallback", "flag-user", "canonical-key", []string{"--user", "flag-user", "--ssh-pubkey", "canonical-key"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			aliasCLIFixture(t)
@@ -68,12 +65,8 @@ func TestCLIUserAddKeyAliasesAndUsernameFallback(t *testing.T) {
 				return nil
 			}
 			t.Cleanup(func() { addCLIUser = old })
-			printed, err := executeAliasCLI(t, append([]string{"user", "add"}, tc.args...)...)
-			if err != nil || calls != 1 {
+			if _, err := executeAliasCLI(t, append([]string{"user", "add"}, tc.args...)...); err != nil || calls != 1 {
 				t.Fatalf("user add calls=%d err=%v", calls, err)
-			}
-			if tc.deprecated && (!strings.Contains(printed, "deprecated") || !strings.Contains(printed, "--ssh-pubkey")) {
-				t.Fatalf("missing key replacement notice: %q", printed)
 			}
 		})
 	}
@@ -95,57 +88,38 @@ func TestCLIUserAddWithoutNameNamesCauseAndFix(t *testing.T) {
 	}
 }
 
-func TestCLIUserBackupDestinationAliases(t *testing.T) {
-	for _, flag := range []string{"--file", "--output", "-o"} {
-		t.Run(flag, func(t *testing.T) {
+func TestCLIUserBackupDestination(t *testing.T) {
+	aliasCLIFixture(t)
+	want := filepath.Join(t.TempDir(), "users.json")
+	old := backupCLIUsers
+	got := ""
+	backupCLIUsers = func(_ *module.RunContext, output string) error { got = output; return nil }
+	t.Cleanup(func() { backupCLIUsers = old })
+	if _, err := executeAliasCLI(t, "user", "backup", "--file", want); err != nil || got != want {
+		t.Fatalf("user backup destination=%q err=%v, want %q", got, err, want)
+	}
+}
+
+// The spellings deprecated until v0.22.0 are gone: each is an unknown flag
+// (exit 2), never a silent alias (#187).
+func TestCLIRemovedSpellingsAreUnknownFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"backup", "-o", "/srv/old"},
+		{"backup", "--output", "/srv/old"},
+		{"user", "backup", "-o", "/root/users.json"},
+		{"user", "backup", "--output", "/root/users.json"},
+		{"user", "add", "alice", "--pubkey", "fixture-key"},
+		{"config", "init", "--force"},
+		{"user", "passwd", "alice", "--suffix", "fixture-suffix"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			aliasCLIFixture(t)
-			want := filepath.Join(t.TempDir(), "users.json")
-			old := backupCLIUsers
-			got := ""
-			backupCLIUsers = func(_ *module.RunContext, output string) error { got = output; return nil }
-			t.Cleanup(func() { backupCLIUsers = old })
-			printed, err := executeAliasCLI(t, "user", "backup", flag, want)
-			if err != nil || got != want {
-				t.Fatalf("user backup destination=%q err=%v, want %q", got, err, want)
-			}
-			if flag != "--file" && (!strings.Contains(printed, "deprecated") || !strings.Contains(printed, "--file")) {
-				t.Fatalf("missing destination replacement notice: %q", printed)
+			_, err := executeAliasCLI(t, args...)
+			var exit *ExitError
+			if !errors.As(err, &exit) || exit.Code != 2 || !strings.Contains(exit.Msg, "unknown") {
+				t.Fatalf("err = %v, want an unknown-flag usage error", err)
 			}
 		})
-	}
-}
-
-func TestCLIUserPasswordSuffixStillReachesAction(t *testing.T) {
-	aliasCLIFixture(t)
-	old := setCLIUserPasswords
-	calls := 0
-	setCLIUserPasswords = func(_ context.Context, _ *module.RunContext, entries []module.PasswordEntry, suffix string, expire bool) error {
-		calls++
-		if len(entries) != 1 || entries[0].Username != "alice" || suffix != "fixture-suffix" {
-			t.Fatalf("legacy suffix was dropped: entries=%+v suffix=%q", entries, suffix)
-		}
-		return nil
-	}
-	t.Cleanup(func() { setCLIUserPasswords = old })
-	printed, err := executeAliasCLI(t, "user", "passwd", "alice", "--suffix", "fixture-suffix")
-	if err != nil || calls != 1 {
-		t.Fatalf("suffix action calls=%d err=%v", calls, err)
-	}
-	if !strings.Contains(printed, "deprecated") || !strings.Contains(printed, "--password") || !strings.Contains(printed, "--file") {
-		t.Fatalf("missing suffix replacement notice: %q", printed)
-	}
-}
-
-func TestCLIBackupCanonicalDestinationWinsLegacyAlias(t *testing.T) {
-	aliasCLIFixture(t)
-	stubSnapshot(t, "")
-	newDir, oldDir := filepath.Join(t.TempDir(), "new-backup"), filepath.Join(t.TempDir(), "old-backup")
-	printed, err := runBackupCaptured(t, "--dir", newDir, "-o", oldDir, "--dry-run")
-	if err != nil || !strings.Contains(printed, newDir) || strings.Contains(printed, oldDir) {
-		t.Fatalf("canonical destination was not honored: err=%v output=%q", err, printed)
-	}
-	if !strings.Contains(printed, "deprecated") || !strings.Contains(printed, "--dir") {
-		t.Fatalf("missing directory replacement notice: %q", printed)
 	}
 }
 

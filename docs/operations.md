@@ -49,7 +49,6 @@ sudo rootfiles backup --skip-etc             # no /etc archive
 ```
 
 - The default directory is `<state dir>/system-backup` on the root filesystem, which an OS reinstall erases. Before a reinstall, pass `--dir` on a disk that survives it, or copy the result off the host.
-- `-o/--output` is a deprecated alias of `--dir`.
 
 The backup directory is `rootfiles-backup-<hostname>-<YYYYMMDD>/` under that directory. It is created with mode 0700 and its files with 0600, because it holds SSH keys and configs. A directory that someone other than root could control is refused.
 

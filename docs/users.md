@@ -57,7 +57,7 @@ sudo rootfiles user group-add alice --groups dev,ops
 sudo rootfiles user group-del alice --docker
 ```
 
-`user add` takes the name from the argument, `--user` or `ROOTFILES_USER`, and the key from `--ssh-pubkey` or `ROOTFILES_SSH_PUBKEY`. `--pubkey` still works as a deprecated alias of `--ssh-pubkey`.
+`user add` takes the name from the argument, `--user` or `ROOTFILES_USER`, and the key from `--ssh-pubkey` or `ROOTFILES_SSH_PUBKEY`.
 
 Accounts can also be declared in the config under `users.accounts`; the `users` module creates them and adds missing keys and groups, and never removes anything.
 
@@ -70,7 +70,7 @@ sudo rootfiles user passwd --file users.txt            # usernames, or username,
 sudo rootfiles user passwd --all --dry-run
 ```
 
-Passwords reach `chpasswd` on stdin, never on a command line. `--expire` forces a change at the next login. `--password` values are redacted in the audit log ([operations.md](operations.md#lock-and-audit-log)). `--suffix` (password = username + suffix) is deprecated because it makes predictable passwords, and goes away in v0.22.0.
+Passwords reach `chpasswd` on stdin, never on a command line. `--expire` forces a change at the next login. `--password` values are redacted in the audit log ([operations.md](operations.md#lock-and-audit-log)).
 
 ## Lifecycle
 

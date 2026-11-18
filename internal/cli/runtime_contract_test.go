@@ -174,8 +174,8 @@ func TestNativeFlagScopes(t *testing.T) {
 	}
 }
 
-func TestConfigInitOverwriteAndAlias(t *testing.T) {
-	for _, flag := range []string{"--overwrite", "--force"} {
+func TestConfigInitOverwrite(t *testing.T) {
+	for _, flag := range []string{"--overwrite"} {
 		t.Run(flag, func(t *testing.T) {
 			file := filepath.Join(t.TempDir(), "site.yaml")
 			if err := os.WriteFile(file, []byte("old"), 0600); err != nil {

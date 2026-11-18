@@ -30,7 +30,6 @@ func TestBackupCmd_Flags(t *testing.T) {
 		// The resolved state directory is a host path, so the flag carries no
 		// default and backupDirFlag supplies one when the flag is omitted.
 		{"dir", ""},
-		{"output", ""},
 		{"skip-docker", "false"},
 		{"skip-etc", "false"},
 	} {
@@ -63,14 +62,6 @@ func TestBackupDirFlagFollowsTheStateDirectory(t *testing.T) {
 	}
 	if got := backupDirFlag(cmd); got != "" {
 		t.Fatalf("explicit empty --dir = %q, want the empty value the operator gave", got)
-	}
-
-	cmd = newBackupCmd()
-	if err := cmd.Flags().Set("output", "/data/backup"); err != nil {
-		t.Fatal(err)
-	}
-	if got := backupDirFlag(cmd); got != "/data/backup" {
-		t.Fatalf("deprecated alias --output = %q, want /data/backup", got)
 	}
 }
 
@@ -217,28 +208,6 @@ func TestBackupCmd_DryRunWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Errorf("dry run created %s", out)
-	}
-}
-
-// CLI surface audit AC1: -o/--output still selects the directory for one
-// release and prints a notice naming --dir.
-func TestBackupOutputFlagStillWorksAndWarns(t *testing.T) {
-	for _, flag := range []string{"--output", "-o"} {
-		t.Run(flag, func(t *testing.T) {
-			noHostCommands(t)
-			stubSnapshot(t, "")
-			out := filepath.Join(t.TempDir(), "backups")
-			printed, err := runBackupCaptured(t, flag, out, "--dry-run")
-			if err != nil {
-				t.Fatalf("backup %s: %v", flag, err)
-			}
-			if !strings.Contains(printed, "deprecated") || !strings.Contains(printed, "--dir") {
-				t.Fatalf("%s printed no deprecation notice naming --dir: %q", flag, printed)
-			}
-			if !strings.Contains(printed, out) {
-				t.Fatalf("%s did not select the backup directory: %q", flag, printed)
-			}
-		})
 	}
 }
 

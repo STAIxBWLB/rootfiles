@@ -235,7 +235,6 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles apply` | `--force` | bool | false | - | no |
 | `rootfiles apply` | `--module` | stringSlice | [] | - | no |
 | `rootfiles backup` | `--dir` | string | - | - | no |
-| `rootfiles backup` | `-o, --output` | string | - | o | yes |
 | `rootfiles backup` | `--skip-docker` | bool | false | - | no |
 | `rootfiles backup` | `--skip-etc` | bool | false | - | no |
 | `rootfiles check` | `--json` | bool | false | - | no |
@@ -244,7 +243,6 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles check` | `-v, --verbose` | bool | false | v | no |
 | `rootfiles config init` | `--extends` | string | - | - | no |
 | `rootfiles config init` | `--file` | string | - | - | no |
-| `rootfiles config init` | `--force` | bool | false | - | yes |
 | `rootfiles config init` | `--from-system` | bool | false | - | no |
 | `rootfiles config init` | `--overwrite` | bool | false | - | no |
 | `rootfiles config show` | `--reveal` | bool | false | - | no |
@@ -445,9 +443,7 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles update` | `--version` | string | - | - | no |
 | `rootfiles user add` | `--groups` | stringSlice | [] | - | no |
 | `rootfiles user add` | `--no-docker` | bool | false | - | no |
-| `rootfiles user add` | `--pubkey` | string | - | - | yes |
 | `rootfiles user backup` | `--file` | string | - | - | no |
-| `rootfiles user backup` | `-o, --output` | string | - | o | yes |
 | `rootfiles user del` | `--archive` | bool | false | - | no |
 | `rootfiles user del` | `--remove-home` | bool | false | - | no |
 | `rootfiles user group-add` | `--docker` | bool | false | - | no |
@@ -462,5 +458,4 @@ Inherited root flags are recorded once, on `rootfiles`; every other flag is reco
 | `rootfiles user passwd` | `--expire` | bool | false | - | no |
 | `rootfiles user passwd` | `-f, --file` | string | - | f | no |
 | `rootfiles user passwd` | `--password` | string | - | - | no |
-| `rootfiles user passwd` | `--suffix` | string | - | - | yes |
 | `rootfiles user rehome` | `--remove-old` | bool | false | - | no |

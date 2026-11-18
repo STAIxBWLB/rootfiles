@@ -149,7 +149,7 @@ func TestUserPasswordTargetsAndContextUseCommandWriter(t *testing.T) {
 	aliasCLIFixture(t)
 	var output bytes.Buffer
 	previous := setCLIUserPasswords
-	setCLIUserPasswords = func(_ context.Context, rc *module.RunContext, entries []module.PasswordEntry, _ string, _ bool) error {
+	setCLIUserPasswords = func(_ context.Context, rc *module.RunContext, entries []module.PasswordEntry, _ bool) error {
 		if rc.Output() == nil || len(entries) != 2 {
 			t.Fatalf("password context writer=%v entries=%v", rc.Out, entries)
 		}

@@ -36,7 +36,7 @@ echo "test-bob" > /raid/home/bob/testfile
 
 # Step 4: Backup
 echo "--- Step 3: Backup users ---"
-rootfiles user backup --profile dgx --yes --output /tmp/users-backup.json 2>&1 || true
+rootfiles user backup --profile dgx --yes --file /tmp/users-backup.json 2>&1 || true
 assert_file_exists "/tmp/users-backup.json"
 assert_file_contains "/tmp/users-backup.json" "alice"
 

@@ -186,9 +186,6 @@ func newBackupCmd() *cobra.Command {
 	// an absolute path each host resolves differently, and printing one host's
 	// path on the page costs more columns than help has.
 	cmd.Flags().String("dir", "", "Backup root (default <state dir>/system-backup; the archive goes in a rootfiles-backup-* subdirectory)")
-	cmd.Flags().StringP("output", "o", "", "Deprecated alias for --dir")
-	_ = cmd.Flags().MarkDeprecated("output", "use --dir instead")
-	_ = cmd.Flags().MarkShorthandDeprecated("output", "use --dir instead")
 	cmd.Flags().Bool("skip-docker", false, "Skip Docker image list")
 	cmd.Flags().Bool("skip-etc", false, "Skip /etc/ config tar")
 	return usesConfigTarget(cmd)
@@ -204,10 +201,11 @@ func defaultBackupDir() string {
 // directory; an explicit empty value is passed through as the relative
 // directory it asked for, which the ownership walk then refuses.
 func backupDirFlag(cmd *cobra.Command) string {
-	if !cmd.Flags().Changed("dir") && !cmd.Flags().Changed("output") {
+	if !cmd.Flags().Changed("dir") {
 		return defaultBackupDir()
 	}
-	return stringFlagOrAlias(cmd, "dir", "output")
+	dir, _ := cmd.Flags().GetString("dir")
+	return dir
 }
 
 // backupSystemInfo writes system detection results + hostname.

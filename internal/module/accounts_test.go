@@ -1,12 +1,17 @@
 package module
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/STAIxBWLB/rootfiles/internal/config"
 )
 
 func TestCheckUsername(t *testing.T) {
@@ -97,5 +102,35 @@ func TestExistingGroups(t *testing.T) {
 	}
 	if len(missing) != 1 || missing[0] != "rootfiles-no-such-group" {
 		t.Errorf("missing = %v", missing)
+	}
+}
+
+// A user given no password gets a random one, fed to chpasswd and printed
+// once; a given password is used as is. The suffix scheme is gone (#187).
+func TestSetPasswordsGeneratesWhenNoneGiven(t *testing.T) {
+	bin := t.TempDir()
+	fed := filepath.Join(bin, "stdin")
+	stub := "#!/bin/sh\nwhile IFS= read -r line; do printf '%s\\n' \"$line\" >> " + fed + "; done\n"
+	if err := os.WriteFile(filepath.Join(bin, "chpasswd"), []byte(stub), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	var out bytes.Buffer
+	rc := &RunContext{Config: &config.Config{}, Runner: guardedTestRunner(t, false, slog.New(slog.NewTextHandler(io.Discard, nil))), Out: &out}
+	entries := []PasswordEntry{{Username: "alice"}, {Username: "bob", Password: "given-pass"}}
+	if err := SetPasswords(context.Background(), rc, entries, false); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(fed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	if len(lines) != 2 || lines[1] != "bob:given-pass" || !strings.HasPrefix(lines[0], "alice:") || len(lines[0]) != len("alice:")+16 {
+		t.Fatalf("chpasswd got %q, want a 16-character alice password and bob's given one", lines)
+	}
+	generated := strings.TrimPrefix(lines[0], "alice:")
+	if !strings.Contains(out.String(), "Password set for alice: "+generated) || strings.Contains(out.String(), "given-pass") {
+		t.Fatalf("output %q, want alice's password printed once and bob's never", out.String())
 	}
 }
