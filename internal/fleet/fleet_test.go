@@ -78,6 +78,39 @@ hosts:
 	}
 }
 
+// #191: a symlinked inventory finds relative host configs next to its target,
+// and Path keeps the path the operator gave.
+func TestLoadInventoryFollowsSymlinkForConfigs(t *testing.T) {
+	real := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(real, "fleet"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "fleet", "gpu-a.yaml"), []byte("users:\n  home_base: /home\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(real, "fleet.yaml")
+	if err := os.WriteFile(target, []byte("hosts:\n  gpu-a:\n    ssh: gpu-a\n    config: fleet/gpu-a.yaml\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "fleet.yaml")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	inv, err := LoadInventory(link)
+	if err != nil {
+		t.Fatalf("symlinked inventory: %v", err)
+	}
+	if inv.Path != link || len(inv.Hosts["gpu-a"].EffectiveConfig) == 0 {
+		t.Fatalf("path %q, effective config %q", inv.Path, inv.Hosts["gpu-a"].EffectiveConfig)
+	}
+	// Validating bytes for a path that does not exist yet still resolves
+	// against the given directory.
+	data, _ := os.ReadFile(target)
+	if _, err := ParseInventory(data, filepath.Join(real, "new.yaml")); err != nil {
+		t.Fatalf("not-yet-written path: %v", err)
+	}
+}
+
 func TestLoadInventoryRejectsUnsafeEndpointValues(t *testing.T) {
 	base := `hosts:
   node1:

@@ -29,7 +29,7 @@ hosts:
     ssh: gpu01                    # ssh destination: config alias or user@host
     address: 203.0.113.11         # scrape address as seen from the monitoring hub
     groups: [gpu, dgx]
-    config: sites/gpu01.yaml      # relative to the inventory file
+    config: sites/gpu01.yaml      # relative to the inventory file (its target, if a symlink)
   workstation01:
     ssh: root@workstation01
     sudo: root                    # per-host override
