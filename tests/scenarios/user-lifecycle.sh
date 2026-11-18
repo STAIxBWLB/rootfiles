@@ -10,7 +10,7 @@ KEY2="ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHkRJcXi3BRu5lYx2L2Umn2k1vwRHNyxq1Y8r5
 
 rootfiles apply --profile minimal --module packages --yes 2>&1 || true
 rootfiles apply --profile dgx --module users --yes 2>&1 || true
-rootfiles user add alice --profile dgx --yes --pubkey "$KEY1" 2>&1 || true
+rootfiles user add alice --profile dgx --yes --ssh-pubkey "$KEY1" 2>&1 || true
 assert_user_exists "alice"
 AK=/raid/home/alice/.ssh/authorized_keys
 
